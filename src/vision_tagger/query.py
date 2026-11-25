@@ -36,6 +36,7 @@ from sqlalchemy import Select, and_, exists, func, not_, or_, select
 from sqlalchemy.orm import Session
 
 from .db.models import Cluster, Face, Image, ImageProperty, Person, StageStatus, VlmResult
+from .db.util import like_escape
 
 SORTS = ("date_desc", "date_asc", "name", "path", "faces", "size")
 
@@ -251,12 +252,11 @@ def conditions(f: ImageFilter) -> list[Any]:
     if end:
         conds.append(Image.recorded_at <= end)
     if f.folder:
-        folder = f.folder.strip("/\\")
+        folder = f.folder.replace("\\", "/").strip("/")
         conds.append(
             or_(
                 Image.folder == folder,
-                Image.folder.like(folder + "/%"),
-                Image.folder.like(folder + "\\%"),
+                Image.folder.like(like_escape(folder) + "/%", escape="\\"),
             )
         )
     if f.camera:
@@ -274,14 +274,14 @@ def conditions(f: ImageFilter) -> list[Any]:
             st = st.where(StageStatus.status == f.status)
         conds.append(exists(st))
     if f.text:
-        like = f"%{f.text}%"
+        like = f"%{like_escape(f.text)}%"
         conds.append(
             or_(
-                Image.filename.ilike(like),
-                Image.rel_path.ilike(like),
+                Image.filename.ilike(like, escape="\\"),
+                Image.rel_path.ilike(like, escape="\\"),
                 exists(
                     select(VlmResult.image_id).where(
-                        VlmResult.image_id == Image.id, VlmResult.caption.ilike(like)
+                        VlmResult.image_id == Image.id, VlmResult.caption.ilike(like, escape="\\")
                     )
                 ),
             )

@@ -118,3 +118,86 @@ def test_changed_content_requeues(db, settings, photos) -> None:
         assert {r.status for r in s.scalars(select(StageStatus))} == {Status.PENDING}
         keys = {p.key for p in s.scalars(select(ImageProperty))}
         assert {"year", "orientation", "capture_device"} <= keys  # exif props survive
+
+
+def test_same_phash_but_different_content_is_not_a_duplicate(db, settings, photos, monkeypatch):
+    """pHash collisions (blank pages, same-template forms) must not drop distinct images."""
+    import imagehash as ih
+
+    real_phash = ih.phash
+    monkeypatch.setattr(ih, "phash", lambda im: real_phash(Image_new_blank()))
+    make_image(photos / "form1.png", seed=1)
+    make_image(photos / "form2.png", seed=2)
+    shutil.copy(photos / "form1.png", photos / "form1_copy.png")
+    stats = Indexer(db, settings).run()
+    assert stats.new == 2  # same pHash, different dHash -> two images
+    assert stats.duplicates == 1  # exact copy is still a duplicate
+    with db.session() as s:
+        hashes = {i.phash for i in s.scalars(select(Image))}
+        assert len(hashes) == 1
+
+
+def Image_new_blank():
+    from PIL import Image as PILImage
+
+    return PILImage.new("RGB", (64, 64), "white")
+
+
+def test_duplicate_is_promoted_when_original_disappears(db, settings, photos):
+    make_image(photos / "orig" / "a.jpg", seed=1)
+    Indexer(db, settings).run()
+    (photos / "copies").mkdir()
+    shutil.copy(photos / "orig" / "a.jpg", photos / "copies" / "a.jpg")
+    Indexer(db, settings).run()
+    with db.session() as s:
+        assert s.scalar(select(func.count()).select_from(DuplicateFile)) == 1
+    (photos / "orig" / "a.jpg").unlink()
+    stats = Indexer(db, settings).run()
+    assert stats.missing == 0
+    with db.session() as s:
+        img = s.scalars(select(Image)).one()
+        assert img.path_key == path_key(photos / "copies" / "a.jpg")
+        assert img.folder == "copies" and not img.missing
+        assert s.scalar(select(func.count()).select_from(DuplicateFile)) == 0
+
+
+def test_vanished_duplicate_records_are_removed(db, settings, photos):
+    make_image(photos / "a.jpg", seed=1)
+    shutil.copy(photos / "a.jpg", photos / "b.jpg")
+    Indexer(db, settings).run()
+    (photos / "b.jpg").unlink()
+    Indexer(db, settings).run()
+    with db.session() as s:
+        assert s.scalar(select(func.count()).select_from(DuplicateFile)) == 0
+
+
+def test_folders_are_stored_with_forward_slashes(db, settings, photos):
+    make_image(photos / "2021" / "Italy" / "a.jpg", seed=1)
+    Indexer(db, settings).run()
+    with db.session() as s:
+        img = s.scalars(select(Image)).one()
+        assert img.folder == "2021/Italy" and img.rel_path == "2021/Italy/a.jpg"
+
+
+def test_scanner_skips_system_dirs_and_survives_link_loops(tmp_path):
+    from pathlib import Path
+
+    import pytest
+
+    from vision_tagger.indexer import iter_image_files
+
+    root = tmp_path / "r"
+    make_image(root / "a.jpg", seed=1)
+    make_image(root / "$RECYCLE.BIN" / "deleted.jpg", seed=2)
+    make_image(root / "sub" / "b.jpg", seed=3)
+    try:
+        (root / "sub" / "loop").symlink_to(root, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks not permitted on this system")
+    found = sorted(
+        Path(p).name
+        for p, _ in iter_image_files(
+            root, [".jpg"], follow_symlinks=True, skip_dirs=["$RECYCLE.BIN"]
+        )
+    )
+    assert found == ["a.jpg", "b.jpg"]

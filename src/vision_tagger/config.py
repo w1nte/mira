@@ -48,6 +48,13 @@ class IndexConfig(BaseModel):
     commit_every: int = 200
     follow_symlinks: bool = False
     skip_hidden: bool = True
+    # A file is a duplicate if its pHash equals an indexed one AND the dHash differs in at
+    # most this many bits (re-encodes / resized copies differ by 0-4 bits).
+    dhash_max_distance: int = 5
+    # Folder names that are never scanned (Windows system folders on drive roots).
+    skip_dirs: list[str] = Field(
+        default_factory=lambda: ["$RECYCLE.BIN", "System Volume Information", "$WinREAgent"]
+    )
 
 
 class PipelineConfig(BaseModel):

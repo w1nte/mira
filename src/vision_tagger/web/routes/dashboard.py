@@ -9,7 +9,7 @@ from fastapi.responses import Response
 from sqlalchemy import func, select
 
 from ...db.models import AppSetting, Cluster, DuplicateFile, Face, Image, Person, Run, utcnow
-from ...indexer import Indexer
+from ...indexer import ROOTS_KEY, Indexer, stored_roots
 from ...pipeline import control
 from ...pipeline.stages import STAGE_NAMES, stage_versions
 from ..common import ctx, redirect, render
@@ -17,16 +17,10 @@ from ..context import Job
 
 router = APIRouter()
 
-ROOTS_KEY = "image_roots"
-
 
 def _roots(request: Request) -> list[str]:
     c = ctx(request)
-    with c.db.session() as s:
-        stored = s.get(AppSetting, ROOTS_KEY)
-        if stored and stored.value:
-            return list(stored.value)
-    return [str(p) for p in c.settings.paths.image_roots]
+    return stored_roots(c.db, c.settings)
 
 
 def status_context(request: Request) -> dict[str, Any]:

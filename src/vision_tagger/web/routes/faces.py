@@ -8,6 +8,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import selectinload
 
 from ...db.models import Cluster, Face, Image, Person
+from ...db.util import like_escape
 from ...faces import clustering as C
 from ..common import back, ctx, ints, redirect, render
 
@@ -32,7 +33,7 @@ def clusters_overview(
         )
         if q:
             stmt = stmt.outerjoin(Person, Person.id == Cluster.person_id).where(
-                Person.name.ilike(f"%{q}%")
+                Person.name.ilike(f"%{like_escape(q)}%", escape="\\")
             )
         if show == "unnamed":
             stmt = stmt.where(Cluster.person_id.is_(None))
@@ -299,7 +300,7 @@ def cluster_search(request: Request, q: str = "") -> list[dict[str, object]]:
             .limit(30)
         )
         if q:
-            cond = [Person.name.ilike(f"%{q}%")]
+            cond = [Person.name.ilike(f"%{like_escape(q)}%", escape="\\")]
             if q.isdigit():
                 cond.append(Cluster.id == int(q))
             stmt = stmt.where(or_(*cond))

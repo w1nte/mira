@@ -6,6 +6,7 @@ import csv
 import logging
 import os
 import shutil
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -14,6 +15,7 @@ from sqlalchemy import select
 
 from .db.models import Image
 from .db.session import Database
+from .db.util import chunked
 from .query import ImageFilter, all_image_ids
 
 log = logging.getLogger(__name__)
@@ -71,6 +73,17 @@ def _place(src: Path, dst: Path, mode: Mode) -> bool:
     return False
 
 
+def _iter_images(db: Database, ids: list[int]) -> Iterator[Image]:
+    """Load images in chunks (SQLite limits the number of bound parameters), keeping order."""
+    for part in chunked(ids):
+        with db.session() as s:
+            by_id = {i.id: i for i in s.scalars(select(Image).where(Image.id.in_(part)))}
+            s.expunge_all()
+        for image_id in part:
+            if image_id in by_id:
+                yield by_id[image_id]
+
+
 def export_images(
     db: Database,
     f: ImageFilter,
@@ -85,17 +98,12 @@ def export_images(
     stats = ExportStats(target=str(target))
     with db.session() as s:
         ids = image_ids if image_ids is not None else all_image_ids(s, f)
-        images = {i.id: i for i in s.scalars(select(Image).where(Image.id.in_(ids)))}
-        s.expunge_all()
     manifest = target / "export_manifest.csv"
     with manifest.open("a", newline="", encoding="utf-8") as fh:
         writer = csv.writer(fh)
         if fh.tell() == 0:
             writer.writerow(["image_id", "source", "target", "mode"])
-        for image_id in ids:
-            img = images.get(image_id)
-            if img is None:
-                continue
+        for img in _iter_images(db, ids):
             src = Path(img.path)
             if not src.exists():
                 stats.skipped += 1
