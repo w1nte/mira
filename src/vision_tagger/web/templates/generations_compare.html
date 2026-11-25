@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}{{ a.name }} & {{ b.name }} at the same age{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <small><a href="/generations">← Generations</a> · <a href="/generations/{{ a.id }}">{{ a.name }} growing up</a></small>
+    <h1>{{ a.name }} & {{ b.name }} at the same age</h1>
+    {% if pairs %}
+      <small>{{ pairs | length }} matching age{{ 's' if pairs | length != 1 }} · average face similarity <b>{{ '%.0f' | format([avg, 0] | max * 100) }}%</b>
+        {% if best %} · most alike at <b>{{ best.age }}</b> ({{ '%.0f' | format(best.similarity * 100) }}%){% endif %}</small>
+    {% endif %}
+  </div>
+  <form class="row" method="get" action="/generations/{{ a.id }}/compare">
+    <select name="other">{% for o in others %}<option value="{{ o.id }}" {{ 'selected' if o.id == b.id }}>{{ o.name }}</option>{% endfor %}</select>
+    <button>Compare</button>
+  </form>
+</div>
+
+{% if not pairs %}
+  <div class="card empty">No photos of {{ a.name }} and {{ b.name }} at (about) the same age yet.
+    Setting birth years on both person pages makes the ages exact.</div>
+{% else %}
+<div class="compare-list">
+  {% for p in pairs %}
+  <div class="card compare-row {{ 'best' if best and p.age == best.age }}">
+    <a href="/images/{{ p.a.image_id }}"><img loading="lazy" src="/media/aligned/{{ p.a.face_id }}?size=256" alt=""></a>
+    <div class="compare-mid">
+      <div class="compare-age">{{ p.age }}</div>
+      <small class="muted">{{ p.a.label }}<br>{{ p.b.label }}</small>
+      <div class="hbar" style="width: {{ [[p.similarity * 100 * 1.6, 3] | max, 100] | min }}%;margin:.4rem auto 0"></div>
+      <small>{{ '%.0f' | format([p.similarity, 0] | max * 100) }}% similar</small>
+      {% if best and p.age == best.age %}<span class="badge accent" style="margin-top:.3rem">most alike</span>{% endif %}
+    </div>
+    <a href="/images/{{ p.b.image_id }}"><img loading="lazy" src="/media/aligned/{{ p.b.face_id }}?size=256" alt=""></a>
+  </div>
+  {% endfor %}
+</div>
+<p class="muted"><small>{{ a.name }} left, {{ b.name }} right. Similarity comes from the face recognition model (same person ≈ 50–90 %, strangers ≈ 0–15 %).</small></p>
+{% endif %}
+{% endblock %}

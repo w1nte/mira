@@ -273,3 +273,28 @@ kbd { font-family: ui-monospace, monospace; font-size: .75rem; padding: 0 .35rem
 .yfaces .face { width: 72px; height: 72px; }
 .agebadge { position: absolute; left: .2rem; bottom: .2rem; background: rgba(0,0,0,.65); color: #fff; font-size: .7rem; font-weight: 700; padding: 0 .3rem; border-radius: 4px; }
 .agebadge.est { background: rgba(80,80,80,.7); font-weight: 500; }
+
+/* ---------- generations */
+.gen-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem; }
+.gen-card { display: block; color: var(--text); text-decoration: none; transition: transform .15s; }
+.gen-card:hover { transform: translateY(-2px); text-decoration: none; border-color: var(--accent); }
+.gen-pair { display: flex; align-items: center; gap: .4rem; }
+.gen-pair img { width: calc(50% - .9rem); aspect-ratio: 1; object-fit: cover; border-radius: 10px; }
+.gen-pair .arrow { color: var(--muted); font-size: 1.2rem; }
+.gen-layout { display: grid; grid-template-columns: minmax(0, 560px) minmax(260px, 1fr); gap: 1.25rem; align-items: start; }
+@media (max-width: 900px) { .gen-layout { grid-template-columns: 1fr; } }
+.stage { position: relative; width: 100%; max-width: 560px; aspect-ratio: 1; border-radius: 18px; overflow: hidden; background: #111; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+.stage .layer { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.stage-caption { position: absolute; left: 0; right: 0; bottom: 0; padding: 1.4rem 1.1rem .8rem; color: #fff; display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; font-size: 1.15rem; background: linear-gradient(transparent, rgba(0,0,0,.65)); }
+.stage-caption span { font-variant-numeric: tabular-nums; opacity: .95; }
+.gen-strip { display: flex; gap: .4rem; overflow-x: auto; margin-top: 1rem; padding-bottom: .4rem; }
+.gen-thumb { flex: none; display: flex; flex-direction: column; align-items: center; gap: .2rem; padding: .25rem; border-radius: 8px; background: var(--panel); }
+.gen-thumb img { width: 64px; height: 64px; object-fit: cover; border-radius: 6px; }
+.gen-thumb span { font-size: .7rem; color: var(--muted); }
+.gen-thumb.active { border-color: var(--accent); background: var(--accent-soft); }
+.compare-list { display: grid; gap: .75rem; }
+.compare-row { display: grid; grid-template-columns: 1fr 180px 1fr; align-items: center; gap: 1rem; text-align: center; }
+.compare-row img { width: 100%; max-width: 256px; aspect-ratio: 1; object-fit: cover; border-radius: 12px; }
+.compare-row.best { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.compare-mid { display: flex; flex-direction: column; align-items: center; }
+.compare-age { font-size: 2.2rem; font-weight: 800; line-height: 1; }

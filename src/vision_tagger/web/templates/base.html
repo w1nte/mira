@@ -6,8 +6,8 @@
   <title>{% block title %}vision-tagger{% endblock %} · vision-tagger</title>
   <link rel="stylesheet" href="/static/app.css">
   <script src="/static/htmx.min.js" defer></script>
-  <script src="/static/alpine.min.js" defer></script>
   <script src="/static/app.js" defer></script>
+  <script src="/static/alpine.min.js" defer></script>
 </head>
 <body>
   {% set path = request.url.path %}
@@ -22,6 +22,7 @@
       <a href="/overview" class="{{ 'active' if path.startswith('/overview') }}">Overview</a>
       <a href="/search" class="{{ 'active' if path.startswith('/search') }}">Search</a>
       <a href="/quiz" class="{{ 'active' if path.startswith('/quiz') }}" title="Who's that? – face quiz">🎲 Quiz</a>
+      <a href="/generations" class="{{ 'active' if path.startswith('/generations') }}" title="Watch people grow up, compare family members at the same age">✨ Generations</a>
     </nav>
     <form class="navsearch" method="get" action="/search" role="search">
       <input type="search" name="q" aria-label="Search images" value="{{ request.query_params.get('q', '') if path.startswith('/search') else '' }}"

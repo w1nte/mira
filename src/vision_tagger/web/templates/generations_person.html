@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}{{ person.name }} growing up{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <small><a href="/generations">← Generations</a> · <a href="/persons/{{ person.id }}">{{ person.name }}</a></small>
+    <h1>{{ person.name }}, growing up</h1>
+    <small>{{ frames | length }} ages{% if not person.birth_year %} · <a href="/persons/{{ person.id }}">set a birth year</a> for exact ages{% endif %}</small>
+  </div>
+  {% if frames | length >= 2 %}
+  <div class="row">
+    <a class="btn primary" href="/generations/{{ person.id }}/animation.webp?download=1">⬇ Download animation</a>
+    <a class="btn" href="/generations/{{ person.id }}/animation.webp" target="_blank">Open animation</a>
+  </div>
+  {% endif %}
+</div>
+
+{% if frames | length < 2 %}
+  <div class="card empty">Need photos of {{ person.name }} at two or more different ages.</div>
+{% else %}
+<script type="application/json" id="growup-frames">{{ payload | tojson }}</script>
+<div class="growup" x-data="vtGrowup('growup-frames')">
+  <div class="gen-layout">
+    <div>
+      <div class="stage">
+        <img class="layer" :src="frames[i].src" alt="">
+        <img class="layer" :src="frames[j].src" :style="'opacity:' + fade" alt="">
+        <div class="stage-caption"><b>{{ person.name }}</b><span x-text="label"></span></div>
+      </div>
+      <div class="row" style="margin-top:.75rem">
+        <button class="primary" @click="toggle()" x-text="playing ? '❚❚ Pause' : '▶ Play'"></button>
+        <input type="range" min="0" :max="frames.length - 1" step="0.01" x-model.number="pos" @input="stop()" style="flex:1" aria-label="Age">
+        <select x-model.number="speed" aria-label="Speed"><option value="0.5">slow</option><option value="1" selected>normal</option><option value="2">fast</option></select>
+      </div>
+    </div>
+    <aside class="stack">
+      <section class="card tight">
+        <h3>Looks most like…</h3>
+        {% if looks_like %}
+        <table>
+          {% for r in looks_like %}
+          <tr>
+            <td><a href="/generations/{{ person.id }}/compare/{{ r.person_id }}">{{ r.name }}</a><br>
+              <small class="muted">{{ ('compared at ' ~ r.same_age_pairs ~ ' matching age' ~ ('s' if r.same_age_pairs != 1 else '')) if r.same_age_pairs else 'overall' }}</small></td>
+            <td style="width:45%"><div class="hbar" style="width: {{ [[r.similarity * 100 * 1.6, 3] | max, 100] | min }}%"></div></td>
+            <td class="num">{{ '%.0f' | format([r.similarity, 0] | max * 100) }}%</td>
+          </tr>
+          {% endfor %}
+        </table>
+        <small class="muted">Face similarity of the recognition model. Same person ≈ 50–90 %, strangers ≈ 0–15 %, relatives often in between.</small>
+        {% else %}<p class="muted">Name more people to compare.</p>{% endif %}
+      </section>
+      <section class="card tight">
+        <h3>Compare at the same age</h3>
+        <form class="row" method="get" action="/generations/{{ person.id }}/compare">
+          <select name="other" style="flex:1">{% for o in others %}<option value="{{ o.id }}">{{ o.name }}</option>{% endfor %}</select>
+          <button>Compare</button>
+        </form>
+      </section>
+    </aside>
+  </div>
+  <div class="gen-strip">
+    <template x-for="(f, k) in frames" :key="k">
+      <button class="gen-thumb" :class="Math.round(pos) === k ? 'active' : ''" @click="stop(); pos = k" :title="f.label">
+        <img :src="f.src + '?size=256'" alt=""><span x-text="f.label.split(' · ')[0]"></span>
+      </button>
+    </template>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
