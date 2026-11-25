@@ -17,3 +17,12 @@ def vlm_stage_version(settings: Settings, model: str | None = None) -> str:
     if model is None:
         model = "fake" if settings.vlm.backend == "fake" else settings.vlm.model
     return f"{model}|{prompt_version(Vocabulary.load(settings.vlm.vocabulary_file))}"
+
+
+def embed_stage_version(settings: Settings, fake: bool | None = None) -> str:
+    from ...search.document import DOC_VERSION
+
+    if fake is None:
+        fake = settings.vlm.backend == "fake"
+    model = "fake" if fake else settings.search.embed_model
+    return f"{model}|doc{DOC_VERSION}"

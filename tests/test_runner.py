@@ -70,7 +70,7 @@ def test_full_run_marks_done_and_errors(indexed, settings):
         "faces": FakeStage(indexed, settings, fail_ids={3}),
         "vlm": FakeStage(indexed, settings, name="vlm"),
     }
-    summary = PipelineRunner(indexed, settings, stages.__getitem__).run()
+    summary = PipelineRunner(indexed, settings, stages.__getitem__).run(["faces", "vlm"])
     assert summary.status == "completed"
     assert summary.processed == {"faces": 10, "vlm": 10}
     assert summary.failed == {"faces": 1, "vlm": 0}

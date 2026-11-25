@@ -9,6 +9,7 @@ from sqlalchemy import select
 from vision_tagger.db.models import Cluster, Face, Person, PropertyAlias
 from vision_tagger.indexer import Indexer
 from vision_tagger.pipeline.runner import PipelineRunner
+from vision_tagger.pipeline.stages.embed import EmbedStage
 from vision_tagger.pipeline.stages.faces import FacesStage
 from vision_tagger.pipeline.stages.vlm import VlmStage
 from vision_tagger.vlm.backend import FakeBackend
@@ -30,6 +31,7 @@ def client(settings, photos, tmp_path):
         stages = {
             "faces": FacesStage(ctx.db, settings, analyzer=FakeAnalyzer()),
             "vlm": VlmStage(ctx.db, settings, backend=FakeBackend(Vocabulary.load())),
+            "embed": EmbedStage(ctx.db, settings, backend=FakeBackend(Vocabulary.load())),
         }
         PipelineRunner(ctx.db, settings, stages.__getitem__).run()
         c.ctx = ctx

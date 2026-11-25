@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import timedelta
 from typing import Any
 
@@ -77,6 +78,22 @@ def requeue(db: Database, stage: str, image_ids: list[int] | None = None) -> int
         stmt = stmt.where(StageStatus.status != Status.RUNNING)
         return (
             s.execute(stmt.values(status=Status.PENDING, attempts=0, last_error=None)).rowcount or 0
+        )
+
+
+def mark_pending(s: Session, stage: str, image_ids: Iterable[int]) -> None:
+    """Re-queue ``stage`` for these images inside an open session (skips rows in work)."""
+    from ..db.util import chunked
+
+    for part in chunked(sorted(set(image_ids))):
+        s.execute(
+            update(StageStatus)
+            .where(
+                StageStatus.stage == stage,
+                StageStatus.image_id.in_(part),
+                StageStatus.status != Status.RUNNING,
+            )
+            .values(status=Status.PENDING, attempts=0, last_error=None)
         )
 
 

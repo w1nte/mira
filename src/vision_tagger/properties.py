@@ -8,6 +8,7 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from .db.models import ImageProperty, PropertyAlias
+from .pipeline.control import mark_pending
 
 
 def _set_alias(s: Session, key: str, from_value: str, to_value: str | None) -> None:
@@ -41,6 +42,7 @@ def merge_values(s: Session, key: str, values: Iterable[str], target: str) -> in
     if not target:
         raise ValueError("target value must not be empty")
     changed = 0
+    affected: set[int] = set()
     for value in {v for v in values if v and v != target}:
         _set_alias(s, key, value, target)
         rows = s.scalars(
@@ -54,6 +56,7 @@ def merge_values(s: Session, key: str, values: Iterable[str], target: str) -> in
             )
         )
         for row in rows:
+            affected.add(row.image_id)
             if row.image_id in have_target:
                 s.delete(row)
             else:
@@ -61,6 +64,7 @@ def merge_values(s: Session, key: str, values: Iterable[str], target: str) -> in
                 have_target.add(row.image_id)
             changed += 1
     s.flush()
+    mark_pending(s, "embed", affected)  # search documents changed
     return changed
 
 
@@ -71,9 +75,17 @@ def rename_value(s: Session, key: str, value: str, new_value: str) -> int:
 def delete_value(s: Session, key: str, value: str) -> int:
     """Remove a value everywhere and drop it from future VLM results."""
     _set_alias(s, key, value, None)
+    affected = list(
+        s.scalars(
+            select(ImageProperty.image_id).where(
+                ImageProperty.key == key, ImageProperty.value == value
+            )
+        )
+    )
     res = s.execute(
         delete(ImageProperty).where(ImageProperty.key == key, ImageProperty.value == value)
     )
+    mark_pending(s, "embed", affected)
     return res.rowcount or 0
 
 

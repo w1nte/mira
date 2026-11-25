@@ -30,7 +30,7 @@
           <div class="checks">
             {% for st in stages %}
             <label><input type="checkbox" name="stages" value="{{ st }}" checked>
-              {{ {'faces': 'Faces (InsightFace + clustering)', 'vlm': 'Properties (' ~ settings.vlm.model ~ ')'}[st] }}</label>
+              {{ {'faces': 'Faces (InsightFace + clustering)', 'vlm': 'Properties (' ~ settings.vlm.model ~ ')', 'embed': 'Search index (' ~ settings.search.embed_model ~ ')'}.get(st, st) }}</label>
             {% endfor %}
           </div>
         </div>

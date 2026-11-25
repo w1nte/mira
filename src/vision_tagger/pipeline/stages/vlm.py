@@ -15,6 +15,7 @@ from ...vlm.backend import VlmBackend, VlmConnectionError, make_backend
 from ...vlm.normalize import Normalizer
 from ...vlm.prompt import USER_PROMPT, prompt_version, system_prompt
 from ...vlm.schema import CONFIDENCE_SUFFIX, Vocabulary, default_synonyms_path
+from ..control import mark_pending
 from .base import Stage, StageAbort
 
 log = logging.getLogger(__name__)
@@ -167,3 +168,5 @@ class VlmStage(Stage):
             result.duration_s = round(duration, 2)
             result.created_at = utcnow()
             s.merge(result)
+            # the search document changed -> rebuild this image's embedding
+            mark_pending(s, "embed", [image_id])

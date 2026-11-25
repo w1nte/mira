@@ -60,7 +60,7 @@ class IndexConfig(BaseModel):
 class PipelineConfig(BaseModel):
     batch_size: int = 16
     max_attempts: int = 3
-    stages: list[str] = Field(default_factory=lambda: ["faces", "vlm"])
+    stages: list[str] = Field(default_factory=lambda: ["faces", "vlm", "embed"])
     heartbeat_seconds: float = 5.0
 
 
@@ -101,6 +101,26 @@ class VlmConfig(BaseModel):
     max_list_items: int = 15
     vocabulary_file: Path | None = None
     synonyms_file: Path | None = None
+
+
+class SearchWeights(BaseModel):
+    semantic: float = 0.55
+    properties: float = 0.35
+    keywords: float = 0.10
+
+
+class SearchConfig(BaseModel):
+    # LLM used to interpret queries / re-rank results; defaults to vlm.model (text-only use)
+    model: str | None = None
+    embed_model: str = "nomic-embed-text"
+    # nomic-embed-text expects task prefixes; set both to "" for models that don't (bge-m3)
+    query_prefix: str = "search_query: "
+    document_prefix: str = "search_document: "
+    embed_batch: int = 16
+    result_limit: int = 200
+    rerank_top: int = 40
+    rerank_batch: int = 20
+    weights: SearchWeights = Field(default_factory=SearchWeights)
 
 
 class DerivedConfig(BaseModel):
@@ -163,6 +183,7 @@ class Settings(BaseSettings):
     faces: FacesConfig = Field(default_factory=FacesConfig)
     vlm: VlmConfig = Field(default_factory=VlmConfig)
     derived: DerivedConfig = Field(default_factory=DerivedConfig)
+    search: SearchConfig = Field(default_factory=SearchConfig)
     export: ExportConfig = Field(default_factory=ExportConfig)
     web: WebConfig = Field(default_factory=WebConfig)
 

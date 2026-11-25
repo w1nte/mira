@@ -282,3 +282,18 @@ class VlmResult(Base):
     caption: Mapped[str | None] = mapped_column(Text)
     duration_s: Mapped[float | None] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class ImageEmbedding(Base):
+    """Text embedding of an image's search document (see ``search.document``)."""
+
+    __tablename__ = "image_embeddings"
+
+    image_id: Mapped[int] = mapped_column(
+        ForeignKey("images.id", ondelete="CASCADE"), primary_key=True
+    )
+    model: Mapped[str] = mapped_column(Text)
+    dim: Mapped[int] = mapped_column(Integer)
+    vector: Mapped[bytes] = mapped_column(LargeBinary)  # float16, L2-normalised
+    doc_hash: Mapped[str] = mapped_column(String(40))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)

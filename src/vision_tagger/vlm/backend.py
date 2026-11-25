@@ -7,9 +7,11 @@ import io
 import json
 import logging
 import re
+import zlib
 from typing import Any, Protocol
 
 import httpx
+import numpy as np
 from PIL import Image, ImageStat
 
 from ..config import VlmConfig
@@ -33,11 +35,28 @@ class VlmBackend(Protocol):
         self, image: Image.Image, system: str, user: str, schema: dict[str, Any]
     ) -> dict[str, Any]: ...
 
+    def chat_json(
+        self, system: str, user: str, schema: dict[str, Any], model: str | None = None
+    ) -> dict[str, Any]: ...
+
+    def embed(self, texts: list[str], model: str) -> np.ndarray: ...
+
+    def has_model(self, name: str) -> bool: ...
+
     def health(self) -> dict[str, Any]: ...
 
     def unload(self) -> None: ...
 
     def close(self) -> None: ...
+
+
+def _normalize_rows(m: np.ndarray) -> np.ndarray:
+    m = np.asarray(m, dtype=np.float32)
+    if m.ndim == 1:
+        m = m[None, :]
+    n = np.linalg.norm(m, axis=1, keepdims=True)
+    n[n == 0] = 1.0
+    return m / n
 
 
 def encode_image(image: Image.Image, quality: int = 90) -> str:
@@ -74,11 +93,32 @@ class OllamaBackend:
             base_url=cfg.base_url.rstrip("/"), timeout=httpx.Timeout(cfg.timeout, connect=10.0)
         )
 
-    def analyze(
-        self, image: Image.Image, system: str, user: str, schema: dict[str, Any]
+    # ------------------------------------------------------------------ transport
+    def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            resp = self._client.post(path, json=payload)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+            raise VlmConnectionError(f"cannot reach Ollama at {self.cfg.base_url}: {exc}") from exc
+        except httpx.HTTPError as exc:
+            raise VlmError(f"Ollama request failed: {exc}") from exc
+        if resp.status_code != 200:
+            raise VlmError(f"Ollama returned HTTP {resp.status_code}: {resp.text[:300]}")
+        return resp.json()
+
+    def _chat(
+        self,
+        system: str,
+        user: str,
+        schema: dict[str, Any],
+        *,
+        model: str | None = None,
+        images: list[str] | None = None,
     ) -> dict[str, Any]:
+        message: dict[str, Any] = {"role": "user", "content": user}
+        if images:
+            message["images"] = images
         payload = {
-            "model": self.cfg.model,
+            "model": model or self.cfg.model,
             "stream": False,
             "format": schema,
             "keep_alive": self.cfg.keep_alive,
@@ -87,34 +127,57 @@ class OllamaBackend:
                 "seed": self.cfg.seed,
                 "num_ctx": self.cfg.num_ctx,
             },
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user, "images": [encode_image(image)]},
-            ],
+            "messages": [{"role": "system", "content": system}, message],
         }
-        try:
-            resp = self._client.post("/api/chat", json=payload)
-        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
-            raise VlmConnectionError(f"cannot reach Ollama at {self.cfg.base_url}: {exc}") from exc
-        except httpx.HTTPError as exc:
-            raise VlmError(f"Ollama request failed: {exc}") from exc
-        if resp.status_code != 200:
-            raise VlmError(f"Ollama returned HTTP {resp.status_code}: {resp.text[:300]}")
-        body = resp.json()
+        body = self._post("/api/chat", payload)
         content = (body.get("message") or {}).get("content", "")
         return parse_json_answer(content)
+
+    # ------------------------------------------------------------------ API
+    def analyze(
+        self, image: Image.Image, system: str, user: str, schema: dict[str, Any]
+    ) -> dict[str, Any]:
+        return self._chat(system, user, schema, images=[encode_image(image)])
+
+    def chat_json(
+        self, system: str, user: str, schema: dict[str, Any], model: str | None = None
+    ) -> dict[str, Any]:
+        """Text-only structured answer (used by the search query interpreter / re-ranker)."""
+        return self._chat(system, user, schema, model=model)
+
+    def embed(self, texts: list[str], model: str) -> np.ndarray:
+        """L2-normalised embeddings for ``texts`` (``/api/embed``)."""
+        if not texts:
+            return np.zeros((0, 0), dtype=np.float32)
+        body = self._post(
+            "/api/embed", {"model": model, "input": texts, "keep_alive": self.cfg.keep_alive}
+        )
+        vectors = body.get("embeddings") or []
+        if len(vectors) != len(texts):
+            raise VlmError(f"embedding model returned {len(vectors)} vectors for {len(texts)}")
+        return _normalize_rows(np.asarray(vectors, dtype=np.float32))
+
+    def _installed(self) -> set[str]:
+        tags = self._client.get("/api/tags", timeout=3).json().get("models", [])
+        return {n for m in tags for n in (m.get("name"), m.get("model")) if n}
+
+    def has_model(self, name: str) -> bool:
+        try:
+            installed = self._installed()
+        except Exception:
+            return False
+        return (name if ":" in name else f"{name}:latest") in installed
 
     def health(self) -> dict[str, Any]:
         info: dict[str, Any] = {"backend": "ollama", "url": self.cfg.base_url, "model": self.model}
         try:
             version = self._client.get("/api/version", timeout=3).json().get("version")
-            tags = self._client.get("/api/tags", timeout=3).json().get("models", [])
+            names = self._installed()
         except Exception as exc:
             info.update(ok=False, error=f"{type(exc).__name__}: {exc}")
             return info
-        names = {m.get("name") for m in tags} | {m.get("model") for m in tags}
         wanted = self.model if ":" in self.model else f"{self.model}:latest"
-        info.update(ok=wanted in names, version=version, installed=sorted(n for n in names if n))
+        info.update(ok=wanted in names, version=version, installed=sorted(names))
         if not info["ok"]:
             info["error"] = f"model {self.model!r} not pulled (ollama pull {self.model})"
         return info
@@ -139,10 +202,19 @@ class FakeBackend:
 
     model = "fake"
 
-    def __init__(self, vocab: Vocabulary, responses: list[Any] | None = None) -> None:
+    EMBED_DIM = 256
+
+    def __init__(
+        self,
+        vocab: Vocabulary,
+        responses: list[Any] | None = None,
+        chat_responses: list[Any] | None = None,
+    ) -> None:
         self.vocab = vocab
         self.responses = list(responses or [])
+        self.chat_responses = list(chat_responses or [])
         self.calls = 0
+        self.chat_calls: list[tuple[str, str]] = []
 
     def analyze(
         self, image: Image.Image, system: str, user: str, schema: dict[str, Any]
@@ -177,6 +249,31 @@ class FakeBackend:
             if f.inferred:
                 out[f.name + CONFIDENCE_SUFFIX] = round((bright % 100) / 100, 2)
         return out
+
+    def chat_json(
+        self, system: str, user: str, schema: dict[str, Any], model: str | None = None
+    ) -> dict[str, Any]:
+        """Queued answers only; without one the caller falls back to keyword search."""
+        self.chat_calls.append((system, user))
+        if not self.chat_responses:
+            raise VlmError("the fake backend has no text model")
+        r = self.chat_responses.pop(0)
+        if isinstance(r, Exception):
+            raise r
+        return parse_json_answer(r) if isinstance(r, str) else r
+
+    def embed(self, texts: list[str], model: str) -> np.ndarray:
+        """Deterministic bag-of-words hashing vectors: shared words -> higher similarity."""
+        out = np.zeros((len(texts), self.EMBED_DIM), dtype=np.float32)
+        for row, text in enumerate(texts):
+            text = re.sub(r"^search_\w+:\s*", "", text.lower())
+            for token in re.findall(r"[\w]+", text):
+                if len(token) > 2:
+                    out[row, zlib.crc32(token.encode()) % self.EMBED_DIM] += 1.0
+        return _normalize_rows(out)
+
+    def has_model(self, name: str) -> bool:
+        return True
 
     def health(self) -> dict[str, Any]:
         return {"backend": "fake", "ok": True, "model": self.model}
