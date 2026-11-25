@@ -20,9 +20,13 @@ start and control it from a local web UI. Originals are never moved or modified.
 - **Index (step 0).** Recursive scan that records path, file name, recording date (EXIF →
   file-name pattern → mtime), a dynamic JSON metadata column (camera, lens, exposure, GPS, …)
   and a perceptual hash (`imagehash.phash`).
-  - A pHash that is already indexed is **not** added again; the file is recorded as a
-    duplicate.
-  - Moved files are re-linked, and changed files are re-queued.
+  - A file whose pHash is already indexed **and** whose dHash nearly matches (re-encodes,
+    resized copies) is **not** added again; it is recorded as a duplicate. Distinct images
+    that only collide on the pHash (blank pages, same-template forms) stay separate.
+  - Moved files are re-linked, and changed files are re-queued. If an original disappears,
+    one of its duplicates takes its place.
+  - System folders (`$RECYCLE.BIN`, `System Volume Information`) are skipped, and link loops
+    can't trap the scan.
 - **Resumable batches.** Every image has a state per stage (`pending / running / done / error /
   skipped`) in the database. Runs claim work in batches and commit after every image.
   - You can **pause, resume, stop** or kill a run at any time; interrupted images are picked up
@@ -31,8 +35,10 @@ start and control it from a local web UI. Originals are never moved or modified.
   - Results produced with an older model, prompt or vocabulary show up as *outdated* and can be
     re-queued.
 - **Stage 1: faces.** InsightFace (`buffalo_l`) detection plus 512-d embeddings. Clustering uses
-  DBSCAN (cosine distance) and **keeps your manual work**: clusters you named, merged or split
-  are locked and never dissolved by re-clustering.
+  DBSCAN (cosine distance) and **keeps your manual work**:
+  - Clusters you named, merged or split are locked and never dissolved by re-clustering.
+  - Re-running the stage (e.g. after changing the detector settings) carries names, manual
+    moves and removed faces over to the new detections.
   - A **reference DB** (`references/<Person Name>/*.jpg`) names clusters automatically or
     suggests a name.
 - **Stage 2: properties.** Qwen2.5-VL (or any Ollama vision model) answers a fixed JSON schema
@@ -191,11 +197,18 @@ uv run pytest -v
 GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs ruff and the full
 test suite on Ubuntu and Windows.
 
+## Security
+
+The UI is meant for your own machine. It listens on `127.0.0.1`, only answers requests whose
+`Host` is this machine (blocks DNS rebinding) and rejects form submissions coming from other
+websites (CSRF). If you expose it on your network (`web.host = "0.0.0.0"`), add the machine's
+name to `web.allowed_hosts`. There is no login, so only do that on a trusted network.
+
 ## Notes and limitations
 
-- Deduplication uses an exact pHash match, as requested. Visually near-identical images
-  (re-encodes, resized copies, sometimes blank documents) collapse into one entry. Every
-  collapsed file stays listed under *duplicates*, so nothing is lost.
+- Deduplication: a file is a duplicate if its pHash matches and its dHash is within
+  `index.dhash_max_distance` bits. Every collapsed file stays listed under *duplicates*, so
+  nothing is lost.
 - Symlink export needs Developer Mode on Windows. Otherwise vision-tagger falls back to
   copying.
 - InsightFace's pretrained `buffalo_l` models are licensed for **non-commercial research

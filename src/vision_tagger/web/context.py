@@ -17,7 +17,7 @@ from ..db.session import Database
 from ..indexer import ensure_stage_rows
 from ..pipeline import control
 from ..pipeline.runner import BackgroundRunner, PipelineRunner
-from ..pipeline.stages import STAGE_NAMES, default_stage_factory
+from ..pipeline.stages import STAGE_NAMES, default_stage_factory, stage_versions
 
 log = logging.getLogger(__name__)
 
@@ -90,6 +90,20 @@ class AppContext:
         )
         self.jobs = JobManager()
         self._health: tuple[float, dict[str, Any]] = (0.0, {})
+        self._versions: tuple[float, dict[str, str]] = (-1.0, {})
+
+    def stage_versions(self) -> dict[str, str]:
+        """Current stage versions; re-read only when the vocabulary file changes."""
+        from ..vlm.schema import default_vocabulary_path
+
+        path = self.settings.vlm.vocabulary_file or default_vocabulary_path()
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            mtime = 0.0
+        if mtime != self._versions[0] or not self._versions[1]:
+            self._versions = (mtime, stage_versions(self.settings))
+        return self._versions[1]
 
     def vlm_health(self, max_age: float = 30.0) -> dict[str, Any]:
         ts, cached = self._health

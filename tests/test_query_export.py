@@ -251,3 +251,42 @@ def test_large_id_lists_do_not_hit_sqlite_parameter_limit(db, tmp_path):
         face_ids = list(s.scalars(select(Face.id)))
         cid = C.split_faces(s, face_ids)
         assert s.get(Cluster, cid).face_count == n
+
+
+def test_neighbours_match_gallery_order(db):
+    from vision_tagger.query import neighbours
+
+    with db.write() as s:
+        for i in range(8):
+            img = add_image(
+                s,
+                i,
+                recorded_at=None if i in (2, 5) else datetime(2020, 1, 1 + (i % 3)),
+                folder="x",
+            )
+            img.size_bytes = 100 * (i % 3)
+            img.filename = f"f{i % 4}.jpg"
+    for sort in ("date_desc", "date_asc", "name", "path", "size", "faces"):
+        f = ImageFilter(sort=sort)
+        with db.session() as s:
+            order = all_image_ids(s, f)
+            for pos, image_id in enumerate(order):
+                prev_id, next_id = neighbours(s, f, image_id)
+                assert prev_id == (order[pos - 1] if pos else None), (sort, pos)
+                assert next_id == (order[pos + 1] if pos + 1 < len(order) else None), (sort, pos)
+
+
+def test_folder_children(db):
+    from vision_tagger.query import folder_children
+
+    with db.write() as s:
+        add_image(s, 1, folder="2020/Italy")
+        add_image(s, 2, folder="2020/Italy/Rome")
+        add_image(s, 3, folder="2020/Spain")
+        add_image(s, 4, folder="2021")
+        add_image(s, 5, folder="")
+    with db.session() as s:
+        top = {name: n for _full, name, n in folder_children(s, ImageFilter())}
+        assert top == {"2020": 3, "2021": 1, "": 1}
+        sub = folder_children(s, ImageFilter(folder="2020"))
+        assert [(full, n) for full, _name, n in sub] == [("2020/Italy", 2), ("2020/Spain", 1)]

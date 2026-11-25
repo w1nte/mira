@@ -7,7 +7,14 @@ from fastapi.responses import Response
 from sqlalchemy import func, select
 
 from ...db.models import Face, Image, StageStatus
-from ...query import ImageFilter, column_counts, conditions, date_histogram, property_counts
+from ...query import (
+    ImageFilter,
+    column_counts,
+    conditions,
+    date_histogram,
+    folder_children,
+    property_counts,
+)
 from ..common import ctx, render
 
 router = APIRouter()
@@ -48,7 +55,7 @@ def overview(request: Request, level: str | None = None) -> Response:
             or 0
         )
         total = s.scalar(select(func.count()).select_from(Image).where(*conditions(f))) or 0
-        folders = column_counts(s, f, Image.folder, limit=30)
+        folders = folder_children(s, f)
         cameras = column_counts(s, f, Image.camera, limit=20)
         exts = column_counts(s, f, Image.ext, limit=20)
         date_sources = column_counts(s, f, Image.date_source, limit=10)
