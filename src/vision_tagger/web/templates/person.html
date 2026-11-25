@@ -17,6 +17,79 @@
 </div>
 
 <section class="card" style="margin-bottom:1rem">
+  <div class="row spread" style="align-items:flex-start">
+    <div>
+      <h2 style="margin:0 0 .3rem">🎂 Age</h2>
+      {% if person.birth_year %}
+        <p style="margin:0">Born <b>{{ person.birth_year }}</b> · {{ ages.current_age }} years old today.</p>
+        {% if ages.estimate and ages.estimate.confidence != 'low' and (person.birth_year < ages.estimate.low - 5 or person.birth_year > ages.estimate.high + 5) %}
+          <p style="margin:.2rem 0;color:var(--warn)"><small>⚠ The photos suggest ~{{ ages.estimate.year }}. Check the birth year – or many photo dates may be off.</small></p>
+        {% endif %}
+      {% elif ages.birth_source == 'estimated' %}
+        <p style="margin:0">Probably born around <b>{{ ages.estimate.year }}</b> <small class="muted">({{ ages.estimate.low }}–{{ ages.estimate.high }})</small> · about {{ ages.current_age }} today.</p>
+      {% else %}
+        <p style="margin:0" class="muted">No birth year yet{% if not ages.estimate %} – not enough well-dated photos to estimate one{% endif %}.</p>
+      {% endif %}
+      {% if ages.estimate %}
+        <small class="muted">Estimate from {{ ages.estimate.samples }} photos (photo year − face age, trusted dates weighted higher, outliers dropped): ~{{ ages.estimate.year }}, {{ ages.estimate.confidence }} confidence.</small>
+      {% endif %}
+    </div>
+    <form method="post" action="/persons/{{ person.id }}/birth-year" class="row">
+      <input type="number" name="birth_year" min="1850" max="{{ now().year }}" value="{{ person.birth_year or '' }}" placeholder="{{ ages.estimate.year if ages.estimate else 'e.g. 1988' }}" style="width:7.5rem" aria-label="Birth year">
+      <button>{{ 'Update' if person.birth_year else 'Set birth year' }}</button>
+      {% if not person.birth_year and ages.estimate %}
+        <button name="birth_year" value="{{ ages.estimate.year }}" class="primary">Use {{ ages.estimate.year }}</button>
+      {% endif %}
+    </form>
+  </div>
+  {% if ages.suspicious %}
+    <p style="margin:.6rem 0 0"><a href="#doubtful">⚠ {{ ages.suspicious | length }} photo{{ 's' if ages.suspicious | length != 1 }} with a doubtful date</a> <small class="muted">– the age on the date doesn't match the face.</small></p>
+  {% endif %}
+</section>
+
+{% if timeline %}
+<section class="card" style="margin-bottom:1rem">
+  <h2>Through the years</h2>
+  <div class="years">
+    {% for year, faces in timeline %}
+    <div class="year">
+      <div class="ylabel">{{ year }}</div>
+      <div class="yfaces">
+        {% for f in faces %}
+          {% set a = f.best_age %}
+          <a class="face" href="/images/{{ f.image_id }}" title="{{ f.recorded_at | dt('%Y-%m-%d') }} · date from {{ f.date_source }}{% if f.face_age is not none %} · face looks ~{{ f.face_age }}{% endif %}{% if f.suspicious %} · date doubtful{% if f.suggested_year %}, faces suggest ~{{ f.suggested_year }}{% endif %}{% endif %}">
+            <img loading="lazy" src="/media/face/{{ f.face_id }}" alt="">
+            {% if a is not none %}<span class="agebadge {{ 'est' if (f.calendar_age is none or f.suspicious) }}">{{ '~' if (f.calendar_age is none or f.suspicious) }}{{ a }}</span>{% endif %}
+            {% if f.suspicious %}<span class="lq badge warn">⚠</span>{% endif %}
+          </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% if ages.suspicious %}
+<section class="card" style="margin-bottom:1rem" id="doubtful">
+  <h2>Photos with a doubtful date</h2>
+  <p class="muted" style="margin-top:0">Face ages are estimates (±5 years for adults), so check before fixing. Fixed dates are kept when the folder is scanned again.</p>
+  <table>
+    {% for f in ages.suspicious[:60] %}
+    <tr>
+      <td style="width:64px"><a class="thumb" href="/images/{{ f.image_id }}" style="width:56px"><img loading="lazy" src="/media/thumb/{{ f.image_id }}?size=96" alt=""></a></td>
+      <td>Recorded <b>{{ f.recorded_at | dt('%Y-%m-%d') }}</b> <span class="badge">{{ f.date_source }}</span><br>
+        <small>{% if f.calendar_age is not none %}{{ person.name }} would be {{ f.calendar_age }}{% endif %}{% if f.face_age is not none %}, but looks about {{ f.face_age }}{% endif %}</small></td>
+      <td class="num">{% if f.suggested_year %}
+        <form method="post" action="/images/{{ f.image_id }}/date"><input type="hidden" name="year" value="{{ f.suggested_year }}"><button class="small">Set to {{ f.suggested_year }}</button></form>
+      {% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</section>
+{% endif %}
+
+<section class="card" style="margin-bottom:1rem">
   <div class="row spread"><h2 style="margin:0">Clusters</h2>
     {% if clusters | length > 1 %}<form method="post" action="/persons/{{ person.id }}/merge-clusters"><button class="small">Merge all clusters</button></form>{% endif %}
   </div>

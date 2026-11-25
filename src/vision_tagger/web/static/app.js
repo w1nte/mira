@@ -39,3 +39,18 @@ window.vt = {
     scope.querySelectorAll("input[type=checkbox].pick").forEach((b) => (b.checked = on));
   },
 };
+
+// Quiz keyboard shortcuts: 1-4 pick an answer, Enter = next / skip.
+document.addEventListener("keydown", function (ev) {
+  const card = document.getElementById("quiz-card");
+  if (!card || ev.altKey || ev.ctrlKey || ev.metaKey) return;
+  const tag = (ev.target.tagName || "").toLowerCase();
+  if (tag === "input" || tag === "textarea" || tag === "select") return;
+  if (/^[1-9]$/.test(ev.key)) {
+    const btn = card.querySelector('[data-key="' + ev.key + '"]');
+    if (btn) { ev.preventDefault(); btn.click(); }
+  } else if (ev.key === "Enter") {
+    const next = card.querySelector("[data-next]");
+    if (next) { ev.preventDefault(); next.click(); }
+  }
+});

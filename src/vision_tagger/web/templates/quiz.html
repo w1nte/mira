@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Who's that?{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Who's that? 🎲</h1>
+    <small>A little game that also cleans up your face clusters. Keys: <kbd>1</kbd>–<kbd>4</kbd> answer, <kbd>Enter</kbd> next.</small>
+  </div>
+  <div class="row">
+    <a class="btn {{ 'primary' if state.mode == 'quiz' }}" href="/quiz?mode=quiz">🧠 Quiz me</a>
+    <a class="btn {{ 'primary' if state.mode == 'name' }}" href="/quiz?mode=name">🏷️ Name the strangers</a>
+  </div>
+</div>
+<div id="quiz-card">{{ card | safe }}</div>
+{% endblock %}

@@ -598,6 +598,24 @@ def ignore_faces(s: Session, face_ids: Iterable[int], ignored: bool = True) -> N
 
 
 @_synced
+def unassign_faces(s: Session, face_ids: Iterable[int]) -> None:
+    """Take faces out of their cluster ("that's not this person!").
+
+    They become unclustered and *manual*, so automatic clustering will not put them back;
+    they show up under "Unclustered faces" for the user to assign.
+    """
+    ids = list(face_ids)
+    if not ids:
+        return
+    old = _face_clusters(s, ids)
+    _drop_face_references(s, ids)
+    _update_faces(s, ids, cluster_id=None, assignment=Assignment.MANUAL)
+    _lock(s, old)
+    s.flush()
+    update_cluster_stats(s, old)
+
+
+@_synced
 def auto_split(s: Session, cluster_id: int, eps: float, min_samples: int = 2) -> list[int]:
     """Re-cluster one cluster with a tighter ``eps``.
 

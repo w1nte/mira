@@ -57,6 +57,19 @@ start and control it from a local web UI. Originals are never moved or modified.
     image: caption, visible text, all properties, folder and date.
   - **Deep search** lets the LLM double-check the best ~40 results and explain why each fits.
   - Without an LLM, a keyword fallback (English and German) still works.
+- **Ages and doubtful dates.** Give a person a birth year, or let vision-tagger estimate one
+  from photo dates and InsightFace's face ages: a weighted median that trusts EXIF dates more
+  than file times and drops outliers.
+  - Every face shows the person's age in that photo, and each person gets a "through the years"
+    timeline.
+  - Photos where the date can't be right (camera clock reset to 2000, scans that only carry the
+    file date, "taken" before birth) are flagged with a suggested year and a one-click fix.
+    Fixed dates survive re-scans.
+- **"Who's that?" quiz** 🎲. Name unnamed clusters as a game, or test yourself on the people you
+  already named.
+  - After each answer you see how sure the face recognition was.
+  - "That's not X!" pulls misfiled faces out of a cluster, and the quiz offers to move a face
+    when the AI agrees with you.
 - **Web UI.**
   - Face cluster overview with inline naming, merge, split, move, auto-split and remove.
   - Persons, including merging persons.
@@ -97,6 +110,22 @@ start and control it from a local web UI. Originals are never moved or modified.
 For CPU-only machines (or Linux/macOS) use `uv sync --extra cpu` and set
 `providers = ["CPUExecutionProvider"]` in `config.toml`.
 
+## Upgrading
+
+```powershell
+git pull
+uv sync --extra gpu
+uv run vision-tagger migrate          # upgrades the database schema; writes a backup copy first
+```
+
+- If the database is older than the code, vision-tagger refuses to start and tells you to run
+  `vision-tagger migrate`.
+- All pending migrations run in a single transaction, so a failed migration leaves the database
+  as it was.
+- The backup is written next to the database as `vision_tagger.sqlite3.bak-<version>-<time>`.
+- Databases from the very first version are upgraded too.
+- `vision-tagger migrate --check` only reports whether an upgrade is needed.
+
 ## Quick start
 
 ```powershell
@@ -125,6 +154,7 @@ uv run vision-tagger refs                        # import reference DB + name cl
 uv run vision-tagger cluster [--full]
 uv run vision-tagger retry-errors --stage vlm
 uv run vision-tagger requeue-outdated --stage vlm
+uv run vision-tagger migrate [--check]           # database schema upgrade (with backup)
 uv run vision-tagger export "D:\Export\Anna at the beach" --filter "p=1&t=location_type:beach" --layout date
 uv run vision-tagger search "Anna am Strand im Sommer, ohne Arbeitsfotos" --deep
 ```
@@ -138,10 +168,11 @@ uv run vision-tagger search "Anna am Strand im Sommer, ohne Arbeitsfotos" --deep
 | **Dashboard** | Index folders, start/pause/resume/stop runs (stages, batch size, limit), per-stage progress, ETA, errors (retry/skip), outdated results, jobs, environment check (CUDA, Ollama, model). |
 | **Faces** | All clusters with cover face and size. Name inline (autocomplete), accept reference suggestions, select several to **merge**. Views for unclustered and ignored faces. |
 | **Cluster** | All faces of a cluster. Select faces to **split** into a new cluster, **assign to a person**, **move** to another cluster, or **remove**. **Auto-split** mixed clusters. Similar clusters with one-click merge. |
-| **Persons** | Named persons. Rename (renaming to an existing name merges), merge, delete, manage references. Images with *all* / *any* of the selected persons. |
+| **Persons** | Named persons. Rename (renaming to an existing name merges), merge, delete, manage references. Images with *all* / *any* of the selected persons. Per person: birth year (set or estimated), age today, a "through the years" face timeline, and photos with a doubtful date with suggested fixes. |
 | **Properties** | Every extracted property grouped by topic, with counts. Tick values and show images with **all** / **any** of them. Per property: sample images per value, **merge / rename / delete** values (remembered for future results). |
 | **Images** | Gallery with infinite scroll and a filter builder: persons (AND/OR, NOT), properties (AND/OR, NOT), date range, folder, camera, faces, text search, sort. Facets refine the current result. **Export** the result. Filters are part of the URL, so they can be bookmarked. |
 | **Image** | Full image with face boxes and names, all properties with source and confidence, metadata, duplicates, raw VLM JSON, per-stage status and re-run buttons. |
+| **Quiz** | "Who's that?": name the largest unnamed clusters with one click (suggestions from references and look-alikes), or play the face quiz with score, streaks and "you vs. the AI"; wrong answers can fix misfiled faces. Keys 1–4 and Enter. |
 | **Search** | Search box in the top bar on every page. Shows how the request was understood (persons, required / preferred / excluded properties, dates, keywords), ranks the results and, with **Deep search**, gives the LLM's reason for each. "Open in filter builder" turns the strict part into a gallery filter; results can be exported. |
 | **Overview** | Timeline (year → month → day), breakdowns by folder, camera, file type, date reliability, work/personal, orientation, and a sortable metadata table. |
 
@@ -229,6 +260,10 @@ uv run pytest -v
 
 GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs ruff and the full
 test suite on Ubuntu and Windows.
+
+Schema changes always need an Alembic migration in `src/vision_tagger/migrations/versions/`.
+See [CLAUDE.md](CLAUDE.md#database-migrations-mandatory) for the workflow.
+`tests/test_migrations.py` fails when the models and the migrations disagree.
 
 ## Security
 

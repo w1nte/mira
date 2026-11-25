@@ -16,7 +16,7 @@ from typing import Any
 from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
-from .models import Base, Control
+from .models import Control
 
 
 class Database:
@@ -40,7 +40,14 @@ class Database:
         self._write = sessionmaker(bind=self._immediate_engine, expire_on_commit=False)
 
     def create_all(self) -> None:
-        Base.metadata.create_all(self.engine)
+        """Create a new database or verify the schema of an existing one.
+
+        Raises ``MigrationRequired`` if the database is older than this version
+        (run ``vision-tagger migrate``).
+        """
+        from .migrate import ensure_schema
+
+        ensure_schema(self)
         with self.write() as s:
             if s.get(Control, 1) is None:
                 s.add(Control(id=1, desired_state="stopped", progress={}))

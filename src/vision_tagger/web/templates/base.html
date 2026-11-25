@@ -21,6 +21,7 @@
       <a href="/images" class="{{ 'active' if path.startswith('/images') }}">Images</a>
       <a href="/overview" class="{{ 'active' if path.startswith('/overview') }}">Overview</a>
       <a href="/search" class="{{ 'active' if path.startswith('/search') }}">Search</a>
+      <a href="/quiz" class="{{ 'active' if path.startswith('/quiz') }}" title="Who's that? – face quiz">🎲 Quiz</a>
     </nav>
     <form class="navsearch" method="get" action="/search" role="search">
       <input type="search" name="q" aria-label="Search images" value="{{ request.query_params.get('q', '') if path.startswith('/search') else '' }}"
