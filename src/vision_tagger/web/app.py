@@ -18,6 +18,7 @@ from ..imaging import ensure_face_crop, ensure_thumbnail, face_crop_path, load_i
 from .common import STATIC_DIR, ctx
 from .context import AppContext
 from .routes import dashboard, faces, images, overview, persons, properties
+from .security import allowed_hostnames, guard
 
 log = logging.getLogger(__name__)
 
@@ -40,6 +41,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         context.close()
 
     app = FastAPI(title="vision-tagger", lifespan=lifespan, docs_url="/api/docs")
+    app.middleware("http")(guard(allowed_hostnames(settings.web.host, settings.web.allowed_hosts)))
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
     for module in (dashboard, faces, persons, properties, images, overview):
         app.include_router(module.router)

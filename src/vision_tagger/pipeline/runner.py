@@ -23,19 +23,56 @@ from datetime import timedelta
 from sqlalchemy import or_, select, update
 
 from ..config import Settings
-from ..db.models import Control, Run, StageStatus, Status, utcnow
+from ..db.models import Control, Image, Run, StageStatus, Status, utcnow
 from ..db.session import Database
 from . import control
-from .control import PAUSED, RUNNING, STOPPED
-from .stages.base import Stage
+from .control import PAUSED, RUNNING, STOPPED, RunnerBusyError
+from .stages.base import Stage, StageAbort
 
 log = logging.getLogger(__name__)
 
 StageFactory = Callable[[str], Stage]
 
 
-class RunnerBusyError(RuntimeError):
-    pass
+__all__ = ["BackgroundRunner", "PipelineRunner", "RunSummary", "RunnerBusyError"]
+
+
+class _Heartbeat(threading.Thread):
+    """Keeps ``control.heartbeat_at`` fresh for the whole run.
+
+    Without it a single long step (model setup, a slow VLM call, clustering) would make the run
+    look dead, and another process could "recover" its images while they are still in work.
+    """
+
+    def __init__(self, db: Database, run_id: int, interval: float) -> None:
+        super().__init__(name=f"vision-tagger-heartbeat-{run_id}", daemon=True)
+        self.db = db
+        self.run_id = run_id
+        self.interval = max(0.05, interval)
+        self.stage: str | None = None
+        self._stop_event = threading.Event()
+
+    def beat(self) -> None:
+        try:
+            with self.db.write() as s:
+                now = utcnow()
+                ctrl = s.get(Control, 1)
+                if ctrl is not None and ctrl.active_run_id == self.run_id:
+                    ctrl.heartbeat_at = now
+                    ctrl.active_stage = self.stage
+                run = s.get(Run, self.run_id)
+                if run is not None:
+                    run.heartbeat_at = now
+        except Exception as exc:  # never let the heartbeat kill the run
+            log.warning("heartbeat failed: %s", exc)
+
+    def run(self) -> None:
+        while not self._stop_event.wait(self.interval):
+            self.beat()
+
+    def stop(self) -> None:
+        self._stop_event.set()
+        self.join(timeout=5)
 
 
 @dataclass
@@ -53,8 +90,8 @@ class PipelineRunner:
         self.settings = settings
         self.stage_factory = stage_factory
         self.poll_interval = 0.5
-        self._last_heartbeat = 0.0
         self._lock = threading.Lock()
+        self._hb: _Heartbeat
 
     # ------------------------------------------------------------------ public
     def run(
@@ -70,17 +107,22 @@ class PipelineRunner:
         if not self._lock.acquire(blocking=False):
             raise RunnerBusyError("a run is already active in this process")
         try:
-            if control.is_runner_alive(self.db, stale_after=stale_after):
-                raise RunnerBusyError("another runner is active on this database")
-            recovered = control.recover_stale(self.db)
+            run_id, recovered = control.try_acquire(
+                self.db, stage_names, batch_size, limit, stale_after
+            )
             if recovered:
                 log.info("recovered %d interrupted items", recovered)
-            run_id = self._start_run(stage_names, batch_size, limit)
             summary = RunSummary(run_id=run_id)
+            self._hb = _Heartbeat(self.db, run_id, self.settings.pipeline.heartbeat_seconds)
+            self._hb.start()
             try:
                 for name in stage_names:
                     if not self._run_stage(name, run_id, batch_size, limit, summary):
                         break
+            except StageAbort as exc:
+                summary.status = "failed"
+                summary.messages.append(str(exc))
+                log.error("run aborted: %s", exc)
             except Exception as exc:
                 summary.status = "failed"
                 summary.messages.append(f"{type(exc).__name__}: {exc}")
@@ -88,31 +130,14 @@ class PipelineRunner:
             else:
                 if summary.status == RUNNING:
                     summary.status = "completed"
+            finally:
+                self._hb.stop()
             self._finish_run(summary)
             return summary
         finally:
             self._lock.release()
 
     # ------------------------------------------------------------------ run bookkeeping
-    def _start_run(self, stages: list[str], batch_size: int, limit: int | None) -> int:
-        with self.db.write() as s:
-            run = Run(
-                stages=",".join(stages),
-                batch_size=batch_size,
-                limit=limit,
-                status=RUNNING,
-                heartbeat_at=utcnow(),
-            )
-            s.add(run)
-            s.flush()
-            ctrl = s.get(Control, 1)
-            assert ctrl is not None
-            ctrl.desired_state = RUNNING
-            ctrl.active_run_id = run.id
-            ctrl.heartbeat_at = utcnow()
-            ctrl.message = None
-            return run.id
-
     def _finish_run(self, summary: RunSummary) -> None:
         with self.db.write() as s:
             run = s.get(Run, summary.run_id)
@@ -123,7 +148,8 @@ class PipelineRunner:
                 run.failed = sum(summary.failed.values())
                 run.message = "\n".join(summary.messages) or None
             ctrl = s.get(Control, 1)
-            if ctrl is not None:
+            # Only the owning run may reset the control row (a newer run may hold it).
+            if ctrl is not None and ctrl.active_run_id == summary.run_id:
                 ctrl.active_run_id = None
                 ctrl.active_stage = None
                 ctrl.desired_state = STOPPED
@@ -135,19 +161,9 @@ class PipelineRunner:
                 .values(status=Status.PENDING)
             )
 
-    def _heartbeat(self, run_id: int, stage: str | None, force: bool = False) -> None:
-        now = time.monotonic()
-        if not force and now - self._last_heartbeat < self.settings.pipeline.heartbeat_seconds:
-            return
-        self._last_heartbeat = now
-        with self.db.write() as s:
-            ctrl = s.get(Control, 1)
-            if ctrl is not None:
-                ctrl.heartbeat_at = utcnow()
-                ctrl.active_stage = stage
-            run = s.get(Run, run_id)
-            if run is not None:
-                run.heartbeat_at = utcnow()
+    def _set_stage(self, stage: str | None) -> None:
+        self._hb.stage = stage
+        self._hb.beat()
 
     def _update_run_counts(self, run_id: int, summary: RunSummary) -> None:
         with self.db.write() as s:
@@ -164,7 +180,6 @@ class PipelineRunner:
             self._set_run_status(run_id, PAUSED)
             log.info("pipeline paused")
             while state == PAUSED:
-                self._heartbeat(run_id, stage)
                 time.sleep(self.poll_interval)
                 state = control.desired_state(self.db)
             self._set_run_status(run_id, RUNNING if state == RUNNING else STOPPED)
@@ -190,7 +205,8 @@ class PipelineRunner:
             ids = list(
                 s.scalars(
                     select(StageStatus.image_id)
-                    .where(StageStatus.stage == stage, eligible)
+                    .join(Image, Image.id == StageStatus.image_id)
+                    .where(StageStatus.stage == stage, eligible, Image.missing.is_(False))
                     .order_by(StageStatus.status.desc(), StageStatus.image_id)  # pending first
                     .limit(n)
                 )
@@ -217,31 +233,46 @@ class PipelineRunner:
                 .values(status=Status.PENDING)
             )
 
-    def _mark(self, stage: Stage, image_id: int, error: BaseException | None) -> None:
-        with self.db.write() as s:
-            row = s.get(StageStatus, (image_id, stage.name))
-            if row is None:
-                return
-            row.finished_at = utcnow()
-            if error is None:
-                row.status = Status.DONE
-                row.stage_version = stage.version
-                row.last_error = None
-            else:
-                row.status = Status.ERROR
-                row.attempts = (row.attempts or 0) + 1
-                tb = "".join(traceback.format_exception_only(type(error), error)).strip()
-                row.last_error = tb[-2000:]
+    def _mark(self, stage: Stage, image_id: int, run_id: int, error: BaseException | None) -> None:
+        """Record the result, but only if the row is still claimed by this run.
 
-    def _process_one(self, stage: Stage, image_id: int) -> bool:
+        A requeue, skip or content-change reset that happened meanwhile wins.
+        """
+        guard = update(StageStatus).where(
+            StageStatus.image_id == image_id,
+            StageStatus.stage == stage.name,
+            StageStatus.status == Status.RUNNING,
+            StageStatus.run_id == run_id,
+        )
+        if error is None:
+            stmt = guard.values(
+                status=Status.DONE,
+                stage_version=stage.version,
+                last_error=None,
+                finished_at=utcnow(),
+            )
+        else:
+            tb = "".join(traceback.format_exception_only(type(error), error)).strip()
+            stmt = guard.values(
+                status=Status.ERROR,
+                attempts=StageStatus.attempts + 1,
+                last_error=tb[-2000:],
+                finished_at=utcnow(),
+            )
+        with self.db.write() as s:
+            s.execute(stmt)
+
+    def _process_one(self, stage: Stage, image_id: int, run_id: int) -> bool:
         try:
             stage.process(image_id)
+        except StageAbort:
+            raise  # row stays claimed and is released by _finish_run (no attempt counted)
         except Exception as exc:
             log.warning("%s failed for image %s: %s", stage.name, image_id, exc)
             log.debug("traceback", exc_info=True)
-            self._mark(stage, image_id, exc)
+            self._mark(stage, image_id, run_id, exc)
             return False
-        self._mark(stage, image_id, None)
+        self._mark(stage, image_id, run_id, None)
         return True
 
     def _run_stage(
@@ -254,7 +285,7 @@ class PipelineRunner:
         stage = self.stage_factory(name)
         summary.processed.setdefault(name, 0)
         summary.failed.setdefault(name, 0)
-        self._heartbeat(run_id, name, force=True)
+        self._set_stage(name)
         set_up = False
         stopped = False
         done = 0
@@ -275,7 +306,7 @@ class PipelineRunner:
                         self._release(name, remaining)
                         break
                     with ThreadPoolExecutor(max_workers=stage.concurrency) as pool:
-                        results = list(pool.map(lambda i: self._process_one(stage, i), ids))
+                        results = list(pool.map(lambda i: self._process_one(stage, i, run_id), ids))
                     for ok in results:
                         summary.processed[name] += 1
                         summary.failed[name] += 0 if ok else 1
@@ -285,18 +316,16 @@ class PipelineRunner:
                         if self._wait_if_paused(run_id, name) == STOPPED:
                             stopped = True
                             break
-                        ok = self._process_one(stage, image_id)
+                        ok = self._process_one(stage, image_id, run_id)
                         remaining.remove(image_id)
                         summary.processed[name] += 1
                         if not ok:
                             summary.failed[name] += 1
                         done += 1
-                        self._heartbeat(run_id, name)
                     if stopped:
                         self._release(name, remaining)
                         break
                 self._update_run_counts(run_id, summary)
-                self._heartbeat(run_id, name)
             if not stopped:
                 msg = stage.after_stage(summary.processed[name])
                 if msg:

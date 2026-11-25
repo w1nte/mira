@@ -9,6 +9,14 @@ from ...config import Settings
 from ...db.session import Database
 
 
+class StageAbort(RuntimeError):
+    """Raised by a stage when continuing makes no sense (e.g. the VLM server is unreachable).
+
+    The runner stops the run, releases the claimed images without counting an attempt and
+    reports the message.
+    """
+
+
 class Stage(ABC):
     """A unit of per-image work.
 

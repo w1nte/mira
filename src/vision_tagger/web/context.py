@@ -81,10 +81,10 @@ class AppContext:
         self.db.create_all()
         ensure_stage_rows(self.db, settings.pipeline.stages or list(STAGE_NAMES))
         stale_after = max(30.0, settings.pipeline.heartbeat_seconds * 6)
-        if not control.is_runner_alive(self.db, stale_after=stale_after):
-            recovered = control.recover_stale(self.db)
-            if recovered:
-                log.info("recovered %d interrupted items from a previous run", recovered)
+        # atomic: does nothing while another process (e.g. a CLI run) sends heartbeats
+        recovered = control.recover_stale(self.db, stale_after=stale_after)
+        if recovered:
+            log.info("recovered %d interrupted items from a previous run", recovered)
         self.runner = BackgroundRunner(
             PipelineRunner(self.db, settings, default_stage_factory(self.db, settings))
         )
@@ -98,6 +98,7 @@ class AppContext:
         from ..vlm.backend import make_backend
         from ..vlm.schema import Vocabulary
 
+        backend = None
         try:
             backend = make_backend(
                 self.settings.vlm, Vocabulary.load(self.settings.vlm.vocabulary_file)
@@ -105,6 +106,9 @@ class AppContext:
             health = backend.health()
         except Exception as exc:  # pragma: no cover - defensive
             health = {"ok": False, "error": str(exc)}
+        finally:
+            if backend is not None:
+                backend.close()
         self._health = (time.monotonic(), health)
         return health
 

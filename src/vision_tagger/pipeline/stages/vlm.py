@@ -11,11 +11,11 @@ from sqlalchemy import delete, select
 from ...db.models import Image, ImageProperty, PropertyAlias, VlmResult, utcnow
 from ...derived import derive
 from ...imaging import load_image
-from ...vlm.backend import VlmBackend, make_backend
+from ...vlm.backend import VlmBackend, VlmConnectionError, make_backend
 from ...vlm.normalize import Normalizer
 from ...vlm.prompt import USER_PROMPT, prompt_version, system_prompt
 from ...vlm.schema import CONFIDENCE_SUFFIX, Vocabulary, default_synonyms_path
-from .base import Stage
+from .base import Stage, StageAbort
 
 log = logging.getLogger(__name__)
 
@@ -115,6 +115,8 @@ class VlmStage(Stage):
             try:
                 raw = self.backend.analyze(pil, self.system, USER_PROMPT, self.schema)
                 return img, self.vocab.coerce(raw), time.monotonic() - started
+            except VlmConnectionError:
+                raise
             except (ValueError, RuntimeError) as exc:
                 last_exc = exc
                 log.info(
@@ -124,7 +126,17 @@ class VlmStage(Stage):
         raise last_exc
 
     def process(self, image_id: int) -> None:
-        img, data, duration = self.analyze(image_id)
+        try:
+            img, data, duration = self.analyze(image_id)
+        except VlmConnectionError as exc:
+            # Server down? Stop the run instead of burning every image's retry budget.
+            health = self.backend.health()
+            if not health.get("ok", False):
+                raise StageAbort(
+                    f"VLM backend unreachable ({health.get('error', exc)}); run stopped, "
+                    "images stay pending"
+                ) from exc
+            raise
         normalizer = self.normalizer()
         rows = build_properties(self.vocab, data, normalizer, self.settings.vlm.max_list_items)
         for d in derive(img, data, self.settings.derived):

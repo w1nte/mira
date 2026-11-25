@@ -19,6 +19,7 @@ def settings(tmp_path: Path) -> Settings:
         vlm={"backend": "fake"},
         pipeline={"batch_size": 4},
         index={"workers": 2, "commit_every": 3},
+        web={"allowed_hosts": ["testserver"]},
     )
     s.ensure_dirs()
     (tmp_path / "photos").mkdir(exist_ok=True)

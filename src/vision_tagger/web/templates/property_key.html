@@ -37,7 +37,7 @@
     <b x-text="n + ' selected'"></b>
     <input type="text" name="target" list="values-list" placeholder="merge into / rename to…" style="width:16rem">
     <button class="primary" formaction="/properties/{{ key }}/merge">Merge / rename</button>
-    <button class="danger" formaction="/properties/{{ key }}/delete" onclick="return confirm('Delete the selected values from all images and future results?')">Delete values</button>
+    <button class="danger" formaction="/properties/{{ key }}/delete" data-confirm="Delete the selected values from all images and future results?">Delete values</button>
     <small class="muted">Merges are remembered and applied to future VLM results.</small>
   </div>
 </form>

@@ -125,6 +125,9 @@ class WebConfig(BaseModel):
     port: int = 8765
     page_size: int = 120
     thumb_size: int = 320
+    # Extra Host names accepted by the UI (e.g. the machine's LAN name when host="0.0.0.0").
+    # Requests for any other host are rejected to block DNS-rebinding attacks.
+    allowed_hosts: list[str] = Field(default_factory=list)
 
 
 _config_file: Path | None = None

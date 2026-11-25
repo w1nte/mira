@@ -5,7 +5,7 @@ from datetime import datetime
 
 from sqlalchemy import func, select
 
-from vision_tagger.db.models import DuplicateFile, Image, StageStatus, Status
+from vision_tagger.db.models import DuplicateFile, Image, ImageProperty, StageStatus, Status
 from vision_tagger.imaging import date_from_filename
 from vision_tagger.indexer import Indexer, path_key
 
@@ -116,3 +116,5 @@ def test_changed_content_requeues(db, settings, photos) -> None:
     assert stats.updated == 1
     with db.session() as s:
         assert {r.status for r in s.scalars(select(StageStatus))} == {Status.PENDING}
+        keys = {p.key for p in s.scalars(select(ImageProperty))}
+        assert {"year", "orientation", "capture_device"} <= keys  # exif props survive

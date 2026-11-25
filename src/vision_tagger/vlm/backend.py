@@ -22,6 +22,10 @@ class VlmError(RuntimeError):
     pass
 
 
+class VlmConnectionError(VlmError):
+    """The VLM server could not be reached at all."""
+
+
 class VlmBackend(Protocol):
     model: str
 
@@ -32,6 +36,8 @@ class VlmBackend(Protocol):
     def health(self) -> dict[str, Any]: ...
 
     def unload(self) -> None: ...
+
+    def close(self) -> None: ...
 
 
 def encode_image(image: Image.Image, quality: int = 90) -> str:
@@ -88,6 +94,8 @@ class OllamaBackend:
         }
         try:
             resp = self._client.post("/api/chat", json=payload)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+            raise VlmConnectionError(f"cannot reach Ollama at {self.cfg.base_url}: {exc}") from exc
         except httpx.HTTPError as exc:
             raise VlmError(f"Ollama request failed: {exc}") from exc
         if resp.status_code != 200:
@@ -118,6 +126,9 @@ class OllamaBackend:
             )
         except Exception as exc:  # pragma: no cover - best effort
             log.debug("unload failed: %s", exc)
+
+    def close(self) -> None:
+        self._client.close()
 
 
 class FakeBackend:
@@ -171,6 +182,9 @@ class FakeBackend:
         return {"backend": "fake", "ok": True, "model": self.model}
 
     def unload(self) -> None:
+        pass
+
+    def close(self) -> None:
         pass
 
 

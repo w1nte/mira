@@ -170,3 +170,46 @@ def _wait_jobs(client, timeout=20):
     end = time.time() + timeout
     while client.ctx.jobs.busy and time.time() < end:
         time.sleep(0.05)
+
+
+def test_csrf_and_host_protection(client):
+    # foreign Origin -> blocked
+    r = client.post("/actions/stop", headers={"Origin": "http://evil.example"})
+    assert r.status_code == 403
+    r = client.post("/actions/stop", headers={"Sec-Fetch-Site": "cross-site"})
+    assert r.status_code == 403
+    r = client.post("/actions/stop", headers={"Origin": "null"})
+    assert r.status_code == 403
+    # DNS rebinding: unknown Host -> blocked, even for GET
+    assert client.get("/", headers={"Host": "evil.example"}).status_code == 400
+    assert client.get("/", headers={"Host": "127.0.0.1:8765"}).status_code == 200
+    # same-origin form posts keep working
+    r = client.post("/actions/stop", headers={"Origin": "http://testserver"})
+    assert r.status_code == 200
+    # redirects never leave the UI (no open redirect via Referer)
+    r = client.post(
+        "/actions/stop",
+        headers={"Referer": "http://evil.example/x"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 403  # foreign referer counts as cross-site
+    r = client.post(
+        "/references/999/delete",
+        headers={"Referer": "http://testserver/persons?msg=old"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303 and r.headers["location"].startswith("/persons")
+    assert "msg=old" not in r.headers["location"]
+
+
+def test_no_user_data_in_inline_js(client):
+    db = client.ctx.db
+    from vision_tagger.faces import clustering as C
+
+    with db.write() as s:
+        cid = s.scalar(select(Cluster.id))
+        C.name_cluster(s, cid, "O'Brien </script>")
+        pid = s.scalar(select(Person.id))
+    page = ok(client.get(f"/persons/{pid}")).text
+    assert "confirm(" not in page
+    assert 'data-confirm="Delete O&#39;Brien &lt;/script&gt;?' in page

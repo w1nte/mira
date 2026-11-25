@@ -137,3 +137,57 @@ def test_insightface_end_to_end(db, settings, photos, tmp_path):
         named = s.get(Cluster, biggest.id)
         person = s.scalar(select(Person))
         assert named.person_id == person.id or named.suggested_person_id == person.id
+
+
+def test_rerun_keeps_names_ignores_and_manual_moves(db, settings, photos):
+    """Re-running the faces stage (e.g. 're-queue outdated') must not wipe manual work."""
+    from vision_tagger.faces import clustering as C
+    from vision_tagger.pipeline import control
+
+    for i in range(4):
+        make_image(photos / f"{i}.jpg", seed=i, size=(800, 600))
+    Indexer(db, settings, stages=["faces"]).run()
+    analyzer = FakeAnalyzer()
+    stage = FacesStage(db, settings, analyzer=analyzer)
+    runner = PipelineRunner(db, settings, lambda _n: stage)
+    runner.run(["faces"])
+    with db.write() as s:
+        a, b = sorted(s.scalars(select(Cluster.id)))
+        C.name_cluster(s, a, "Anna", references=2)
+        faces_b = list(s.scalars(select(Face).where(Face.cluster_id == b).order_by(Face.id)))
+        C.ignore_faces(s, [faces_b[0].id])
+        C.move_faces(s, [faces_b[1].id], a)  # deliberate manual move
+        moved_image = faces_b[1].image_id
+        ignored_image = faces_b[0].image_id
+
+    control.requeue(db, "faces")
+    runner.run(["faces"])
+
+    with db.session() as s:
+        assert sorted(s.scalars(select(Cluster.id))) == [a, b]  # no cluster deleted
+        assert s.get(Cluster, a).person.name == "Anna"
+        img_faces = list(s.scalars(select(Face).where(Face.image_id == ignored_image)))
+        assert any(f.ignored for f in img_faces)
+        moved = [
+            f
+            for f in s.scalars(select(Face).where(Face.image_id == moved_image))
+            if f.cluster_id == a and f.assignment == "manual"
+        ]
+        assert moved, "manual move lost"
+        assert s.scalar(select(func.count()).select_from(Face)) == 8
+        # references point at existing faces only
+        from vision_tagger.db.models import PersonReference
+
+        ref_faces = [r.face_id for r in s.scalars(select(PersonReference))]
+        assert ref_faces and all(s.get(Face, fid) is not None for fid in ref_faces)
+
+
+def test_reference_folder_with_non_ascii_name(db, settings, tmp_path):
+    settings.paths.references_dir = tmp_path / "refs"
+    make_image(tmp_path / "refs" / "Анна" / "a.jpg", seed=1)
+    make_image(tmp_path / "refs" / "Анна" / "b.jpg", seed=2)
+    make_image(tmp_path / "refs" / "Özlem" / "c.jpg", seed=3)
+    stats = import_references(db, settings, analyzer=FakeAnalyzer())
+    assert stats.added == 3 and not stats.errors
+    with db.session() as s:
+        assert sorted(p.name for p in s.scalars(select(Person))) == ["Özlem", "Анна"]

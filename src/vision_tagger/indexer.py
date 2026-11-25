@@ -21,7 +21,6 @@ from sqlalchemy import delete, select, update
 from .config import Settings
 from .db.models import (
     DuplicateFile,
-    Face,
     Image,
     ImageProperty,
     StageStatus,
@@ -31,6 +30,7 @@ from .db.models import (
 )
 from .db.session import Database
 from .derived import metadata_properties
+from .faces.clustering import delete_image_faces
 from .imaging import read_image_info
 
 log = logging.getLogger(__name__)
@@ -295,6 +295,29 @@ class Indexer:
         img.size_bytes = r.cand.size
         img.mtime = r.cand.mtime
         img.missing = False
+        content_changed = r.phash != img.phash
+        if content_changed and r.phash in by_hash and by_hash[r.phash].id != img.id:
+            # New content equals another indexed image; keep the row but leave its hash.
+            log.info("%s now duplicates image %s", r.cand.path, by_hash[r.phash].id)
+            content_changed = False
+        if content_changed:
+            by_hash.pop(img.phash, None)
+            img.phash = r.phash
+            by_hash[r.phash] = img
+            # Results are stale -> drop them (faces with consistent cluster stats) and re-queue.
+            delete_image_faces(s, img.id, self.settings.face_crops_dir)
+            s.execute(
+                delete(ImageProperty).where(
+                    ImageProperty.image_id == img.id, ImageProperty.source != "exif"
+                )
+            )
+            s.execute(delete(VlmResult).where(VlmResult.image_id == img.id))
+            s.execute(
+                update(StageStatus)
+                .where(StageStatus.image_id == img.id)
+                .values(status=Status.PENDING, attempts=0, last_error=None, stage_version=None)
+            )
+        # Metadata properties are rebuilt last, so no bulk delete can remove them again.
         s.execute(
             delete(ImageProperty).where(
                 ImageProperty.image_id == img.id, ImageProperty.source == "exif"
@@ -303,24 +326,6 @@ class Indexer:
         for prop in _metadata_rows(img):
             prop.image_id = img.id
             s.add(prop)
-        if r.phash == img.phash:
-            return
-        if r.phash in by_hash and by_hash[r.phash].id != img.id:
-            # New content equals another indexed image; keep the row but leave its hash.
-            log.info("%s now duplicates image %s", r.cand.path, by_hash[r.phash].id)
-            return
-        by_hash.pop(img.phash, None)
-        img.phash = r.phash
-        by_hash[r.phash] = img
-        # Content changed: results are stale -> drop them and re-queue all stages.
-        s.execute(delete(Face).where(Face.image_id == img.id))
-        s.execute(delete(ImageProperty).where(ImageProperty.image_id == img.id))
-        s.execute(delete(VlmResult).where(VlmResult.image_id == img.id))
-        s.execute(
-            update(StageStatus)
-            .where(StageStatus.image_id == img.id)
-            .values(status=Status.PENDING, attempts=0, last_error=None, stage_version=None)
-        )
 
     @staticmethod
     def _apply_location(img: Image, c: _Candidate) -> None:

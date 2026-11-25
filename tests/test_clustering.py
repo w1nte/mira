@@ -148,3 +148,70 @@ def test_similar_clusters(db, settings):
         a = next(iter(cluster_of(s, people[0])))
         sims = C.similar_clusters(s, a)
         assert len(sims) == 2 and all(-1 <= v <= 1 for _, v in sims)
+
+
+def test_non_ascii_names_are_case_insensitive(db, settings):
+    with db.write() as s:
+        people, _ = make_face_dataset(s, persons=2, per_person=4)
+        C.recluster(s, settings.faces, full=True)
+        a = next(iter(cluster_of(s, people[0])))
+        b = next(iter(cluster_of(s, people[1])))
+        C.name_cluster(s, a, "Özlem")
+        C.name_cluster(s, b, "özlem")  # same person, different case (non-ASCII)
+        assert s.scalar(select(func.count()).select_from(Person)) == 1
+        other = C.get_or_create_person(s, "Ангелина")
+        merged = C.rename_person(s, other.id, "ÖZLEM")
+        assert merged.name == "Özlem"
+        assert s.scalar(select(func.count()).select_from(Person)) == 1
+
+
+def test_references_follow_faces(db, settings):
+    with db.write() as s:
+        people, _ = make_face_dataset(s, persons=2, per_person=4)
+        C.recluster(s, settings.faces, full=True)
+        a = next(iter(cluster_of(s, people[0])))
+        anna = C.name_cluster(s, a, "Anna", references=3)
+        C.name_cluster(s, a, "Ben")  # rename: Anna's face references move to Ben
+        ben = C.find_person(s, "Ben")
+        refs = list(s.scalars(select(PersonReference)))
+        assert refs and all(r.person_id == ben.id for r in refs)
+        assert anna.id != ben.id
+        C.ignore_faces(s, [refs[0].face_id])  # ignored faces are no references
+        assert s.scalar(select(func.count()).select_from(PersonReference)) == 2
+        C.name_cluster(s, a, None)  # unnamed cluster -> its references are gone
+        assert s.scalar(select(func.count()).select_from(PersonReference)) == 0
+
+
+def test_recluster_db_short_transactions_and_concurrent_write(db, settings, monkeypatch):
+    """DBSCAN runs without the write lock, and faces edited meanwhile are left alone."""
+    import threading
+
+    from vision_tagger.faces import clustering as mod
+
+    with db.write() as s:
+        people, _ = make_face_dataset(s, persons=2, per_person=5)
+        grabbed = people[1][0]
+    started, release = threading.Event(), threading.Event()
+    real = mod._dbscan
+
+    def slow_dbscan(m, eps, min_samples):
+        started.set()
+        assert release.wait(10)
+        return real(m, eps, min_samples)
+
+    monkeypatch.setattr(mod, "_dbscan", slow_dbscan)
+    result = {}
+    t = threading.Thread(
+        target=lambda: result.update(stats=C.recluster_db(db, settings.faces, full=True))
+    )
+    t.start()
+    assert started.wait(10)
+    # a concurrent write (e.g. user moves a face) must not block on the clustering
+    with db.write() as s:
+        C.ignore_faces(s, [grabbed])
+    release.set()
+    t.join(10)
+    assert result["stats"].new_clusters == 2
+    with db.session() as s:
+        f = s.get(Face, grabbed)
+        assert f.ignored and f.cluster_id is None  # user edit won
