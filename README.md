@@ -70,6 +70,16 @@ start and control it from a local web UI. Originals are never moved or modified.
   - After each answer you see how sure the face recognition was.
   - "That's not X!" pulls misfiled faces out of a cluster, and the quiz offers to move a face
     when the AI agrees with you.
+- **Generations** ✨. Watch the people in your photos grow up.
+  - **Grow-up timelapse**: one face per age (the sharpest, most frontal one), aligned on the
+    eyes and cross-faded from the youngest to the oldest. Scrub through the years with a slider,
+    or download it as an animated WebP to share.
+  - Ages come from the birth year and the photo date. When a date can't be right, the face's
+    estimated age is used instead (shown as "~7 years").
+  - **Same age, side by side**: compare two people at matching ages ("Dad at 6 and his son at
+    6"), with how similar the faces are.
+  - **Looks most like…**: who in the family resembles a person most, compared at matching ages
+    where possible.
 - **Web UI.**
   - Face cluster overview with inline naming, merge, split, move, auto-split and remove.
   - Persons, including merging persons.
@@ -157,6 +167,7 @@ uv run vision-tagger requeue-outdated --stage vlm
 uv run vision-tagger migrate [--check]           # database schema upgrade (with backup)
 uv run vision-tagger export "D:\Export\Anna at the beach" --filter "p=1&t=location_type:beach" --layout date
 uv run vision-tagger search "Anna am Strand im Sommer, ohne Arbeitsfotos" --deep
+uv run vision-tagger growup "Anna" anna-growing-up.webp  # grow-up animation
 ```
 
 `Ctrl+C` during `run` stops gracefully. Running `run` again continues where it stopped.
@@ -173,6 +184,7 @@ uv run vision-tagger search "Anna am Strand im Sommer, ohne Arbeitsfotos" --deep
 | **Images** | Gallery with infinite scroll and a filter builder: persons (AND/OR, NOT), properties (AND/OR, NOT), date range, folder, camera, faces, text search, sort. Facets refine the current result. **Export** the result. Filters are part of the URL, so they can be bookmarked. |
 | **Image** | Full image with face boxes and names, all properties with source and confidence, metadata, duplicates, raw VLM JSON, per-stage status and re-run buttons. |
 | **Quiz** | "Who's that?": name the largest unnamed clusters with one click (suggestions from references and look-alikes), or play the face quiz with score, streaks and "you vs. the AI"; wrong answers can fix misfiled faces. Keys 1–4 and Enter. |
+| **Generations** | Every person with photos from different ages. Per person: a grow-up timelapse (play, scrub, download as animated WebP), "looks most like…" ranking, and a same-age comparison with any other person. |
 | **Search** | Search box in the top bar on every page. Shows how the request was understood (persons, required / preferred / excluded properties, dates, keywords), ranks the results and, with **Deep search**, gives the LLM's reason for each. "Open in filter builder" turns the strict part into a gallery filter; results can be exported. |
 | **Overview** | Timeline (year → month → day), breakdowns by folder, camera, file type, date reliability, work/personal, orientation, and a sortable metadata table. |
 

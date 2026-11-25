@@ -9,6 +9,7 @@
   </div>
   <div class="row">
     <a class="btn primary" href="/images?p={{ person.id }}">Show images</a>
+    <a class="btn" href="/generations/{{ person.id }}">✨ Watch {{ person.name }} grow up</a>
     <form method="post" action="/persons/{{ person.id }}/rename" class="row">
       <input type="text" name="name" value="{{ person.name }}"><button>Rename</button>
     </form>

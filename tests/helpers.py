@@ -48,10 +48,10 @@ def noisy(center: np.ndarray, rng: np.random.Generator, r: float = 0.6) -> np.nd
 def add_face(s, image_id: int, emb: np.ndarray, **kw) -> Face:
     face = Face(
         image_id=image_id,
-        x1=10,
-        y1=10,
-        x2=110,
-        y2=110,
+        x1=kw.pop("x1", 10),
+        y1=kw.pop("y1", 10),
+        x2=kw.pop("x2", 110),
+        y2=kw.pop("y2", 110),
         det_score=kw.pop("det_score", 0.9),
         embedding=to_blob(emb),
         face_px=kw.pop("face_px", 100),

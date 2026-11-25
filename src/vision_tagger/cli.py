@@ -366,6 +366,31 @@ def search(
 
 
 @app.command()
+def growup(
+    person: Annotated[str, typer.Argument(help="Person name.")],
+    output: Annotated[Path, typer.Argument(help="Target file (.webp).")] = Path("growing-up.webp"),
+) -> None:
+    """Render an animation of a person growing up (eye-aligned faces, ordered by age)."""
+    from .faces.clustering import find_person
+    from .faces.generations import growup_animation
+
+    settings = _settings()
+    db = _db()
+    with db.session() as s:
+        p = find_person(s, person)
+        if p is None:
+            typer.echo(f"unknown person: {person}", err=True)
+            raise typer.Exit(1)
+        result = growup_animation(s, settings.cache_dir / "aligned", p.id)
+    if result is None:
+        typer.echo(f"need photos of {p.name} at two or more different ages", err=True)
+        raise typer.Exit(1)
+    data, frames = result
+    output.write_bytes(data)
+    typer.echo(f"wrote {output} ({len(frames)} ages: {', '.join(f.label for f in frames)})")
+
+
+@app.command()
 def serve(
     host: Annotated[str | None, typer.Option()] = None,
     port: Annotated[int | None, typer.Option()] = None,
