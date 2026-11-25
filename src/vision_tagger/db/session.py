@@ -13,10 +13,10 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import Engine, create_engine, event, inspect
+from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
-from .models import Base, Control
+from .models import Control
 
 
 class Database:
@@ -40,40 +40,17 @@ class Database:
         self._write = sessionmaker(bind=self._immediate_engine, expire_on_commit=False)
 
     def create_all(self) -> None:
-        Base.metadata.create_all(self.engine)
-        self._add_missing_columns()
+        """Create a new database or verify the schema of an existing one.
+
+        Raises ``MigrationRequired`` if the database is older than this version
+        (run ``vision-tagger migrate``).
+        """
+        from .migrate import ensure_schema
+
+        ensure_schema(self)
         with self.write() as s:
             if s.get(Control, 1) is None:
                 s.add(Control(id=1, desired_state="stopped", progress={}))
-
-    def _add_missing_columns(self) -> None:
-        """Tiny forward migration: add new nullable / defaulted columns and their indexes.
-
-        ``create_all`` only creates missing tables, so databases created by an older version
-        would lack columns added later (e.g. ``persons.birth_year``).
-        """
-        insp = inspect(self.engine)
-        existing_tables = set(insp.get_table_names())
-        with self.engine.begin() as conn:
-            for table in Base.metadata.sorted_tables:
-                if table.name not in existing_tables:
-                    continue
-                have = {c["name"] for c in insp.get_columns(table.name)}
-                for col in table.columns:
-                    if col.name in have or col.primary_key:
-                        continue
-                    ddl = f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" '
-                    ddl += col.type.compile(dialect=self.engine.dialect)
-                    default = getattr(col.default, "arg", None)
-                    if isinstance(default, str):
-                        ddl += " DEFAULT '" + default.replace("'", "''") + "'"
-                    elif isinstance(default, bool):
-                        ddl += f" DEFAULT {int(default)}"
-                    elif isinstance(default, int | float):
-                        ddl += f" DEFAULT {default}"
-                    conn.exec_driver_sql(ddl)
-                for index in table.indexes:
-                    index.create(conn, checkfirst=True)
 
     @contextmanager
     def session(self) -> Iterator[Session]:

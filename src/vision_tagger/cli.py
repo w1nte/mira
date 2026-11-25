@@ -53,13 +53,75 @@ def _settings() -> Settings:
 
 
 def _db():
+    from .db.migrate import MigrationRequired
     from .db.session import Database
 
     s = _settings()
     s.ensure_dirs()
     db = Database(s.db_path)
-    db.create_all()
+    try:
+        db.create_all()
+    except MigrationRequired as exc:
+        db.dispose()
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(2) from None
     return db
+
+
+@app.command()
+def migrate(
+    check: Annotated[
+        bool, typer.Option("--check", help="Only report; exit code 1 if an upgrade is needed.")
+    ] = False,
+    backup: Annotated[
+        bool, typer.Option("--backup/--no-backup", help="Copy the database file first.")
+    ] = True,
+    to: Annotated[
+        str | None,
+        typer.Option("--to", help="Target revision (default: newest). Older = downgrade."),
+    ] = None,
+) -> None:
+    """Upgrade the database schema to this version of vision-tagger."""
+    from .db.migrate import (
+        MigrationError,
+        downgrade,
+        head_revision,
+        migration_engine,
+        schema_status,
+        upgrade,
+    )
+
+    settings = _settings()
+    settings.ensure_dirs()
+    url = f"sqlite:///{settings.db_path.as_posix()}"
+    engine = migration_engine(url)
+    status = schema_status(engine)
+    engine.dispose()
+    current = status.current or (
+        "none (new database)" if status.state == "new" else "pre-migrations"
+    )
+    typer.echo(f"database: {settings.db_path}")
+    typer.echo(f"schema:   {current}  ->  newest: {status.head}")
+    if check:
+        if status.needs_upgrade:
+            typer.echo("an upgrade is needed: run `vision-tagger migrate`")
+            raise typer.Exit(1)
+        typer.echo("up to date" if status.state == "current" else "new database")
+        return
+    try:
+        if to is not None and to != "head" and status.current and to != head_revision():
+            result = downgrade(url, to, backup=backup)
+        else:
+            result = upgrade(url, backup=backup)
+    except MigrationError as exc:
+        typer.echo(f"migration failed, database unchanged: {exc}", err=True)
+        raise typer.Exit(1) from None
+    if result.backup:
+        typer.echo(f"backup:   {result.backup}")
+    if result.changed:
+        typer.echo(f"migrated: {result.before or 'pre-migrations'} -> {result.after}")
+    else:
+        typer.echo("already up to date")
 
 
 @app.command()
@@ -315,6 +377,7 @@ def serve(
     from .web.app import create_app
 
     settings = _settings()
+    _db().dispose()  # fails early with a clear message if `vision-tagger migrate` is needed
     host = host or settings.web.host
     port = port or settings.web.port
     if open_browser:

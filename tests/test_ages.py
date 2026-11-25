@@ -122,16 +122,22 @@ def test_manual_dates_survive_reindex(db, anna):
         assert img.recorded_at.year == 1998 and img.date_source == "manual"
 
 
-def test_old_database_gets_new_columns(tmp_path):
+def test_old_database_gets_birth_year_via_migration(tmp_path):
+    from vision_tagger.db.migrate import MigrationRequired, upgrade
+
+    from .test_migrations import build_at, url_of
+
     path = tmp_path / "old.sqlite3"
+    build_at(path, "0001", keep_version_table=False)
     con = sqlite3.connect(path)
-    con.execute(
-        "CREATE TABLE persons (id INTEGER PRIMARY KEY, name TEXT UNIQUE, notes TEXT, "
-        "created_at DATETIME)"
-    )
-    con.execute("INSERT INTO persons (name) VALUES ('Anna')")
+    con.execute("INSERT INTO persons (name, created_at) VALUES ('Anna', '2024-01-01 00:00:00')")
     con.commit()
     con.close()
+    db = Database(path)
+    with pytest.raises(MigrationRequired):
+        db.create_all()
+    db.dispose()
+    upgrade(url_of(path), backup=False)
     db = Database(path)
     db.create_all()
     with db.write() as s:

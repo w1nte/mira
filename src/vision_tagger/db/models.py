@@ -67,7 +67,7 @@ class Image(Base):
     # Duplicate = same pHash AND nearly the same dHash (see indexer.find_duplicate); the pHash
     # alone collides for distinct but similar images (blank pages, same-template forms).
     phash: Mapped[str] = mapped_column(String(32), index=True)
-    dhash: Mapped[str] = mapped_column(String(32), index=True, default="")
+    dhash: Mapped[str] = mapped_column(String(32), index=True, default="", server_default="")
     # "metadata" is reserved on declarative classes, hence the attribute name ``meta``.
     meta: Mapped[dict[str, Any]] = mapped_column("metadata", JSON, default=dict)
     camera: Mapped[str | None] = mapped_column(Text, index=True)

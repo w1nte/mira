@@ -110,6 +110,22 @@ start and control it from a local web UI. Originals are never moved or modified.
 For CPU-only machines (or Linux/macOS) use `uv sync --extra cpu` and set
 `providers = ["CPUExecutionProvider"]` in `config.toml`.
 
+## Upgrading
+
+```powershell
+git pull
+uv sync --extra gpu
+uv run vision-tagger migrate          # upgrades the database schema; writes a backup copy first
+```
+
+- If the database is older than the code, vision-tagger refuses to start and tells you to run
+  `vision-tagger migrate`.
+- All pending migrations run in a single transaction, so a failed migration leaves the database
+  as it was.
+- The backup is written next to the database as `vision_tagger.sqlite3.bak-<version>-<time>`.
+- Databases from the very first version are upgraded too.
+- `vision-tagger migrate --check` only reports whether an upgrade is needed.
+
 ## Quick start
 
 ```powershell
@@ -138,6 +154,7 @@ uv run vision-tagger refs                        # import reference DB + name cl
 uv run vision-tagger cluster [--full]
 uv run vision-tagger retry-errors --stage vlm
 uv run vision-tagger requeue-outdated --stage vlm
+uv run vision-tagger migrate [--check]           # database schema upgrade (with backup)
 uv run vision-tagger export "D:\Export\Anna at the beach" --filter "p=1&t=location_type:beach" --layout date
 uv run vision-tagger search "Anna am Strand im Sommer, ohne Arbeitsfotos" --deep
 ```
@@ -243,6 +260,10 @@ uv run pytest -v
 
 GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs ruff and the full
 test suite on Ubuntu and Windows.
+
+Schema changes always need an Alembic migration in `src/vision_tagger/migrations/versions/`.
+See [CLAUDE.md](CLAUDE.md#database-migrations-mandatory) for the workflow.
+`tests/test_migrations.py` fails when the models and the migrations disagree.
 
 ## Security
 
