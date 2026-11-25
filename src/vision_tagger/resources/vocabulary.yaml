@@ -1,0 +1,163 @@
+# Vocabulary for the VLM property extraction (stage 2).
+#
+# Closed vocabularies (enum / enum_list) are enforced by the JSON schema that is sent to the
+# model, which keeps the extracted properties stable and therefore clusterable.
+# Editing this file changes the prompt version: already processed images are then reported
+# as "outdated" on the dashboard and can be re-queued.
+#
+# Field types:
+#   enum            one value out of `values`
+#   enum_list       up to `max_items` values out of `values`
+#   list            free-text list (normalised: lowercase, singular, synonyms, aliases)
+#   boolean         stored as yes / no
+#   integer         whole number between `min` and `max`
+#   text            free text, NOT stored as filterable property (kept in the raw result)
+#   short_text      short free text, stored as property (e.g. a landmark name)
+#   inferred_*      like the base type, plus a 0..1 confidence; stored with source=inferred
+#
+# `property: false` keeps a field out of the filterable property table.
+
+version: 1
+
+fields:
+  # ---------------------------------------------------------------- scene / context
+  image_type:
+    type: enum
+    description: What kind of image this is.
+    values: [photo, screenshot, document, scan, receipt, whiteboard, slide, diagram_chart,
+             drawing_art, meme, map, other]
+  setting:
+    type: enum
+    description: Where the image was taken.
+    values: [indoor, outdoor, vehicle, unknown]
+  location_type:
+    type: enum
+    description: The most fitting type of location.
+    values: [home, office, meeting_room, factory, warehouse, construction_site, shop,
+             restaurant, bar, hotel, street, city, park, forest, mountain, beach, lake_river,
+             sea, countryside, garden, stadium, venue, church, museum, airport, station,
+             school, hospital, vehicle, other, unknown]
+  time_of_day:
+    type: enum
+    description: Time of day judged from the light (unknown for indoor/no cues).
+    values: [morning, day, golden_hour, evening, night, unknown]
+  season:
+    type: enum
+    description: Season, only if there are visual cues (snow, foliage, ...).
+    values: [spring, summer, autumn, winter, unknown]
+  weather:
+    type: enum
+    description: Weather for outdoor images.
+    values: [sunny, partly_cloudy, cloudy, rainy, snowy, foggy, not_applicable, unknown]
+  lighting:
+    type: enum
+    description: Dominant lighting.
+    values: [natural, artificial, flash, low_light, mixed, screen]
+
+  # ---------------------------------------------------------------- people
+  people_count:
+    type: integer
+    description: Number of clearly visible people (0 if none).
+    min: 0
+    max: 500
+  composition:
+    type: enum
+    description: Composition / genre of the image.
+    values: [portrait, selfie, group, crowd, landscape, cityscape, close_up, food, product,
+             document, interior, aerial, action, other]
+  main_activity:
+    type: enum
+    description: Main activity of the people shown (none if no people).
+    values: [none, posing, eating_drinking, working, meeting, presenting, celebrating,
+             playing, sports, hiking, swimming, traveling, shopping, cooking, dancing,
+             relaxing, other]
+  event_type:
+    type: enum
+    description: Recognisable event or occasion.
+    values: [none, birthday, wedding, party, vacation, christmas, new_year, easter,
+             conference, business_meeting, trade_fair, sports_event, concert, graduation,
+             family_gathering, other]
+
+  # ---------------------------------------------------------------- content
+  objects:
+    type: list
+    description: Clearly visible notable objects as singular lowercase English nouns.
+    max_items: 12
+  animals:
+    type: list
+    description: Visible animals as singular lowercase English nouns (empty if none).
+    max_items: 5
+  vehicles:
+    type: list
+    description: Visible vehicles (car, bicycle, train, boat, airplane, ...).
+    max_items: 5
+  food:
+    type: list
+    description: Visible food or drinks.
+    max_items: 6
+  dominant_colors:
+    type: enum_list
+    description: Up to three dominant colours.
+    max_items: 3
+    values: [red, orange, yellow, green, blue, purple, pink, brown, black, white, gray, beige]
+  text_present:
+    type: boolean
+    description: Whether readable text is a significant part of the image.
+  text_language:
+    type: enum
+    description: Language of the visible text.
+    values: [none, english, german, french, spanish, italian, dutch, portuguese, other]
+  text_excerpt:
+    type: text
+    description: Up to 15 words of the most prominent visible text (empty if none).
+    property: false
+  landmark:
+    type: short_text
+    description: Name of a famous landmark if clearly recognisable, else empty.
+  caption:
+    type: text
+    description: One neutral sentence describing the image.
+    property: false
+  tags:
+    type: list
+    description: 5-10 general keywords (singular lowercase English nouns or adjectives).
+    max_items: 10
+
+  # ---------------------------------------------------------------- quality
+  sharpness:
+    type: enum
+    description: Image sharpness.
+    values: [sharp, slightly_blurry, blurry]
+  exposure:
+    type: enum
+    description: Exposure.
+    values: [underexposed, ok, overexposed]
+  aesthetic:
+    type: enum
+    description: Overall aesthetic quality as a photo.
+    values: [low, medium, high]
+
+  # ---------------------------------------------------------------- inferred / assumed
+  is_work_related:
+    type: inferred_boolean
+    description: >-
+      Assume whether the image was taken for work purposes (documents, screenshots,
+      whiteboards, slides, office or site documentation, equipment, products, receipts).
+  work_category:
+    type: inferred_enum
+    description: Kind of work image (not_work for private photos).
+    values: [not_work, document, screenshot, whiteboard, presentation, meeting,
+             office_equipment, site_documentation, product_inventory, receipt_invoice,
+             technical_drawing, other]
+  is_personal_memory:
+    type: inferred_boolean
+    description: Assume whether this is a private memory photo (family, friends, holidays).
+  likely_purpose:
+    type: inferred_enum
+    description: The most likely reason this image was taken or saved.
+    values: [memory, documentation, reference_note, social_media, art, other]
+  contains_sensitive_info:
+    type: inferred_boolean
+    description: >-
+      Whether the image likely shows sensitive information (ID cards, passwords,
+      bank details, personal data, confidential documents).

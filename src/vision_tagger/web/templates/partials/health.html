@@ -1,0 +1,20 @@
+<div class="row spread"><h2 style="margin:0">Environment</h2>
+  <button class="small" hx-get="/partials/health" hx-target="#health" hx-swap="innerHTML">↻ Check</button></div>
+<dl class="kv" style="margin-top:.6rem">
+  <dt>Face model</dt><dd>{{ settings.faces.model }} · det {{ settings.faces.det_size }}px</dd>
+  <dt>ONNX providers</dt>
+  <dd>
+    {% for p in providers %}<span class="badge {{ 'ok' if p == 'CUDAExecutionProvider' else '' }}">{{ p }}</span> {% endfor %}
+    {% if 'CUDAExecutionProvider' in settings.faces.providers and 'CUDAExecutionProvider' not in providers %}
+      <div><small style="color:var(--warn)">CUDA not available – InsightFace will run on the CPU. Run <code>uv sync --extra gpu</code> and make sure a recent NVIDIA driver is installed.</small></div>
+    {% endif %}
+  </dd>
+  <dt>VLM</dt>
+  <dd>
+    {{ vlm_health.get('backend', settings.vlm.backend) }} · <code>{{ vlm_health.get('model', settings.vlm.model) }}</code>
+    {% if vlm_health.get('ok') %}<span class="badge ok">ready</span>{% else %}<span class="badge err">not ready</span>{% endif %}
+    {% if vlm_health.get('version') %}<small>Ollama {{ vlm_health.version }}</small>{% endif %}
+    {% if vlm_health.get('error') %}<div><small style="color:var(--err)">{{ vlm_health.error }}</small></div>{% endif %}
+  </dd>
+  <dt>Data directory</dt><dd><code>{{ settings.data_dir }}</code></dd>
+</dl>

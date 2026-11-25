@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install dev tools only
+        run: uv sync --locked --only-group dev
+      - name: ruff check
+        run: uv run --no-sync ruff check . --output-format github
+      - name: ruff format
+        run: uv run --no-sync ruff format --check .
+
+  test:
+    name: Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          python-version: "3.12"
+      - name: Cache InsightFace models
+        uses: actions/cache@v4
+        with:
+          path: ~/.insightface/models
+          key: insightface-buffalo_l-v1
+      - name: Install dependencies (CPU onnxruntime)
+        run: uv sync --locked --extra cpu --group dev
+      - name: Run all tests
+        # Includes the integration tests with the real InsightFace model (downloaded once and
+        # cached). Tests marked `ollama` need a running Ollama server and are skipped here.
+        run: uv run pytest -v

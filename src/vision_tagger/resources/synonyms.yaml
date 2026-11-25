@@ -1,0 +1,35 @@
+# Synonyms for free-text list properties (objects, tags, animals, vehicles, food, ...).
+#
+#   canonical value: [alias, alias, ...]
+#
+# Applied after lower-casing and singularisation. The `global` section applies to all keys,
+# a section named after a property key (e.g. `objects`) only to that key.
+# Merges done in the web UI are stored in the database and applied on top of this file.
+
+global:
+  phone: [smartphone, mobile phone, cell phone, cellphone, mobile, iphone]
+  laptop: [notebook computer, notebook pc, macbook]
+  computer: [pc, desktop computer]
+  monitor: [computer monitor, screen, display, computer screen]
+  tv: [television, tv set]
+  sofa: [couch]
+  car: [automobile, auto]
+  bicycle: [bike]
+  motorcycle: [motorbike]
+  airplane: [aeroplane, plane, aircraft]
+  dog: [puppy]
+  cat: [kitten]
+  child: [kid, toddler]
+  person: [human, people]
+  beverage: [drink]
+  glass: [drinking glass]
+  wine glass: [wineglass]
+  mug: [coffee mug, cup of coffee]
+  sunglasses: [shades]
+  backpack: [rucksack]
+  christmas tree: [xmas tree]
+  whiteboard: [white board]
+  document: [paper document, paperwork]
+  sea: [ocean]
+  sky: [blue sky]
+  tree: [trees]

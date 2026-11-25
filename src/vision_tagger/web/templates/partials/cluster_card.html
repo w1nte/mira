@@ -1,0 +1,25 @@
+<div class="cluster-card" id="cluster-{{ cl.id }}">
+  <a class="cover" href="/clusters/{{ cl.id }}">
+    {% if cl.cover_face_id %}<img loading="lazy" src="/media/face/{{ cl.cover_face_id }}" alt="">{% endif %}
+    <span class="count">{{ cl.face_count }}</span>
+    {% if cl.locked %}<span class="lock" title="Edited by you – kept on re-cluster">🔒</span>{% endif %}
+  </a>
+  <label class="pickbox" title="Select for merge">
+    <input class="pick" type="checkbox" name="cluster_ids" value="{{ cl.id }}" form="{{ form_id | default('merge-form') }}">
+  </label>
+  <div class="body">
+    <form class="name" hx-post="/clusters/{{ cl.id }}/name" hx-target="#cluster-{{ cl.id }}" hx-swap="outerHTML">
+      <input type="hidden" name="card" value="1">
+      <input type="text" name="name" list="person-names" value="{{ cl.person.name if cl.person else '' }}" placeholder="Cluster #{{ cl.id }} – name…" aria-label="Name">
+      <button class="small" title="Save name">✓</button>
+    </form>
+    {% if not cl.person and cl.suggested_person %}
+    <div class="suggest">
+      <span>{{ cl.suggested_person.name }}? <small>{{ '%.0f' | format((cl.suggestion_score or 0) * 100) }}%</small></span>
+      <button class="small" hx-post="/clusters/{{ cl.id }}/accept" hx-vals='{"card": "1"}' hx-target="#cluster-{{ cl.id }}" hx-swap="outerHTML">Accept</button>
+    </div>
+    {% elif cl.person and not cl.locked %}
+    <small class="muted">auto-named from references{% if cl.suggestion_score %} ({{ '%.0f' | format(cl.suggestion_score * 100) }}%){% endif %}</small>
+    {% endif %}
+  </div>
+</div>

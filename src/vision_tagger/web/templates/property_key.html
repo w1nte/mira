@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}{{ key | label }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <small><a href="/properties?{{ f.query_string() }}">← Properties</a></small>
+    <h1>{{ key | label }}</h1>
+    <small>{{ values | length }} values{% if spec %} · {{ spec.type.replace('_', ' ') }}{% if spec.description %} – {{ spec.description }}{% endif %}{% endif %}</small>
+  </div>
+</div>
+{% set base = '/properties/' ~ key %}
+{% include "partials/filter_summary.html" %}
+
+<form method="post" x-data="{n: 0}" @change="n = vt.count($el)" data-select-scope>
+  <section class="card">
+    <div class="table-wrap"><table>
+      <tr><th style="width:2rem"></th><th>Value</th><th class="num">Images</th><th>Examples</th></tr>
+      {% for v, n in values %}
+      <tr>
+        <td><input class="pick" type="checkbox" name="values" value="{{ v }}"></td>
+        <td style="white-space:nowrap">
+          <a href="/images?{{ f.query_string(props=f.props + [(key, v)]) }}"><b>{{ v | pretty }}</b></a><br>
+          <small><a href="/images?{{ f.query_string(exclude_props=f.exclude_props + [(key, v)]) }}">exclude</a></small>
+        </td>
+        <td class="num">{{ n }}</td>
+        <td style="width:65%">
+          <div class="strip">
+            {% for iid in samples.get(v, []) %}<a class="thumb" href="/images/{{ iid }}"><img loading="lazy" src="/media/thumb/{{ iid }}?size=160" alt=""></a>{% endfor %}
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </table></div>
+  </section>
+  <datalist id="values-list">{% for v, n in values %}<option value="{{ v }}">{% endfor %}</datalist>
+  <div class="actionbar" x-show="n > 0" x-cloak>
+    <b x-text="n + ' selected'"></b>
+    <input type="text" name="target" list="values-list" placeholder="merge into / rename to…" style="width:16rem">
+    <button class="primary" formaction="/properties/{{ key }}/merge">Merge / rename</button>
+    <button class="danger" formaction="/properties/{{ key }}/delete" onclick="return confirm('Delete the selected values from all images and future results?')">Delete values</button>
+    <small class="muted">Merges are remembered and applied to future VLM results.</small>
+  </div>
+</form>
+
+{% if aliases %}
+<section class="card" style="margin-top:1rem">
+  <h2>Remembered merges</h2>
+  <table>
+    <tr><th>From</th><th>To</th><th></th></tr>
+    {% for a in aliases %}
+    <tr><td>{{ a.from_value }}</td><td>{{ a.to_value if a.to_value is not none else '(deleted)' }}</td>
+      <td class="num"><form method="post" action="/aliases/{{ a.id }}/delete"><button class="small">Forget</button></form></td></tr>
+    {% endfor %}
+  </table>
+</section>
+{% endif %}
+{% endblock %}

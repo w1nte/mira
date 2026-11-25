@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}{{ img.filename }}{% endblock %}
+{% block main_class %}wide{% endblock %}
+{% block content %}
+{% set qs = f.query_string() %}
+<div class="page-head">
+  <div>
+    <small><a href="/images{{ '?' ~ qs if qs }}">← Images</a></small>
+    <h1>{{ img.filename }}</h1>
+    <small class="mono">{{ img.path }}</small>
+    {% if img.missing %}<span class="badge err">file missing</span>{% endif %}
+  </div>
+  <div class="row">
+    {% if prev_id %}<a class="btn" href="/images/{{ prev_id }}{{ '?' ~ qs if qs }}">← Prev</a>{% endif %}
+    {% if next_id %}<a class="btn" href="/images/{{ next_id }}{{ '?' ~ qs if qs }}">Next →</a>{% endif %}
+    <a class="btn" href="/media/image/{{ img.id }}" target="_blank">Open original</a>
+  </div>
+</div>
+
+<div class="sidebar-layout" style="grid-template-columns:minmax(0,1fr) 420px">
+  <div x-data="{boxes: true}">
+    <div class="viewer" :class="boxes ? '' : 'hide-boxes'">
+      <img src="/media/image/{{ img.id }}" alt="{{ vlm.caption if vlm else img.filename }}">
+      {% if img.width and img.height %}
+      {% for face in img.faces if not face.ignored %}
+        {% set named = face.cluster and face.cluster.person %}
+        <a class="facebox {{ '' if named else 'unnamed' }}" href="{{ '/clusters/' ~ face.cluster_id if face.cluster_id else '/faces/unclustered' }}"
+           style="left: {{ 100 * face.x1 / img.width }}%; top: {{ 100 * face.y1 / img.height }}%; width: {{ 100 * (face.x2 - face.x1) / img.width }}%; height: {{ 100 * (face.y2 - face.y1) / img.height }}%">
+          <span>{{ face.cluster.person.name if named else ('#' ~ face.cluster_id if face.cluster_id else '?') }}</span>
+        </a>
+      {% endfor %}
+      {% endif %}
+    </div>
+    <div class="row" style="margin-top:.5rem">
+      {% if img.faces %}<label><input type="checkbox" x-model="boxes"> show face boxes</label>{% endif %}
+      {% if vlm and vlm.caption %}<span class="muted">“{{ vlm.caption }}”</span>{% endif %}
+    </div>
+  </div>
+
+  <aside class="stack">
+    <section class="card tight">
+      <h3>File</h3>
+      <dl class="kv">
+        <dt>Recorded</dt><dd>{{ img.recorded_at | dt('%Y-%m-%d %H:%M:%S') }} <span class="badge">{{ img.date_source }}</span></dd>
+        <dt>Folder</dt><dd><a href="/images?folder={{ img.folder | urlencode }}">{{ img.folder or '(root)' }}</a></dd>
+        <dt>Size</dt><dd>{{ img.width }} × {{ img.height }} · {{ img.size_bytes | bytes }} · {{ img.ext }}</dd>
+        {% if img.camera %}<dt>Camera</dt><dd><a href="/images?camera={{ img.camera | urlencode }}">{{ img.camera }}</a></dd>{% endif %}
+        {% if img.meta.get('lens') %}<dt>Lens</dt><dd>{{ img.meta.lens }}</dd>{% endif %}
+        {% if img.meta.get('gps') %}<dt>GPS</dt><dd>{{ img.meta.gps.lat }}, {{ img.meta.gps.lon }}</dd>{% endif %}
+        <dt>pHash</dt><dd class="mono">{{ img.phash }}</dd>
+      </dl>
+      {% if img.duplicates %}
+        <details style="margin-top:.5rem"><summary>{{ img.duplicates | length }} duplicate file(s)</summary>
+          <ul>{% for d in img.duplicates %}<li class="mono">{{ d.path }}</li>{% endfor %}</ul></details>
+      {% endif %}
+    </section>
+
+    {% if img.faces %}
+    <section class="card tight">
+      <h3>People</h3>
+      <div class="chips">
+        {% for face in img.faces if not face.ignored %}
+          {% if face.cluster and face.cluster.person %}
+            <a class="chip" href="/images?p={{ face.cluster.person_id }}">👤 {{ face.cluster.person.name }}</a>
+          {% elif face.cluster_id %}
+            <a class="chip" href="/clusters/{{ face.cluster_id }}">👥 Cluster #{{ face.cluster_id }}</a>
+          {% else %}
+            <a class="chip" href="/faces/unclustered">unclustered face</a>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+
+    <section class="card tight">
+      <h3>Properties</h3>
+      {% if props %}
+      <dl class="kv">
+        {% for key, rows in props.items() %}
+        <dt><a href="/properties/{{ key }}">{{ key | label }}</a></dt>
+        <dd class="chips">
+          {% for p in rows %}
+            <a class="chip" href="/images?t={{ (key ~ ':' ~ p.value) | urlencode }}" title="{{ p.source }}{% if p.confidence is not none %} · confidence {{ '%.2f' | format(p.confidence) }}{% endif %}">{{ p.value | pretty }}{% if p.source in ('inferred', 'derived') and p.confidence is not none %} <span class="n">{{ '%.0f' | format(p.confidence * 100) }}%</span>{% endif %}</a>
+          {% endfor %}
+        </dd>
+        {% endfor %}
+      </dl>
+      {% else %}<p class="muted">No properties yet.</p>{% endif %}
+    </section>
+
+    <section class="card tight">
+      <h3>Pipeline</h3>
+      <table>
+        {% for st in img.stages %}
+        <tr>
+          <td>{{ st.stage }}</td>
+          <td><span class="badge {{ st.status }}">{{ st.status }}</span>{% if st.last_error %}<br><small class="mono">{{ st.last_error[:200] }}</small>{% endif %}</td>
+          <td class="num"><form method="post" action="/images/{{ img.id }}/requeue"><input type="hidden" name="stage" value="{{ st.stage }}"><button class="small">Re-run</button></form></td>
+        </tr>
+        {% endfor %}
+      </table>
+    </section>
+
+    {% if vlm %}
+    <section class="card tight">
+      <details><summary>Raw VLM result <small class="muted">{{ vlm.model }} · {{ vlm.prompt_version }} · {{ vlm.duration_s }}s</small></summary>
+        <pre class="json">{{ vlm.raw_json | tojson(indent=2) }}</pre>
+      </details>
+      <details><summary>File metadata</summary>
+        <pre class="json">{{ img.meta | tojson(indent=2) }}</pre>
+      </details>
+    </section>
+    {% else %}
+    <section class="card tight"><details><summary>File metadata</summary><pre class="json">{{ img.meta | tojson(indent=2) }}</pre></details></section>
+    {% endif %}
+  </aside>
+</div>
+{% endblock %}

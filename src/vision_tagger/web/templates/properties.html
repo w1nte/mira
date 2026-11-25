@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Properties{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Properties</h1>
+    <small>Everything the pipeline extracted. Tick values (and persons in the gallery) to combine them into a filter; open a property to merge or clean up its values.</small>
+  </div>
+</div>
+{% set base = '/properties' %}
+{% include "partials/filter_summary.html" %}
+
+{% if not counts %}
+  <div class="card empty">No properties yet. Index images (file properties) and run the <b>Properties</b> stage.</div>
+{% else %}
+<form method="get" action="/images" x-data="{n: 0}" @change="n = vt.count($el)" data-select-scope>
+  {% for name, value in f.to_params() %}{% if name not in ('t', 'tm') %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endif %}{% endfor %}
+  {% for k, v in f.props %}<input type="hidden" name="t" value="{{ k }}:{{ v }}">{% endfor %}
+  {% for title, keys in groups %}
+  <h2 style="margin:1.25rem 0 .6rem">{{ title }}</h2>
+  <div class="grid-3">
+    {% for key in keys %}
+    {% set vals = counts[key] %}
+    <section class="card tight">
+      <div class="row spread" style="margin-bottom:.5rem">
+        <h3 style="margin:0"><a href="/properties/{{ key }}?{{ f.query_string() }}">{{ key | label }}</a></h3>
+        <small class="muted">{{ vals | length }} value{{ 's' if vals | length != 1 }}</small>
+      </div>
+      <div class="chips">
+        {% for v, n in vals[:limit] %}
+        <label class="chip selectable" title="Select to combine · {{ n }} images">
+          <input class="pick" type="checkbox" name="t" value="{{ key }}:{{ v }}">{{ v | pretty }} <span class="n">{{ n }}</span>
+        </label>
+        {% endfor %}
+        {% if vals | length > limit %}<a class="chip" href="/properties/{{ key }}?{{ f.query_string() }}">+{{ vals | length - limit }} more…</a>{% endif %}
+      </div>
+    </section>
+    {% endfor %}
+  </div>
+  {% endfor %}
+  <div class="actionbar" x-show="n > 0" x-cloak>
+    <b x-text="n + ' selected'"></b>
+    <button class="primary" name="tm" value="all">Images with all selected</button>
+    <button name="tm" value="any">Images with any selected</button>
+    <button type="button" @click="vt.toggleAll($root, false); n = 0">Clear</button>
+  </div>
+</form>
+{% endif %}
+{% endblock %}

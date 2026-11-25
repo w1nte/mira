@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Faces{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Face clusters</h1>
+    <small>{{ total }} clusters · name a cluster inline, tick several to merge, open one to split or move faces. Shift-click selects a range.</small>
+  </div>
+  <form class="row" method="get" action="/faces">
+    <input type="search" name="q" value="{{ q }}" placeholder="Search name…">
+    <select name="show" onchange="this.form.submit()">
+      {% for v, l in [('all','All clusters'),('unnamed','Unnamed'),('suggested','With suggestion'),('named','Named')] %}
+      <option value="{{ v }}" {{ 'selected' if show == v }}>{{ l }}</option>{% endfor %}
+    </select>
+    <select name="sort" onchange="this.form.submit()">
+      {% for v, l in [('size','Largest first'),('unnamed','Unnamed first'),('newest','Newest first')] %}
+      <option value="{{ v }}" {{ 'selected' if sort == v }}>{{ l }}</option>{% endfor %}
+    </select>
+    <a class="btn" href="/faces/unclustered">Unclustered ({{ unclustered }})</a>
+    <a class="btn" href="/faces/ignored">Ignored ({{ ignored }})</a>
+  </form>
+</div>
+
+<datalist id="person-names">{% for p in persons %}<option value="{{ p.name }}">{% endfor %}</datalist>
+
+{% if not clusters %}
+  <div class="card empty">No face clusters yet. Run the <b>Faces</b> stage on the dashboard.</div>
+{% else %}
+<div x-data="{n: 0}" @change="n = vt.count($el)" data-select-scope>
+  <div class="clusters">
+    {% for cl in clusters %}
+      {% include "partials/cluster_card.html" %}
+    {% endfor %}
+  </div>
+  <form id="merge-form" method="post" action="/clusters/merge" class="actionbar" x-show="n > 0" x-cloak>
+    <b x-text="n + ' selected'"></b>
+    <button class="primary" :disabled="n < 2">Merge selected</button>
+    <small class="muted">The named (or largest) cluster is kept.</small>
+    <button type="button" @click="vt.toggleAll($root, false); n = 0">Clear</button>
+  </form>
+</div>
+{% if pages > 1 %}
+<div class="pager">
+  {% if page > 1 %}<a class="btn" href="?{{ urlencode({'page': page-1, 'sort': sort, 'q': q, 'show': show}) }}">← Prev</a>{% endif %}
+  <span class="muted">Page {{ page }} / {{ pages }}</span>
+  {% if page < pages %}<a class="btn" href="?{{ urlencode({'page': page+1, 'sort': sort, 'q': q, 'show': show}) }}">Next →</a>{% endif %}
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}

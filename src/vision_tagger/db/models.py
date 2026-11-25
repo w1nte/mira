@@ -1,0 +1,281 @@
+"""SQLAlchemy ORM models."""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from typing import Any
+
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    LargeBinary,
+    String,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+
+def utcnow() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
+
+
+class Base(DeclarativeBase):
+    type_annotation_map = {dict[str, Any]: JSON, list[Any]: JSON}
+
+
+# --------------------------------------------------------------------------- status constants
+class Status:
+    PENDING = "pending"
+    RUNNING = "running"
+    DONE = "done"
+    ERROR = "error"
+    SKIPPED = "skipped"
+
+    ALL = (PENDING, RUNNING, DONE, ERROR, SKIPPED)
+
+
+class Assignment:
+    AUTO = "auto"
+    MANUAL = "manual"
+    REFERENCE = "reference"
+
+
+# --------------------------------------------------------------------------- index
+class Image(Base):
+    __tablename__ = "images"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    path: Mapped[str] = mapped_column(Text)
+    path_key: Mapped[str] = mapped_column(Text, unique=True, index=True)
+    root: Mapped[str] = mapped_column(Text)
+    rel_path: Mapped[str] = mapped_column(Text)
+    folder: Mapped[str] = mapped_column(Text, index=True, default="")
+    filename: Mapped[str] = mapped_column(Text)
+    ext: Mapped[str] = mapped_column(String(16), index=True)
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    mtime: Mapped[float] = mapped_column(Float)
+    width: Mapped[int | None] = mapped_column(Integer)
+    height: Mapped[int | None] = mapped_column(Integer)
+    recorded_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
+    date_source: Mapped[str] = mapped_column(String(32), default="mtime")
+    phash: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    # "metadata" is reserved on declarative classes, hence the attribute name ``meta``.
+    meta: Mapped[dict[str, Any]] = mapped_column("metadata", JSON, default=dict)
+    camera: Mapped[str | None] = mapped_column(Text, index=True)
+    indexed_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    missing: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    stages: Mapped[list[StageStatus]] = relationship(
+        back_populates="image", cascade="all, delete-orphan", passive_deletes=True
+    )
+    faces: Mapped[list[Face]] = relationship(
+        back_populates="image", cascade="all, delete-orphan", passive_deletes=True
+    )
+    properties: Mapped[list[ImageProperty]] = relationship(
+        back_populates="image", cascade="all, delete-orphan", passive_deletes=True
+    )
+    duplicates: Mapped[list[DuplicateFile]] = relationship(
+        back_populates="image", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class DuplicateFile(Base):
+    __tablename__ = "duplicate_files"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    image_id: Mapped[int] = mapped_column(ForeignKey("images.id", ondelete="CASCADE"), index=True)
+    path: Mapped[str] = mapped_column(Text)
+    path_key: Mapped[str] = mapped_column(Text, unique=True, index=True)
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    mtime: Mapped[float] = mapped_column(Float, default=0.0)
+    found_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    image: Mapped[Image] = relationship(back_populates="duplicates")
+
+
+# --------------------------------------------------------------------------- job state
+class StageStatus(Base):
+    __tablename__ = "stage_status"
+    __table_args__ = (Index("ix_stage_status_stage_status", "stage", "status"),)
+
+    image_id: Mapped[int] = mapped_column(
+        ForeignKey("images.id", ondelete="CASCADE"), primary_key=True
+    )
+    stage: Mapped[str] = mapped_column(String(32), primary_key=True)
+    status: Mapped[str] = mapped_column(String(16), default=Status.PENDING)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[str | None] = mapped_column(Text)
+    stage_version: Mapped[str | None] = mapped_column(String(64))
+    run_id: Mapped[int | None] = mapped_column(Integer)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+    image: Mapped[Image] = relationship(back_populates="stages")
+
+
+class Run(Base):
+    __tablename__ = "runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    stages: Mapped[str] = mapped_column(Text)
+    batch_size: Mapped[int] = mapped_column(Integer)
+    limit: Mapped[int | None] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(16), default="running")
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime)
+    processed: Mapped[int] = mapped_column(Integer, default=0)
+    failed: Mapped[int] = mapped_column(Integer, default=0)
+    message: Mapped[str | None] = mapped_column(Text)
+
+
+class Control(Base):
+    """Single-row table used to steer the pipeline from the CLI and the web UI."""
+
+    __tablename__ = "control"
+
+    id: Mapped[int] = mapped_column(primary_key=True, default=1)
+    desired_state: Mapped[str] = mapped_column(String(16), default="stopped")
+    active_stage: Mapped[str | None] = mapped_column(String(32))
+    active_run_id: Mapped[int | None] = mapped_column(Integer)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime)
+    message: Mapped[str | None] = mapped_column(Text)
+    progress: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+class AppSetting(Base):
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[Any] = mapped_column(JSON)
+
+
+# --------------------------------------------------------------------------- faces
+class Person(Base):
+    __tablename__ = "persons"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(Text, unique=True)
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    clusters: Mapped[list[Cluster]] = relationship(
+        back_populates="person", foreign_keys="Cluster.person_id"
+    )
+    references: Mapped[list[PersonReference]] = relationship(
+        back_populates="person", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class Cluster(Base):
+    __tablename__ = "clusters"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    person_id: Mapped[int | None] = mapped_column(
+        ForeignKey("persons.id", ondelete="SET NULL"), index=True
+    )
+    suggested_person_id: Mapped[int | None] = mapped_column(
+        ForeignKey("persons.id", ondelete="SET NULL")
+    )
+    suggestion_score: Mapped[float | None] = mapped_column(Float)
+    locked: Mapped[bool] = mapped_column(Boolean, default=False)
+    centroid: Mapped[bytes | None] = mapped_column(LargeBinary)
+    face_count: Mapped[int] = mapped_column(Integer, default=0)
+    cover_face_id: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    person: Mapped[Person | None] = relationship(
+        back_populates="clusters", foreign_keys=[person_id]
+    )
+    suggested_person: Mapped[Person | None] = relationship(foreign_keys=[suggested_person_id])
+    faces: Mapped[list[Face]] = relationship(back_populates="cluster")
+
+
+class Face(Base):
+    __tablename__ = "faces"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    image_id: Mapped[int] = mapped_column(ForeignKey("images.id", ondelete="CASCADE"), index=True)
+    x1: Mapped[float] = mapped_column(Float)
+    y1: Mapped[float] = mapped_column(Float)
+    x2: Mapped[float] = mapped_column(Float)
+    y2: Mapped[float] = mapped_column(Float)
+    det_score: Mapped[float] = mapped_column(Float)
+    landmarks: Mapped[list[Any] | None] = mapped_column(JSON)
+    embedding: Mapped[bytes] = mapped_column(LargeBinary)
+    age: Mapped[int | None] = mapped_column(Integer)
+    gender: Mapped[str | None] = mapped_column(String(1))
+    face_px: Mapped[int] = mapped_column(Integer, default=0)
+    cluster_id: Mapped[int | None] = mapped_column(
+        ForeignKey("clusters.id", ondelete="SET NULL"), index=True
+    )
+    assignment: Mapped[str] = mapped_column(String(16), default=Assignment.AUTO)
+    ignored: Mapped[bool] = mapped_column(Boolean, default=False)
+    clusterable: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    image: Mapped[Image] = relationship(back_populates="faces")
+    cluster: Mapped[Cluster | None] = relationship(back_populates="faces")
+
+
+class PersonReference(Base):
+    __tablename__ = "person_references"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    person_id: Mapped[int] = mapped_column(ForeignKey("persons.id", ondelete="CASCADE"), index=True)
+    source_path: Mapped[str | None] = mapped_column(Text)
+    face_id: Mapped[int | None] = mapped_column(Integer)
+    embedding: Mapped[bytes] = mapped_column(LargeBinary)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    person: Mapped[Person] = relationship(back_populates="references")
+
+
+# --------------------------------------------------------------------------- properties
+class ImageProperty(Base):
+    __tablename__ = "image_properties"
+    __table_args__ = (
+        Index("ix_image_properties_key_value", "key", "value"),
+        Index("ix_image_properties_image_key", "image_id", "key"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    image_id: Mapped[int] = mapped_column(ForeignKey("images.id", ondelete="CASCADE"))
+    key: Mapped[str] = mapped_column(String(64))
+    value: Mapped[str] = mapped_column(Text)
+    confidence: Mapped[float | None] = mapped_column(Float)
+    source: Mapped[str] = mapped_column(String(16), default="vlm")
+
+    image: Mapped[Image] = relationship(back_populates="properties")
+
+
+class PropertyAlias(Base):
+    """Maps ``(key, from_value)`` to a canonical value; ``to_value=None`` deletes the value."""
+
+    __tablename__ = "property_aliases"
+    __table_args__ = (UniqueConstraint("key", "from_value"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(64))
+    from_value: Mapped[str] = mapped_column(Text)
+    to_value: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class VlmResult(Base):
+    __tablename__ = "vlm_results"
+
+    image_id: Mapped[int] = mapped_column(
+        ForeignKey("images.id", ondelete="CASCADE"), primary_key=True
+    )
+    model: Mapped[str] = mapped_column(Text)
+    prompt_version: Mapped[str] = mapped_column(String(64))
+    raw_json: Mapped[dict[str, Any]] = mapped_column(JSON)
+    caption: Mapped[str | None] = mapped_column(Text)
+    duration_s: Mapped[float | None] = mapped_column(Float)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

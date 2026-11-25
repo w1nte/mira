@@ -1,0 +1,60 @@
+# vision-tagger configuration
+# Every value can also be overridden with environment variables, e.g. VT_VLM__MODEL=qwen3-vl:8b
+# Windows paths: use single quotes ('D:\Photos') or forward slashes ("D:/Photos").
+
+[paths]
+image_roots = ['D:\Photos']        # folders scanned recursively (can also be set in the web UI)
+data_dir = "data"                   # database, thumbnails and face crops
+references_dir = "references"       # reference DB: references/<Person Name>/*.jpg
+
+[index]
+workers = 4                         # threads for decoding + hashing
+# extensions = [".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".tif", ".tiff", ".bmp", ".gif"]
+
+[pipeline]
+batch_size = 16                     # images claimed per batch
+max_attempts = 3                    # automatic retries per image and stage
+stages = ["faces", "vlm"]
+
+[faces]
+model = "buffalo_l"                 # InsightFace model pack (non-commercial license)
+providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+det_size = 640
+max_image_px = 2048                 # images are downscaled before detection
+min_det_score = 0.6                 # weaker detections are kept but not clustered
+min_face_px = 40                    # smaller faces are kept but not clustered
+cluster_eps = 0.5                   # DBSCAN cosine distance; lower = stricter clusters
+cluster_min_samples = 3             # faces needed to form a cluster
+split_eps = 0.35                    # used by "auto-split"
+assign_threshold = 0.5              # cosine similarity to join an existing cluster
+reference_threshold = 0.45          # similarity to *suggest* a person from the reference DB
+auto_accept_threshold = 0.6         # similarity to *assign* a person automatically
+references_per_named_cluster = 10   # faces added as references when you name a cluster
+
+[vlm]
+backend = "ollama"                  # "ollama" or "fake" (no model, for trying the UI)
+base_url = "http://localhost:11434"
+model = "qwen2.5vl:7b"              # e.g. qwen2.5vl:3b (less VRAM), qwen3-vl:8b
+temperature = 0.0                   # deterministic answers -> stable properties
+seed = 42
+num_ctx = 8192
+max_image_px = 1024
+timeout = 600
+concurrency = 1                     # parallel requests; match OLLAMA_NUM_PARALLEL
+keep_alive = "10m"
+# vocabulary_file = "my_vocabulary.yaml"   # copy src/vision_tagger/resources/vocabulary.yaml to customise
+# synonyms_file = "my_synonyms.yaml"
+
+[derived]
+work_path_keywords = ["screenshot", "bildschirmfoto", "scan", "work", "arbeit", "office", "invoice", "rechnung", "receipt", "whiteboard"]
+work_yes_threshold = 0.6
+work_maybe_threshold = 0.35
+
+[export]
+mode = "copy"                       # copy | hardlink | symlink (symlinks need Developer Mode on Windows)
+
+[web]
+host = "127.0.0.1"
+port = 8765
+page_size = 120
+thumb_size = 320

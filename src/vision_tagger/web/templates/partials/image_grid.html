@@ -1,0 +1,10 @@
+{% set qs = f.query_string() %}
+{% for img in images %}
+<a class="thumb" href="/images/{{ img.id }}{{ '?' ~ qs if qs }}" title="{{ img.rel_path }}">
+  <img loading="lazy" src="/media/thumb/{{ img.id }}" alt="">
+  <span class="cap">{{ img.recorded_at | dt('%Y-%m-%d') }} · {{ img.filename }}</span>
+</a>
+{% endfor %}
+{% if next_page %}
+<div hx-get="/images/page?page={{ next_page }}{{ '&' ~ qs if qs }}" hx-trigger="revealed" hx-swap="outerHTML" class="muted" style="grid-column:1/-1;text-align:center;padding:1rem">Loading…</div>
+{% endif %}

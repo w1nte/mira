@@ -1,0 +1,202 @@
+# vision-tagger
+
+A local pipeline that indexes a large photo collection, finds and clusters faces, and extracts
+stable, filterable properties with a local vision-language model (Qwen2.5-VL via Ollama). You
+start and control it from a local web UI. Originals are never moved or modified.
+
+```
+            ┌──────────────┐   ┌─────────────────────────────┐   ┌──────────────────────────┐
+ folders ──▶│ 0 · Index    │──▶│ 1 · Faces (InsightFace)     │──▶│ 2 · Properties (Qwen-VL) │
+            │ path, date,  │   │ detect → embed → cluster →  │   │ closed vocabularies,     │
+            │ EXIF, pHash  │   │ name via reference DB       │   │ assumptions, work images │
+            └──────┬───────┘   └──────────────┬──────────────┘   └────────────┬─────────────┘
+                   └──────────── SQLite (state per image & stage) ────────────┘
+                                              │
+                         Web UI: dashboard · faces · persons · properties · images · overview
+```
+
+## Features
+
+- **Index (step 0).** Recursive scan that records path, file name, recording date (EXIF →
+  file-name pattern → mtime), a dynamic JSON metadata column (camera, lens, exposure, GPS, …)
+  and a perceptual hash (`imagehash.phash`).
+  - A pHash that is already indexed is **not** added again; the file is recorded as a
+    duplicate.
+  - Moved files are re-linked, and changed files are re-queued.
+- **Resumable batches.** Every image has a state per stage (`pending / running / done / error /
+  skipped`) in the database. Runs claim work in batches and commit after every image.
+  - You can **pause, resume, stop** or kill a run at any time; interrupted images are picked up
+    on the next start.
+  - Errors are retried automatically up to `max_attempts`.
+  - Results produced with an older model, prompt or vocabulary show up as *outdated* and can be
+    re-queued.
+- **Stage 1: faces.** InsightFace (`buffalo_l`) detection plus 512-d embeddings. Clustering uses
+  DBSCAN (cosine distance) and **keeps your manual work**: clusters you named, merged or split
+  are locked and never dissolved by re-clustering.
+  - A **reference DB** (`references/<Person Name>/*.jpg`) names clusters automatically or
+    suggests a name.
+- **Stage 2: properties.** Qwen2.5-VL (or any Ollama vision model) answers a fixed JSON schema
+  built from [`vocabulary.yaml`](src/vision_tagger/resources/vocabulary.yaml).
+  - Closed vocabularies, temperature 0, a fixed seed and normalisation (singular forms,
+    synonyms, your merges) keep the values stable enough to cluster on later.
+  - **Assumed** properties come with a confidence: work related, work category, personal
+    memory, likely purpose, sensitive info.
+  - A derived `work_image = yes / maybe / no` combines these with file metadata to filter out
+    work photos.
+- **Web UI.**
+  - Face cluster overview with inline naming, merge, split, move, auto-split and remove.
+  - Persons, including merging persons.
+  - Property explorer: combine values with AND/OR, merge/rename/delete values.
+  - Gallery with a filter builder (persons AND/OR, properties AND/OR, NOT, date, folder,
+    camera, …) and export (copy / hardlink / symlink).
+  - Image detail with face boxes.
+  - Timeline / data overview and a metadata table.
+
+## Installation (Windows + NVIDIA GPU)
+
+1. **uv** (package manager):
+   ```powershell
+   powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+   ```
+2. **Microsoft C++ Build Tools.** `insightface` is built from source. In the
+   [Build Tools installer](https://visualstudio.microsoft.com/visual-cpp-build-tools/), select
+   *Desktop development with C++*.
+3. **A recent NVIDIA driver.** The `gpu` extra installs `onnxruntime-gpu[cuda,cudnn]`, which
+   brings the CUDA and cuDNN runtime as pip packages, so a separate CUDA install is not needed.
+   vision-tagger calls `onnxruntime.preload_dlls()` so these DLLs are found. Current
+   onnxruntime-gpu builds target CUDA 13, which needs driver R580 or newer. If CUDA can't be
+   loaded, InsightFace falls back to the CPU and the dashboard shows a warning. Check
+   **Environment** on the dashboard.
+4. **Ollama** from <https://ollama.com/download>, then pull the model:
+   ```powershell
+   ollama pull qwen2.5vl:7b      # ~6 GB VRAM; qwen2.5vl:3b for smaller GPUs, qwen3-vl:8b also works
+   ```
+5. **vision-tagger:**
+   ```powershell
+   git clone https://github.com/w1nte/vision-tagger.git
+   cd vision-tagger
+   uv sync --extra gpu           # Python 3.12 is installed automatically by uv
+   uv run vision-tagger init     # creates config.toml and the database
+   ```
+
+For CPU-only machines (or Linux/macOS) use `uv sync --extra cpu` and set
+`providers = ["CPUExecutionProvider"]` in `config.toml`.
+
+## Quick start
+
+```powershell
+uv run vision-tagger serve --open          # or: .\start.ps1
+```
+
+On the **Dashboard**:
+
+1. Enter your photo folder(s) and click **Scan & index**.
+2. Optionally put reference portraits into `references\<Person Name>\` and click
+   **Import references**.
+3. Choose the stages, a batch size and an optional limit, then click **Start**. **Pause**,
+   **Resume** and **Stop** work at any time. Progress, throughput, ETA and errors update live.
+
+Then name and clean up clusters under **Faces**, explore **Properties**, and filter or export in
+**Images**.
+
+Everything also works headless:
+
+```powershell
+uv run vision-tagger index "D:\Photos"
+uv run vision-tagger run --stage faces --stage vlm --batch-size 16 --limit 500
+uv run vision-tagger status
+uv run vision-tagger pause | resume | stop       # from a second terminal
+uv run vision-tagger refs                        # import reference DB + name clusters
+uv run vision-tagger cluster [--full]
+uv run vision-tagger retry-errors --stage vlm
+uv run vision-tagger requeue-outdated --stage vlm
+uv run vision-tagger export "D:\Export\Anna at the beach" --filter "p=1&t=location_type:beach" --layout date
+```
+
+`Ctrl+C` during `run` stops gracefully. Running `run` again continues where it stopped.
+
+## The web UI
+
+| Page | What you can do |
+|---|---|
+| **Dashboard** | Index folders, start/pause/resume/stop runs (stages, batch size, limit), per-stage progress, ETA, errors (retry/skip), outdated results, jobs, environment check (CUDA, Ollama, model). |
+| **Faces** | All clusters with cover face and size. Name inline (autocomplete), accept reference suggestions, select several to **merge**. Views for unclustered and ignored faces. |
+| **Cluster** | All faces of a cluster. Select faces to **split** into a new cluster, **assign to a person**, **move** to another cluster, or **remove**. **Auto-split** mixed clusters. Similar clusters with one-click merge. |
+| **Persons** | Named persons. Rename (renaming to an existing name merges), merge, delete, manage references. Images with *all* / *any* of the selected persons. |
+| **Properties** | Every extracted property grouped by topic, with counts. Tick values and show images with **all** / **any** of them. Per property: sample images per value, **merge / rename / delete** values (remembered for future results). |
+| **Images** | Gallery with infinite scroll and a filter builder: persons (AND/OR, NOT), properties (AND/OR, NOT), date range, folder, camera, faces, text search, sort. Facets refine the current result. **Export** the result. Filters are part of the URL, so they can be bookmarked. |
+| **Image** | Full image with face boxes and names, all properties with source and confidence, metadata, duplicates, raw VLM JSON, per-stage status and re-run buttons. |
+| **Overview** | Timeline (year → month → day), breakdowns by folder, camera, file type, date reliability, work/personal, orientation, and a sortable metadata table. |
+
+## How the property extraction stays stable
+
+1. **Closed vocabularies.** Almost all fields are enums in the JSON schema. Ollama's structured
+   output enforces them during decoding.
+2. **Deterministic decoding.** `temperature = 0`, a fixed `seed`, a fixed prompt, and the same
+   resize for every image.
+3. **Normalisation of free-text lists** (objects, tags, …). Values are lower-cased, articles are
+   dropped, words are singularised, then [`synonyms.yaml`](src/vision_tagger/resources/synonyms.yaml)
+   and the merges you make in the UI are applied.
+4. **Versioning.** The model, prompt version and raw answer are stored. Changing the model or
+   the vocabulary marks results as outdated, and the dashboard can re-queue them.
+
+All properties end up in one key/value table (`image_properties`) with `source`
+(`vlm`, `inferred`, `derived`, `exif`) and `confidence`. That table is the basis for filtering
+and for clustering images by their properties later (one-hot vectors per image).
+
+To customise the fields, copy `vocabulary.yaml` and set `vlm.vocabulary_file` in `config.toml`.
+
+## Configuration
+
+`vision-tagger init` writes `config.toml` (see
+[`config.example.toml`](src/vision_tagger/resources/config.example.toml)). Any value can also be
+set with an environment variable, for example `VT_VLM__MODEL=qwen3-vl:8b` or
+`VT_PIPELINE__BATCH_SIZE=32`.
+
+Important knobs:
+
+- `faces.cluster_eps` / `cluster_min_samples`: how strict face clustering is.
+- `faces.reference_threshold` / `auto_accept_threshold`: when reference matches are suggested
+  or assigned.
+- `vlm.model`, `vlm.concurrency`: set `concurrency` to match `OLLAMA_NUM_PARALLEL` for
+  parallel requests.
+- `derived.work_path_keywords`: folder or file-name hints for work images.
+
+## Data
+
+Everything lives in `data/`:
+
+- `vision_tagger.sqlite3`: index, job state, faces, clusters, persons, properties.
+- `cache/thumbs`, `cache/faces`: thumbnails and face crops. These can be deleted at any time.
+
+Main tables: `images` (+ `metadata` JSON), `duplicate_files`, `stage_status`, `runs`, `faces`,
+`clusters`, `persons`, `person_references`, `image_properties`, `property_aliases`,
+`vlm_results`.
+
+## Development
+
+```bash
+uv sync --extra cpu --group dev
+uv run ruff check .
+uv run ruff format --check .
+uv run pytest -v
+```
+
+- The suite includes integration tests that run the real InsightFace model. It is downloaded to
+  `~/.insightface` on first use.
+- Tests marked `ollama` run against a real server when `VT_OLLAMA_URL` (and optionally
+  `VT_OLLAMA_MODEL`) is set.
+- Set `vlm.backend = "fake"` to try the whole UI without a GPU or Ollama.
+
+GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs ruff and the full
+test suite on Ubuntu and Windows.
+
+## Notes and limitations
+
+- Deduplication uses an exact pHash match, as requested. Visually near-identical images
+  (re-encodes, resized copies, sometimes blank documents) collapse into one entry. Every
+  collapsed file stays listed under *duplicates*, so nothing is lost.
+- Symlink export needs Developer Mode on Windows. Otherwise vision-tagger falls back to
+  copying.
+- InsightFace's pretrained `buffalo_l` models are licensed for **non-commercial research
+  purposes** only.

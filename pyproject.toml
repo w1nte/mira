@@ -1,0 +1,91 @@
+[project]
+name = "vision-tagger"
+version = "0.1.0"
+description = "Index, deduplicate, face-cluster and VLM-tag large local image collections, controlled from a local web UI."
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+license = { text = "MIT" }
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.9",
+    "sqlalchemy>=2.0.30",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "typer>=0.12",
+    "pillow>=10.3",
+    "pillow-heif>=0.16",
+    "imagehash>=4.3",
+    "numpy>=1.26",
+    "scikit-learn>=1.4",
+    "httpx>=0.27",
+    "pyyaml>=6.0",
+    "insightface==0.7.3",
+    "opencv-python-headless>=4.9",
+]
+
+[project.optional-dependencies]
+# Pick exactly one ONNX runtime flavour: `uv sync --extra gpu` (Windows/Linux + NVIDIA; pulls the
+# CUDA/cuDNN runtime from pip, only a recent NVIDIA driver is needed) or `--extra cpu`.
+gpu = ["onnxruntime-gpu[cuda,cudnn]>=1.21"]
+cpu = ["onnxruntime>=1.19"]
+
+[project.scripts]
+vision-tagger = "vision_tagger.cli:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.2",
+    "pytest-timeout>=2.3",
+    "ruff>=0.6",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/vision_tagger"]
+
+[tool.uv]
+conflicts = [[{ extra = "gpu" }, { extra = "cpu" }]]
+
+# insightface 0.7.3 ships only as an sdist whose setup.py imports numpy and Cython.
+[tool.uv.extra-build-dependencies]
+insightface = ["numpy", "cython"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "PTH"]
+ignore = [
+    "B008",   # FastAPI/typer default-argument calls (Depends, Query, Option) are idiomatic
+    "RUF012", # mutable class attributes are fine for SQLAlchemy / pydantic declarations
+]
+
+[tool.ruff.lint.per-file-ignores]
+# os.scandir/os.path on purpose: faster for large trees, and abspath() does not resolve symlinks
+"src/vision_tagger/indexer.py" = ["PTH"]
+# typographic dashes in UI strings are intentional
+"src/vision_tagger/web/**" = ["RUF001"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["vision_tagger"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+timeout = 300
+markers = [
+    "integration: needs the real InsightFace buffalo_l model (downloaded on first use)",
+    "ollama: needs a running Ollama server (set VT_OLLAMA_URL)",
+]
+filterwarnings = [
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated",
+    "ignore::DeprecationWarning:insightface.*",
+    "ignore::FutureWarning:insightface.*",
+]

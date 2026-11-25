@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}vision-tagger{% endblock %} · vision-tagger</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/htmx.min.js" defer></script>
+  <script src="/static/alpine.min.js" defer></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  {% set path = request.url.path %}
+  <header class="topbar">
+    <a class="brand" href="/">vision<span>tagger</span></a>
+    <nav>
+      <a href="/" class="{{ 'active' if path == '/' }}">Dashboard</a>
+      <a href="/faces" class="{{ 'active' if path.startswith('/faces') or path.startswith('/clusters') }}">Faces</a>
+      <a href="/persons" class="{{ 'active' if path.startswith('/persons') }}">Persons</a>
+      <a href="/properties" class="{{ 'active' if path.startswith('/properties') }}">Properties</a>
+      <a href="/images" class="{{ 'active' if path.startswith('/images') }}">Images</a>
+      <a href="/overview" class="{{ 'active' if path.startswith('/overview') }}">Overview</a>
+    </nav>
+  </header>
+  <main class="{% block main_class %}container{% endblock %}">
+    {% if msg %}<div class="flash ok" x-data="{show: true}" x-show="show" x-init="setTimeout(() => show = false, 6000)">{{ msg }}</div>{% endif %}
+    {% if err %}<div class="flash err">{{ err }}</div>{% endif %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

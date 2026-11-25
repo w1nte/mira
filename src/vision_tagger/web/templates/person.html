@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}{{ person.name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <small><a href="/persons">← Persons</a></small>
+    <h1>{{ person.name }}</h1>
+    <small>{{ clusters | length }} clusters · {{ refs | length }} reference faces</small>
+  </div>
+  <div class="row">
+    <a class="btn primary" href="/images?p={{ person.id }}">Show images</a>
+    <form method="post" action="/persons/{{ person.id }}/rename" class="row">
+      <input type="text" name="name" value="{{ person.name }}"><button>Rename</button>
+    </form>
+    <form method="post" action="/persons/{{ person.id }}/delete" onsubmit="return confirm('Delete {{ person.name }}? Clusters stay but become unnamed.')"><button class="danger">Delete</button></form>
+  </div>
+</div>
+
+<section class="card" style="margin-bottom:1rem">
+  <div class="row spread"><h2 style="margin:0">Clusters</h2>
+    {% if clusters | length > 1 %}<form method="post" action="/persons/{{ person.id }}/merge-clusters"><button class="small">Merge all clusters</button></form>{% endif %}
+  </div>
+  <div class="clusters" style="margin-top:.75rem">
+    {% for cl in clusters %}
+    <div class="cluster-card">
+      <a class="cover" href="/clusters/{{ cl.id }}">{% if cl.cover_face_id %}<img loading="lazy" src="/media/face/{{ cl.cover_face_id }}" alt="">{% endif %}<span class="count">{{ cl.face_count }}</span></a>
+      <div class="body"><a href="/clusters/{{ cl.id }}">Cluster #{{ cl.id }}</a></div>
+    </div>
+    {% else %}<p class="muted">No clusters.</p>{% endfor %}
+  </div>
+</section>
+
+{% if suggested %}
+<section class="card" style="margin-bottom:1rem">
+  <h2>Suggested clusters</h2>
+  <div class="clusters">
+    {% for cl in suggested %}
+    <div class="cluster-card">
+      <a class="cover" href="/clusters/{{ cl.id }}">{% if cl.cover_face_id %}<img loading="lazy" src="/media/face/{{ cl.cover_face_id }}" alt="">{% endif %}<span class="count">{{ cl.face_count }}</span></a>
+      <div class="body">
+        <small>{{ '%.0f' | format((cl.suggestion_score or 0) * 100) }}% match</small>
+        <form method="post" action="/clusters/{{ cl.id }}/accept"><button class="small primary">Accept</button></form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>References</h2>
+  <p class="muted" style="margin-top:0">Embeddings used to recognise {{ person.name }} in new clusters. Comes from the reference folder and from clusters you named.</p>
+  <div class="faces">
+    {% for r in refs %}
+    <div class="face" style="cursor:default">
+      <img loading="lazy" src="/media/reference/{{ r.id }}" alt="" title="{{ r.source_path or ('face #' ~ r.face_id) }}">
+      <form method="post" action="/references/{{ r.id }}/delete" style="position:absolute;top:.2rem;right:.2rem"><button class="small danger" title="Remove reference">✕</button></form>
+    </div>
+    {% else %}<p class="muted">No references yet.</p>{% endfor %}
+  </div>
+</section>
+{% endblock %}

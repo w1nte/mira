@@ -1,0 +1,24 @@
+{# Active filter chips. Expects f, optionally person_names / cluster_names, base (url path) #}
+{% set base = base | default('/images') %}
+{% if not f.is_empty %}
+<div class="chips" style="margin-bottom:.75rem">
+  {% for pid in f.persons %}<span class="chip active">👤 {{ (person_names or {}).get(pid, 'Person #' ~ pid) }} <a class="x" href="{{ base }}?{{ f.without_person(pid) }}">×</a></span>{% endfor %}
+  {% for cid in f.clusters %}<span class="chip active">👥 {{ (cluster_names or {}).get(cid, 'Cluster #' ~ cid) }} <a class="x" href="{{ base }}?{{ f.without_cluster(cid) }}">×</a></span>{% endfor %}
+  {% if (f.persons | length) + (f.clusters | length) > 1 %}
+    <a class="chip" href="{{ base }}?{{ f.query_string(persons_mode='any' if f.persons_mode == 'all' else 'all') }}" title="Toggle AND / OR">{{ 'all of these people' if f.persons_mode == 'all' else 'any of these people' }} ⇄</a>
+  {% endif %}
+  {% for k, v in f.props %}<span class="chip active">{{ k | label }}: {{ v | pretty }} <a class="x" href="{{ base }}?{{ f.without_prop(k, v) }}">×</a></span>{% endfor %}
+  {% if f.props | length > 1 %}
+    <a class="chip" href="{{ base }}?{{ f.query_string(props_mode='any' if f.props_mode == 'all' else 'all') }}" title="Toggle AND / OR">{{ 'all properties' if f.props_mode == 'all' else 'any property' }} ⇄</a>
+  {% endif %}
+  {% for pid in f.exclude_persons %}<span class="chip neg">not 👤 {{ (person_names or {}).get(pid, 'Person #' ~ pid) }} <a class="x" href="{{ base }}?{{ f.without_exclude_person(pid) }}">×</a></span>{% endfor %}
+  {% for k, v in f.exclude_props %}<span class="chip neg">not {{ k | label }}: {{ v | pretty }} <a class="x" href="{{ base }}?{{ f.without_exclude_prop(k, v) }}">×</a></span>{% endfor %}
+  {% if f.date_from or f.date_to %}<span class="chip active">📅 {{ f.date_from or '…' }} – {{ f.date_to or '…' }} <a class="x" href="{{ base }}?{{ f.query_string(date_from=None, date_to=None) }}">×</a></span>{% endif %}
+  {% if f.folder %}<span class="chip active">📁 {{ f.folder }} <a class="x" href="{{ base }}?{{ f.query_string(folder=None) }}">×</a></span>{% endif %}
+  {% if f.camera %}<span class="chip active">📷 {{ f.camera }} <a class="x" href="{{ base }}?{{ f.query_string(camera=None) }}">×</a></span>{% endif %}
+  {% if f.has_faces is not none %}<span class="chip active">{{ 'with faces' if f.has_faces else 'without faces' }} <a class="x" href="{{ base }}?{{ f.query_string(has_faces=None) }}">×</a></span>{% endif %}
+  {% if f.stage %}<span class="chip active">{{ f.stage }}{% if f.status %} = {{ f.status }}{% endif %} <a class="x" href="{{ base }}?{{ f.query_string(stage=None, status=None) }}">×</a></span>{% endif %}
+  {% if f.text %}<span class="chip active">“{{ f.text }}” <a class="x" href="{{ base }}?{{ f.query_string(text=None) }}">×</a></span>{% endif %}
+  <a class="chip" href="{{ base }}">Clear all</a>
+</div>
+{% endif %}

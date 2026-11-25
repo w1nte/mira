@@ -1,0 +1,152 @@
+"""Thin wrapper around InsightFace's ``FaceAnalysis`` with provider fallback."""
+
+from __future__ import annotations
+
+import logging
+import warnings
+from dataclasses import dataclass
+from typing import Any
+
+import numpy as np
+from PIL import Image
+
+from ..config import FacesConfig
+from .vectors import normalize
+
+log = logging.getLogger(__name__)
+
+
+@dataclass
+class DetectedFace:
+    bbox: tuple[float, float, float, float]  # in input image coordinates
+    det_score: float
+    embedding: np.ndarray  # L2-normalised, 512-d
+    landmarks: list[list[float]] | None = None
+    age: int | None = None
+    gender: str | None = None
+
+    @property
+    def size(self) -> float:
+        x1, y1, x2, y2 = self.bbox
+        return min(x2 - x1, y2 - y1)
+
+
+def available_providers(requested: list[str]) -> list[str]:
+    import onnxruntime as ort
+
+    if "CUDAExecutionProvider" in requested and hasattr(ort, "preload_dlls"):
+        # onnxruntime-gpu >= 1.21: load CUDA/cuDNN DLLs from the nvidia-* pip packages
+        # (needed on Windows when CUDA is not installed system-wide).
+        try:
+            ort.preload_dlls()
+        except Exception as exc:  # pragma: no cover - platform specific
+            log.debug("preload_dlls failed: %s", exc)
+    available = set(ort.get_available_providers())
+    chosen = [p for p in requested if p in available]
+    if "CPUExecutionProvider" not in chosen:
+        chosen.append("CPUExecutionProvider")
+    return chosen
+
+
+class FaceAnalyzer:
+    """Lazy-loading InsightFace detector + recognizer (+ age/gender)."""
+
+    def __init__(self, cfg: FacesConfig) -> None:
+        self.cfg = cfg
+        self._app: Any = None
+        self.providers: list[str] = []
+
+    def load(self) -> None:
+        if self._app is not None:
+            return
+        from insightface.app import FaceAnalysis
+
+        providers = available_providers(self.cfg.providers)
+        kwargs: dict[str, Any] = {
+            "name": self.cfg.model,
+            "providers": providers,
+            "allowed_modules": ["detection", "recognition", "genderage"],
+        }
+        if self.cfg.model_root is not None:
+            kwargs["root"] = str(self.cfg.model_root)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            app = FaceAnalysis(**kwargs)
+            ctx_id = 0 if "CUDAExecutionProvider" in providers else -1
+            app.prepare(ctx_id=ctx_id, det_size=(self.cfg.det_size, self.cfg.det_size))
+        self._app = app
+        try:
+            self.providers = list(app.models["detection"].session.get_providers())
+        except Exception:  # pragma: no cover - defensive
+            self.providers = providers
+        log.info("InsightFace %s loaded with providers %s", self.cfg.model, self.providers)
+
+    def unload(self) -> None:
+        self._app = None
+
+    @property
+    def using_gpu(self) -> bool:
+        return any(p != "CPUExecutionProvider" for p in self.providers)
+
+    def detect(self, image: Image.Image, *, pad_if_empty: bool = False) -> list[DetectedFace]:
+        """Detect faces. ``pad_if_empty`` retries tightly cropped portraits with a border."""
+        faces = self._detect(image)
+        if faces or not pad_if_empty:
+            return faces
+        pad = max(image.width, image.height) // 2
+        padded = Image.new("RGB", (image.width + 2 * pad, image.height + 2 * pad), (127, 127, 127))
+        padded.paste(image.convert("RGB"), (pad, pad))
+        out = []
+        for f in self._detect(padded):
+            x1, y1, x2, y2 = f.bbox
+            f.bbox = (
+                max(0.0, x1 - pad),
+                max(0.0, y1 - pad),
+                min(float(image.width), x2 - pad),
+                min(float(image.height), y2 - pad),
+            )
+            if f.landmarks:
+                f.landmarks = [[x - pad, y - pad] for x, y in f.landmarks]
+            if f.bbox[2] > f.bbox[0] and f.bbox[3] > f.bbox[1]:
+                out.append(f)
+        return out
+
+    def _detect(self, image: Image.Image) -> list[DetectedFace]:
+        self.load()
+        bgr = np.ascontiguousarray(np.asarray(image.convert("RGB"))[:, :, ::-1])
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            raw = self._app.get(bgr)
+        out: list[DetectedFace] = []
+        for f in raw:
+            emb = getattr(f, "normed_embedding", None)
+            if emb is None:
+                emb = normalize(f.embedding)
+            gender = None
+            if getattr(f, "gender", None) is not None:
+                gender = "M" if int(f.gender) == 1 else "F"
+            age = getattr(f, "age", None)
+            kps = getattr(f, "kps", None)
+            x1, y1, x2, y2 = (float(v) for v in f.bbox)
+            out.append(
+                DetectedFace(
+                    bbox=(
+                        max(0.0, x1),
+                        max(0.0, y1),
+                        min(float(image.width), x2),
+                        min(float(image.height), y2),
+                    ),
+                    det_score=float(f.det_score),
+                    embedding=np.asarray(emb, dtype=np.float32),
+                    landmarks=kps.round(1).tolist() if kps is not None else None,
+                    age=int(age) if age is not None else None,
+                    gender=gender,
+                )
+            )
+        return out
+
+    def largest_face(self, image: Image.Image) -> DetectedFace | None:
+        faces = self.detect(image, pad_if_empty=True)
+        if not faces:
+            return None
+        return max(faces, key=lambda f: f.size * f.det_score)

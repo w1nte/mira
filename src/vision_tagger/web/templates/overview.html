@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Overview{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Overview</h1>
+    <small>{{ total }} images · {{ size_total | bytes }} · {{ with_faces }} with faces{% if undated %} · {{ undated }} undated{% endif %}</small>
+  </div>
+  <div class="row">
+    <a class="btn" href="/images?{{ f.query_string() }}">Gallery</a>
+    <a class="btn" href="/overview/table?{{ f.query_string() }}">Metadata table</a>
+  </div>
+</div>
+{% set base = '/overview' %}
+{% include "partials/filter_summary.html" %}
+
+<section class="card" style="margin-bottom:1rem">
+  <div class="row spread">
+    <h2 style="margin:0">Timeline · by {{ level }}</h2>
+    <div class="row">
+      {% if level != 'year' %}<a class="btn small" href="/overview?{{ f.query_string(date_from=None, date_to=None) }}">All years</a>{% endif %}
+      {% if level == 'day' and f.date_from %}<a class="btn small" href="/overview?{{ f.query_string(date_from=f.date_from[:4], date_to=f.date_from[:4]) }}">{{ f.date_from[:4] }}</a>{% endif %}
+    </div>
+  </div>
+  {% if hist %}
+  <div class="hist">
+    {% for bucket, n in hist %}
+      {% if level == 'year' %}{% set href = '/overview?' ~ f.query_string(date_from=bucket, date_to=bucket) %}
+      {% elif level == 'month' %}{% set href = '/overview?' ~ f.query_string(date_from=bucket, date_to=bucket) %}
+      {% else %}{% set href = '/images?' ~ f.query_string(date_from=bucket, date_to=bucket) %}{% endif %}
+      <a class="bar" href="{{ href }}" title="{{ bucket }}: {{ n }} images">
+        <span class="cnt">{{ n }}</span>
+        <span class="fill" style="height: {{ (100 * n / hist_max) | round(1) if hist_max else 0 }}%"></span>
+        <span class="lbl">{{ bucket[-2:] if level != 'year' else bucket }}</span>
+      </a>
+    {% endfor %}
+  </div>
+  <small class="muted">Click a bar to drill down{% if level == 'day' %} (days open the gallery){% endif %}.
+    {% if f.date_from %}<a href="/images?{{ f.query_string() }}">Show these images →</a>{% endif %}</small>
+  {% else %}<p class="muted">No dated images.</p>{% endif %}
+</section>
+
+<div class="grid-3">
+  {% macro breakdown(title, rows, param, fmt=None) %}
+  <section class="card tight">
+    <h3>{{ title }}</h3>
+    {% set top = rows[0][1] if rows else 0 %}
+    <table class="hbars">
+      {% for value, n in rows %}
+      <tr>
+        <td>
+          {% if param and value %}<a href="/overview?{{ f.query_string(**{param: value}) }}">{{ value if not fmt else fmt(value) }}</a>
+          {% else %}{{ (value if not fmt else fmt(value)) if value else '(none)' }}{% endif %}
+        </td>
+        <td class="bar"><div class="hbar" style="width: {{ pct(n, top) }}%"></div></td>
+        <td class="num">{{ n }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </section>
+  {% endmacro %}
+
+  {{ breakdown('Folders', folders, 'folder') }}
+  {{ breakdown('Cameras', cameras, 'camera') }}
+  {{ breakdown('File types', exts, None) }}
+  {{ breakdown('Date source', date_sources, None) }}
+  {% for key, rows in breakdowns.items() %}
+  <section class="card tight">
+    <h3>{{ key | label }}</h3>
+    {% set top = rows[0][1] if rows else 0 %}
+    <table class="hbars">
+      {% for value, n in rows[:12] %}
+      <tr><td><a href="/overview?{{ f.with_prop(key, value) }}">{{ value | pretty }}</a></td><td class="bar"><div class="hbar" style="width: {{ pct(n, top) }}%"></div></td><td class="num">{{ n }}</td></tr>
+      {% endfor %}
+    </table>
+  </section>
+  {% endfor %}
+</div>
+<p class="muted"><small>Date source tells how reliable the recording date is: <b>exif</b> (camera), <b>filename</b> (parsed from the name) or <b>mtime</b> (file modification time).</small></p>
+{% endblock %}
