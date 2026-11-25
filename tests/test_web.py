@@ -273,3 +273,28 @@ def test_quiz_pages_and_actions(client):
     assert "Removed" in r.text
     with db.session() as s:
         assert s.get(Face, face.id).cluster_id is None
+
+
+def test_age_ui(client):
+    db = client.ctx.db
+    from vision_tagger.faces import clustering as C
+
+    with db.write() as s:
+        cid = s.scalar(select(Cluster.id).order_by(Cluster.id))
+        C.name_cluster(s, cid, "Anna")
+        pid = s.scalar(select(Person.id))
+        image_id = s.scalar(select(Face.image_id).where(Face.cluster_id == cid))
+    page = ok(client.get(f"/persons/{pid}")).text
+    assert "Age" in page and "Set birth year" in page
+    ok(client.post(f"/persons/{pid}/birth-year", data={"birth_year": "1990"}))
+    with db.session() as s:
+        assert s.get(Person, pid).birth_year == 1990
+    page = ok(client.get(f"/persons/{pid}")).text
+    assert "Born <b>1990</b>" in page and "Through the years" in page
+    assert "born 1990" in ok(client.get("/persons")).text
+    page = ok(client.get(f"/images/{image_id}")).text
+    assert "Anna · " in page  # age next to the name on the face box
+    ok(client.post(f"/images/{image_id}/date", data={"year": "2005"}))
+    assert "manual" in ok(client.get(f"/images/{image_id}")).text
+    r = client.post(f"/persons/{pid}/birth-year", data={"birth_year": "abc"})
+    assert "Enter a year" in r.text or r.status_code == 200

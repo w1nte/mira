@@ -166,6 +166,7 @@ class Person(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(Text, unique=True)
     notes: Mapped[str | None] = mapped_column(Text)
+    birth_year: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     clusters: Mapped[list[Cluster]] = relationship(

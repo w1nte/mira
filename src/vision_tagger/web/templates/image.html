@@ -26,7 +26,7 @@
         {% set named = face.cluster and face.cluster.person %}
         <a class="facebox {{ '' if named else 'unnamed' }}" href="{{ '/clusters/' ~ face.cluster_id if face.cluster_id else '/faces/unclustered' }}"
            style="left: {{ 100 * face.x1 / img.width }}%; top: {{ 100 * face.y1 / img.height }}%; width: {{ 100 * (face.x2 - face.x1) / img.width }}%; height: {{ 100 * (face.y2 - face.y1) / img.height }}%">
-          <span>{{ face.cluster.person.name if named else ('#' ~ face.cluster_id if face.cluster_id else '?') }}</span>
+          <span>{{ face.cluster.person.name if named else ('#' ~ face.cluster_id if face.cluster_id else '?') }}{% if face_ages.get(face.id) %} · {{ face_ages[face.id] }}{% endif %}</span>
         </a>
       {% endfor %}
       {% endif %}
@@ -41,7 +41,13 @@
     <section class="card tight">
       <h3>File</h3>
       <dl class="kv">
-        <dt>Recorded</dt><dd>{{ img.recorded_at | dt('%Y-%m-%d %H:%M:%S') }} <span class="badge">{{ img.date_source }}</span></dd>
+        <dt>Recorded</dt><dd>{{ img.recorded_at | dt('%Y-%m-%d %H:%M:%S') }} <span class="badge {{ 'warn' if date_check and date_check.suspicious }}">{{ img.date_source }}</span>
+          <details style="display:inline-block;margin-left:.3rem"><summary class="muted" style="font-weight:400;font-size:.8rem">edit</summary>
+            <form method="post" action="/images/{{ img.id }}/date" class="row" style="margin-top:.3rem">
+              <input type="number" name="year" value="{{ img.recorded_at.year if img.recorded_at else '' }}" min="1850" max="2100" style="width:6rem" required>
+              <input type="number" name="month" min="1" max="12" placeholder="month" style="width:5rem">
+              <button class="small">Set date</button>
+            </form></details></dd>
         <dt>Folder</dt><dd><a href="/images?folder={{ img.folder | urlencode }}">{{ img.folder or '(root)' }}</a></dd>
         <dt>Size</dt><dd>{{ img.width }} × {{ img.height }} · {{ img.size_bytes | bytes }} · {{ img.ext }}</dd>
         {% if img.camera %}<dt>Camera</dt><dd><a href="/images?camera={{ img.camera | urlencode }}">{{ img.camera }}</a></dd>{% endif %}
@@ -55,13 +61,31 @@
       {% endif %}
     </section>
 
+    {% if date_check and date_check.suspicious %}
+    <section class="card tight" style="border-color:var(--warn)">
+      <h3>⚠ This date looks wrong</h3>
+      <p style="margin:.2rem 0">Recorded {{ date_check.recorded_year }} (from {{ date_check.date_source }}), but the faces suggest
+        <b>about {{ date_check.suggested_year }}</b> <small class="muted">({{ date_check.low }}–{{ date_check.high }})</small>:</p>
+      <ul style="margin:.3rem 0 .5rem 1.1rem;padding:0">
+        {% for f in date_check.faces.values() if f.face_age is not none %}
+          <li>{{ f.person }}: {% if f.calendar_age is not none %}would be {{ f.calendar_age }}, {% endif %}looks about {{ f.face_age }}{% if f.birth_source == 'estimated' %} <small class="muted">(birth year estimated)</small>{% endif %}</li>
+        {% endfor %}
+      </ul>
+      <form method="post" action="/images/{{ img.id }}/date" class="row">
+        <input type="hidden" name="year" value="{{ date_check.suggested_year }}">
+        <button class="small primary">Set year to {{ date_check.suggested_year }}</button>
+        <small class="muted">Face ages are estimates – only fix it if it looks right to you.</small>
+      </form>
+    </section>
+    {% endif %}
+
     {% if img.faces %}
     <section class="card tight">
       <h3>People</h3>
       <div class="chips">
         {% for face in img.faces if not face.ignored %}
           {% if face.cluster and face.cluster.person %}
-            <a class="chip" href="/images?p={{ face.cluster.person_id }}">👤 {{ face.cluster.person.name }}</a>
+            <a class="chip" href="/images?p={{ face.cluster.person_id }}">👤 {{ face.cluster.person.name }}{% if face_ages.get(face.id) %} <span class="n" title="age in this photo{{ ' (face estimate)' if face_ages[face.id].startswith('~') }}">{{ face_ages[face.id] }}</span>{% endif %}</a>
           {% elif face.cluster_id %}
             <a class="chip" href="/clusters/{{ face.cluster_id }}">👥 Cluster #{{ face.cluster_id }}</a>
           {% else %}

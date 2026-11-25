@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import Response
 from sqlalchemy import func, select
 
-from ...db.models import Cluster, Face, Person, PersonReference
+from ...db.models import Cluster, Face, Image, Person, PersonReference
 from ...faces import clustering as C
+from ...faces.ages import analyse_person, estimate_birth_year, person_faces
 from ..common import back, ctx, ints, redirect, render
 
 router = APIRouter()
@@ -16,6 +19,7 @@ router = APIRouter()
 @router.get("/persons")
 def persons_overview(request: Request) -> Response:
     c = ctx(request)
+    today = date.today()
     with c.db.session() as s:
         rows = []
         for person in s.scalars(select(Person).order_by(Person.name)):
@@ -43,9 +47,14 @@ def persons_overview(request: Request) -> Response:
                 or 0
             )
             cover = clusters[0].cover_face_id if clusters else None
+            estimate = (
+                None if person.birth_year else estimate_birth_year(person_faces(s, person.id))
+            )
             rows.append(
                 {
                     "person": person,
+                    "age": (today.year - person.birth_year) if person.birth_year else None,
+                    "estimate": estimate if estimate and estimate.confidence != "low" else None,
                     "clusters": clusters,
                     "faces": sum(cl.face_count for cl in clusters),
                     "images": n_images,
@@ -80,6 +89,16 @@ def person_detail(request: Request, person_id: int) -> Response:
                 .order_by(Cluster.suggestion_score.desc())
             )
         )
+        ages = analyse_person(s, person)
+        image_dates = {
+            i: d
+            for i, d in s.execute(
+                select(Image.id, Image.date_source).where(
+                    Image.id.in_({f.image_id for f in ages.faces[:2000]})
+                )
+            )
+        }
+    timeline = _timeline(ages.faces)
     return render(
         request,
         "person.html",
@@ -87,7 +106,42 @@ def person_detail(request: Request, person_id: int) -> Response:
         clusters=clusters,
         refs=refs,
         suggested=suggested,
+        ages=ages,
+        timeline=timeline,
+        image_dates=image_dates,
     )
+
+
+def _timeline(faces, per_year: int = 4) -> list[tuple[str, list]]:
+    """Faces grouped by year ("through the years"), a few per year, best-dated first."""
+    by_year: dict[str, list] = {}
+    for f in faces:
+        key = str(f.recorded_at.year) if f.recorded_at else "undated"
+        by_year.setdefault(key, []).append(f)
+    out = []
+    for year in sorted(by_year, key=lambda y: (y == "undated", y)):
+        items = sorted(by_year[year], key=lambda f: (f.suspicious, -f.weight))[:per_year]
+        out.append((year, items))
+    return out
+
+
+@router.post("/persons/{person_id}/birth-year")
+def set_birth_year(request: Request, person_id: int, birth_year: str = Form("")) -> Response:
+    c = ctx(request)
+    value = birth_year.strip()
+    with c.db.write() as s:
+        person = s.get(Person, person_id)
+        if person is None:
+            return redirect(request, "/persons", err="Person not found.")
+        if not value:
+            person.birth_year = None
+            msg = "Birth year removed."
+        elif value.isdigit() and 1850 <= int(value) <= date.today().year:
+            person.birth_year = int(value)
+            msg = f"Birth year set to {value}."
+        else:
+            return redirect(request, f"/persons/{person_id}", err="Enter a year like 1988.")
+    return redirect(request, back(request, f"/persons/{person_id}"), msg=msg)
 
 
 @router.post("/persons/{person_id}/rename")

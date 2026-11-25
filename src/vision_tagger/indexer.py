@@ -424,8 +424,9 @@ class Indexer:
     def _apply_info(img: Image, info: Any) -> None:
         img.width = info.width
         img.height = info.height
-        img.recorded_at = info.recorded_at
-        img.date_source = info.date_source
+        if img.date_source != "manual":  # dates corrected by the user win over file metadata
+            img.recorded_at = info.recorded_at
+            img.date_source = info.date_source
         img.camera = info.camera
         img.meta = info.meta
 

@@ -26,6 +26,8 @@
           <button class="small" title="Rename">✓</button>
         </form>
         <small class="muted">{{ r.clusters | length }} cluster{{ 's' if r.clusters | length != 1 }} · {{ r.faces }} faces · {{ r.refs }} refs</small>
+        {% if r.age is not none %}<small>🎂 born {{ p.birth_year }} · {{ r.age }} years</small>
+        {% elif r.estimate %}<small class="muted" title="estimated from photo dates and face ages">🎂 born ~{{ r.estimate.year }} (est.)</small>{% endif %}
         <div class="row"><a class="btn small" href="/images?p={{ p.id }}">Images</a><a class="btn small" href="/persons/{{ p.id }}">Details</a></div>
       </div>
     </div>

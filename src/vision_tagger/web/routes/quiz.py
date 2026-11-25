@@ -13,6 +13,7 @@ from sqlalchemy import select
 
 from ...db.models import Cluster, Person
 from ...faces import clustering as C
+from ...faces.ages import check_image_date
 from ...faces.quiz import (
     ai_comment,
     can_quiz,
@@ -154,14 +155,30 @@ async def quiz_answer(request: Request) -> Response:
         state.best = max(state.best, state.streak)
     else:
         state.streak = 0
+    image_id = int(str(form.get("image_id") or 0) or 0)
     return _card(
         request,
         state,
         verdict=verdict,
         comment=ai_comment(verdict),
         face_id=face_ids[0],
-        image_id=int(str(form.get("image_id") or 0) or 0),
+        image_id=image_id,
+        age_line=_age_line(c, image_id, face_ids[0], verdict.answer.name),
     )
+
+
+def _age_line(c, image_id: int, face_id: int, name: str) -> str | None:
+    """'Anna was 7 here (2015).' - uses birth year + photo date, or the face estimate."""
+    with c.db.session() as s:
+        check = check_image_date(s, image_id) if image_id else None
+    info = check.faces.get(face_id) if check else None
+    if info is None:
+        return None
+    if info.calendar_age is not None and info.calendar_age >= 0 and not check.suspicious:
+        return f"🎂 {name} was {info.calendar_age} here ({check.recorded_year})."
+    if info.face_age is not None:
+        return f"🎂 {name} looks about {info.face_age} here."
+    return None
 
 
 @router.post("/quiz/fix")

@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from ...db.models import Cluster, Face, Image, ImageProperty, Person, VlmResult
 from ...export import export_images
+from ...faces.ages import age_label, check_image_date, correct_image_date
 from ...pipeline import control
 from ...query import (
     ImageFilter,
@@ -156,6 +157,12 @@ def image_detail(request: Request, image_id: int) -> Response:
         f = ImageFilter.from_params(request.query_params)
         # neighbours inside the current filter and sort order (keyset queries)
         prev_id, next_id = neighbours(s, f, image_id)
+        date_check = check_image_date(s, image_id)
+    face_ages = {}
+    if date_check is not None:
+        face_ages = {
+            fid: age_label(info, date_check.suspicious) for fid, info in date_check.faces.items()
+        }
     return render(
         request,
         "image.html",
@@ -165,7 +172,24 @@ def image_detail(request: Request, image_id: int) -> Response:
         f=f,
         prev_id=prev_id,
         next_id=next_id,
+        date_check=date_check,
+        face_ages=face_ages,
     )
+
+
+@router.post("/images/{image_id}/date")
+def set_date(
+    request: Request, image_id: int, year: str = Form(...), month: str = Form("")
+) -> Response:
+    c = ctx(request)
+    try:
+        with c.db.write() as s:
+            correct_image_date(
+                s, image_id, int(year), int(month) if month.strip().isdigit() else None
+            )
+    except (ValueError, LookupError) as exc:
+        return redirect(request, back(request, f"/images/{image_id}"), err=str(exc))
+    return redirect(request, back(request, f"/images/{image_id}"), msg=f"Date set to {year}.")
 
 
 @router.post("/images/{image_id}/requeue")
