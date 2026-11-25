@@ -183,3 +183,110 @@ def test_export_modes(db, settings, photos, tmp_path):
     exported = out / "b" / "x.jpg"
     assert exported.exists()
     assert Path(photos / "b" / "x.jpg").exists()  # originals untouched
+
+
+def test_folder_filter_is_literal(db):
+    with db.write() as s:
+        add_image(s, 1, folder="100%/done")
+        add_image(s, 2, folder="100x/done")
+        add_image(s, 3, folder="a_b")
+        add_image(s, 4, folder="axb/c")
+    assert len(ids_for(db, ImageFilter(folder="100%"))) == 1
+    assert len(ids_for(db, ImageFilter(folder="a_b"))) == 1
+    assert len(ids_for(db, ImageFilter(text="a_b"))) == 0  # file names don't contain it
+    assert len(ids_for(db, ImageFilter(folder="100%\\done"))) == 1  # backslashes accepted
+
+
+def test_large_id_lists_do_not_hit_sqlite_parameter_limit(db, tmp_path):
+    """Exports and face moves over more than 32,766 rows must work."""
+    import numpy as np
+    from sqlalchemy import insert
+
+    from vision_tagger.db.models import Face, Image
+    from vision_tagger.faces.vectors import to_blob
+
+    n = 33_000
+    with db.write() as s:
+        s.execute(
+            insert(Image),
+            [
+                {
+                    "path": f"/nowhere/{i}.jpg",
+                    "path_key": f"/nowhere/{i}.jpg",
+                    "root": "/nowhere",
+                    "rel_path": f"{i}.jpg",
+                    "folder": "",
+                    "filename": f"{i}.jpg",
+                    "ext": ".jpg",
+                    "size_bytes": 1,
+                    "mtime": 0.0,
+                    "phash": f"{i:016x}",
+                    "dhash": "",
+                    "date_source": "mtime",
+                    "metadata": {},
+                }
+                for i in range(n)
+            ],
+        )
+        emb = to_blob(np.ones(4, dtype=np.float32))
+        s.execute(
+            insert(Face),
+            [
+                {
+                    "image_id": i + 1,
+                    "x1": 0,
+                    "y1": 0,
+                    "x2": 1,
+                    "y2": 1,
+                    "det_score": 0.9,
+                    "embedding": emb,
+                    "face_px": 50,
+                }
+                for i in range(n)
+            ],
+        )
+    stats = export_images(db, ImageFilter(), tmp_path / "big")
+    assert stats.skipped == n  # files don't exist, but no "too many SQL variables"
+    with db.write() as s:
+        face_ids = list(s.scalars(select(Face.id)))
+        cid = C.split_faces(s, face_ids)
+        assert s.get(Cluster, cid).face_count == n
+
+
+def test_neighbours_match_gallery_order(db):
+    from vision_tagger.query import neighbours
+
+    with db.write() as s:
+        for i in range(8):
+            img = add_image(
+                s,
+                i,
+                recorded_at=None if i in (2, 5) else datetime(2020, 1, 1 + (i % 3)),
+                folder="x",
+            )
+            img.size_bytes = 100 * (i % 3)
+            img.filename = f"f{i % 4}.jpg"
+    for sort in ("date_desc", "date_asc", "name", "path", "size", "faces"):
+        f = ImageFilter(sort=sort)
+        with db.session() as s:
+            order = all_image_ids(s, f)
+            for pos, image_id in enumerate(order):
+                prev_id, next_id = neighbours(s, f, image_id)
+                assert prev_id == (order[pos - 1] if pos else None), (sort, pos)
+                assert next_id == (order[pos + 1] if pos + 1 < len(order) else None), (sort, pos)
+
+
+def test_folder_children(db):
+    from vision_tagger.query import folder_children
+
+    with db.write() as s:
+        add_image(s, 1, folder="2020/Italy")
+        add_image(s, 2, folder="2020/Italy/Rome")
+        add_image(s, 3, folder="2020/Spain")
+        add_image(s, 4, folder="2021")
+        add_image(s, 5, folder="")
+    with db.session() as s:
+        top = {name: n for _full, name, n in folder_children(s, ImageFilter())}
+        assert top == {"2020": 3, "2021": 1, "": 1}
+        sub = folder_children(s, ImageFilter(folder="2020"))
+        assert [(full, n) for full, _name, n in sub] == [("2020/Italy", 2), ("2020/Spain", 1)]

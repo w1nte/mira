@@ -6,14 +6,14 @@ import gc
 import logging
 from typing import ClassVar
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import func, select
 
 from ...db.models import Cluster, Face, Image
 from ...faces.analyzer import FaceAnalyzer
-from ...faces.clustering import recluster, update_cluster_stats
+from ...faces.clustering import recluster_db, replace_faces
 from ...faces.references import match_clusters
 from ...faces.vectors import to_blob
-from ...imaging import ensure_face_crop, face_crop_path, load_image
+from ...imaging import ensure_face_crop, load_image, remove_face_crops
 from .base import Stage
 from .versions import faces_stage_version
 
@@ -53,20 +53,13 @@ class FacesStage(Stage):
         # small, tightly cropped portraits are retried with a border (detector needs context)
         detected = self.analyzer.detect(im, pad_if_empty=max(im.size) < 640)
 
-        with self.db.write() as s:
-            old_ids = list(s.scalars(select(Face.id).where(Face.image_id == image_id)))
-            old_clusters = set(
-                s.scalars(select(Face.cluster_id).where(Face.image_id == image_id).distinct())
-            )
-            if old_ids:
-                s.execute(delete(Face).where(Face.image_id == image_id))
-                update_cluster_stats(s, [c for c in old_clusters if c is not None])
-            rows: list[tuple[Face, tuple[float, float, float, float]]] = []
-            for f in detected:
-                x1, y1, x2, y2 = f.bbox
-                face_px = round(min(x2 - x1, y2 - y1) * scale)
-                face = Face(
-                    image_id=image_id,
+        new_faces: list[Face] = []
+        boxes: list[tuple[float, float, float, float]] = []
+        for f in detected:
+            x1, y1, x2, y2 = f.bbox
+            face_px = round(min(x2 - x1, y2 - y1) * scale)
+            new_faces.append(
+                Face(
                     x1=x1 * scale,
                     y1=y1 * scale,
                     x2=x2 * scale,
@@ -81,13 +74,14 @@ class FacesStage(Stage):
                     face_px=face_px,
                     clusterable=f.det_score >= cfg.min_det_score and face_px >= cfg.min_face_px,
                 )
-                s.add(face)
-                rows.append((face, f.bbox))
-            s.flush()
-            created = [(face.id, bbox) for face, bbox in rows]
+            )
+            boxes.append(f.bbox)
+        # keeps cluster / manual assignment / ignore state of re-detected faces
+        with self.db.write() as s:
+            removed = replace_faces(s, image_id, new_faces)
+            created = [(face.id, bbox) for face, bbox in zip(new_faces, boxes, strict=True)]
 
-        for old in old_ids:
-            face_crop_path(self.settings.face_crops_dir, old).unlink(missing_ok=True)
+        remove_face_crops(self.settings.face_crops_dir, removed)
         for face_id, bbox in created:
             ensure_face_crop(self.settings.face_crops_dir, face_id, im, bbox, size=cfg.crop_size)
 
@@ -102,10 +96,12 @@ def cluster_and_match(db, settings, *, full: bool | None = None) -> str:
 
     ``full=None`` picks a full run when no clusters exist yet.
     """
-    with db.write() as s:
-        if full is None:
+    if full is None:
+        with db.session() as s:
             full = (s.scalar(select(func.count()).select_from(Cluster)) or 0) == 0
-        stats = recluster(s, settings.faces, full=full)
+    # DBSCAN runs without holding the write lock (see recluster_db)
+    stats = recluster_db(db, settings.faces, full=full)
+    with db.write() as s:
         matched = match_clusters(s, settings.faces)
     msg = f"{'full' if full else 'incremental'} clustering: {stats}; references: " + (
         f"{matched['assigned']} assigned, {matched['suggested']} suggested"

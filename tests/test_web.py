@@ -9,6 +9,7 @@ from sqlalchemy import select
 from vision_tagger.db.models import Cluster, Face, Person, PropertyAlias
 from vision_tagger.indexer import Indexer
 from vision_tagger.pipeline.runner import PipelineRunner
+from vision_tagger.pipeline.stages.embed import EmbedStage
 from vision_tagger.pipeline.stages.faces import FacesStage
 from vision_tagger.pipeline.stages.vlm import VlmStage
 from vision_tagger.vlm.backend import FakeBackend
@@ -30,6 +31,7 @@ def client(settings, photos, tmp_path):
         stages = {
             "faces": FacesStage(ctx.db, settings, analyzer=FakeAnalyzer()),
             "vlm": VlmStage(ctx.db, settings, backend=FakeBackend(Vocabulary.load())),
+            "embed": EmbedStage(ctx.db, settings, backend=FakeBackend(Vocabulary.load())),
         }
         PipelineRunner(ctx.db, settings, stages.__getitem__).run()
         c.ctx = ctx
@@ -170,3 +172,65 @@ def _wait_jobs(client, timeout=20):
     end = time.time() + timeout
     while client.ctx.jobs.busy and time.time() < end:
         time.sleep(0.05)
+
+
+def test_csrf_and_host_protection(client):
+    # foreign Origin -> blocked
+    r = client.post("/actions/stop", headers={"Origin": "http://evil.example"})
+    assert r.status_code == 403
+    r = client.post("/actions/stop", headers={"Sec-Fetch-Site": "cross-site"})
+    assert r.status_code == 403
+    r = client.post("/actions/stop", headers={"Origin": "null"})
+    assert r.status_code == 403
+    # DNS rebinding: unknown Host -> blocked, even for GET
+    assert client.get("/", headers={"Host": "evil.example"}).status_code == 400
+    assert client.get("/", headers={"Host": "127.0.0.1:8765"}).status_code == 200
+    # same-origin form posts keep working
+    r = client.post("/actions/stop", headers={"Origin": "http://testserver"})
+    assert r.status_code == 200
+    # redirects never leave the UI (no open redirect via Referer)
+    r = client.post(
+        "/actions/stop",
+        headers={"Referer": "http://evil.example/x"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 403  # foreign referer counts as cross-site
+    r = client.post(
+        "/references/999/delete",
+        headers={"Referer": "http://testserver/persons?msg=old"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303 and r.headers["location"].startswith("/persons")
+    assert "msg=old" not in r.headers["location"]
+
+
+def test_no_user_data_in_inline_js(client):
+    db = client.ctx.db
+    from vision_tagger.faces import clustering as C
+
+    with db.write() as s:
+        cid = s.scalar(select(Cluster.id))
+        C.name_cluster(s, cid, "O'Brien </script>")
+        pid = s.scalar(select(Person.id))
+    page = ok(client.get(f"/persons/{pid}")).text
+    assert "confirm(" not in page
+    assert 'data-confirm="Delete O&#39;Brien &lt;/script&gt;?' in page
+
+
+def test_search_page_and_results(client):
+    page = ok(client.get("/")).text
+    assert 'class="navsearch"' in page
+    page = ok(client.get("/search")).text
+    assert "Try:" in page
+    page = ok(client.get("/search?q=trees%20and%20cars&deep=1")).text
+    assert 'hx-get="/search/results?q=trees+and+cars&amp;deep=1"' in page
+    html = ok(client.get("/search/results?q=trees and cars&deep=1")).text
+    assert "basic mode" in html  # fake backend: keyword interpretation
+    assert "/media/thumb/" in html
+    assert ok(client.get("/search/results?q=")).text == ""
+    r = client.post(
+        "/search/export",
+        data={"ids": "1,2", "target": "/tmp/x", "q": "x"},
+        headers={"Origin": "http://evil.example"},
+    )
+    assert r.status_code == 403  # CSRF protection also covers the search export

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import contextlib
 import re
+import time
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -31,6 +33,7 @@ __all__ = [
     "face_crop_path",
     "load_image",
     "read_image_info",
+    "remove_face_crops",
     "resize_max",
     "thumbnail_path",
     "to_rgb",
@@ -310,6 +313,30 @@ def thumbnail_path(thumbs_dir: Path, image_id: int, size: int) -> Path:
     return _sharded(thumbs_dir, image_id, f"_{size}.webp")
 
 
+def _atomic_save(im: Image.Image, target: Path, fmt: str, **params: object) -> None:
+    """Save via a unique temp file and an atomic replace.
+
+    Concurrent requests for the same thumbnail each use their own temp name; on Windows a
+    replace can fail while another process (viewer, antivirus) holds the target, so retry
+    briefly and accept the existing file if one appeared meanwhile.
+    """
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_name(f"{target.stem}.{uuid.uuid4().hex}.tmp")
+    im.save(tmp, fmt, **params)
+    for attempt in range(5):
+        try:
+            tmp.replace(target)
+            return
+        except PermissionError:
+            if attempt == 4:
+                break
+            time.sleep(0.05 * (attempt + 1))
+    with contextlib.suppress(OSError):
+        tmp.unlink()
+    if not target.exists():
+        raise PermissionError(f"cannot write {target}")
+
+
 def ensure_thumbnail(thumbs_dir: Path, image_id: int, source: str | Path, size: int) -> Path:
     target = thumbnail_path(thumbs_dir, image_id, size)
     if target.exists():
@@ -318,12 +345,9 @@ def ensure_thumbnail(thumbs_dir: Path, image_id: int, source: str | Path, size: 
                 return target
         except OSError:
             return target
-    target.parent.mkdir(parents=True, exist_ok=True)
     im = load_image(source, max_px=size * 2)
     im.thumbnail((size, size), Image.Resampling.LANCZOS)
-    tmp = target.with_suffix(".tmp")
-    im.save(tmp, "WEBP", quality=80, method=4)
-    tmp.replace(target)
+    _atomic_save(im, target, "WEBP", quality=80, method=4)
     return target
 
 
@@ -341,7 +365,6 @@ def ensure_face_crop(
 ) -> Path:
     """Save a square crop around ``bbox`` (in ``image`` coordinates)."""
     target = face_crop_path(crops_dir, face_id)
-    target.parent.mkdir(parents=True, exist_ok=True)
     x1, y1, x2, y2 = bbox
     cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
     half = max(x2 - x1, y2 - y1) * (0.5 + margin)
@@ -353,5 +376,12 @@ def ensure_face_crop(
     )
     crop = image.crop(box)
     crop.thumbnail((size, size), Image.Resampling.LANCZOS)
-    crop.save(target, "WEBP", quality=85)
+    _atomic_save(crop, target, "WEBP", quality=85)
     return target
+
+
+def remove_face_crops(crops_dir: Path, face_ids: list[int]) -> None:
+    """Delete cached crops; a locked file (Windows) is left behind instead of failing."""
+    for face_id in face_ids:
+        with contextlib.suppress(OSError):
+            face_crop_path(crops_dir, face_id).unlink(missing_ok=True)

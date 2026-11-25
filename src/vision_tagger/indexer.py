@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+import posixpath
 from collections.abc import Callable, Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
@@ -16,12 +17,12 @@ from pathlib import Path
 from typing import Any
 
 import imagehash
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, exists, insert, literal, select, update
 
 from .config import Settings
 from .db.models import (
+    AppSetting,
     DuplicateFile,
-    Face,
     Image,
     ImageProperty,
     StageStatus,
@@ -30,7 +31,9 @@ from .db.models import (
     utcnow,
 )
 from .db.session import Database
+from .db.util import chunked
 from .derived import metadata_properties
+from .faces.clustering import delete_image_faces
 from .imaging import read_image_info
 
 log = logging.getLogger(__name__)
@@ -39,6 +42,40 @@ log = logging.getLogger(__name__)
 def path_key(path: str | Path) -> str:
     """Normalised key used for uniqueness (case-insensitive on Windows)."""
     return os.path.normcase(os.path.abspath(os.fspath(path)))
+
+
+ROOTS_KEY = "image_roots"
+
+
+def stored_roots(db: Database, settings: Settings) -> list[str]:
+    """Image roots last used in the web UI, falling back to ``paths.image_roots``."""
+    with db.session() as s:
+        stored = s.get(AppSetting, ROOTS_KEY)
+        if stored and stored.value:
+            return [str(r) for r in stored.value]
+    return [str(p) for p in settings.paths.image_roots]
+
+
+def hash_distance(a: str, b: str) -> int:
+    if not a or not b:
+        return 0
+    return (int(a, 16) ^ int(b, 16)).bit_count()
+
+
+def find_duplicate(
+    candidates: Iterable[Image],
+    phash: str,
+    dhash: str,
+    max_dist: int,
+    exclude_id: int | None = None,
+) -> Image | None:
+    """The indexed image this content duplicates: same pHash and dHash within ``max_dist``."""
+    for img in candidates:
+        if img.id is not None and img.id == exclude_id:
+            continue
+        if img.phash == phash and hash_distance(img.dhash, dhash) <= max_dist:
+            return img
+    return None
 
 
 @dataclass
@@ -74,8 +111,17 @@ class _Candidate:
 class _Result:
     cand: _Candidate
     phash: str | None = None
+    dhash: str = ""
     info: Any = None
     error: str | None = None
+
+
+def _is_junction(entry: os.DirEntry[str]) -> bool:
+    fn = getattr(entry, "is_junction", None)  # Python >= 3.12
+    try:
+        return bool(fn()) if fn is not None else False
+    except OSError:
+        return False
 
 
 def iter_image_files(
@@ -85,13 +131,24 @@ def iter_image_files(
     exclude: Iterable[Path] = (),
     skip_hidden: bool = True,
     follow_symlinks: bool = False,
+    skip_dirs: Iterable[str] = (),
 ) -> Iterator[tuple[str, os.stat_result]]:
-    """Yield ``(path, stat)`` for every image file below ``root`` (iteratively, no recursion)."""
+    """Yield ``(path, stat)`` for every image file below ``root`` (iteratively, no recursion).
+
+    Directory junctions are only followed together with symlinks, and every real directory is
+    visited at most once, so link loops cannot make the scan run forever.
+    """
     exts = {e.lower() if e.startswith(".") else f".{e.lower()}" for e in extensions}
     excluded = {path_key(p) for p in exclude}
+    skipped = {d.casefold() for d in skip_dirs}
+    visited: set[str] = set()
     stack = [os.fspath(root)]
     while stack:
         current = stack.pop()
+        real = os.path.normcase(os.path.realpath(current))
+        if real in visited:
+            continue
+        visited.add(real)
         try:
             with os.scandir(current) as it:
                 entries = sorted(it, key=lambda e: e.name)
@@ -104,6 +161,10 @@ def iter_image_files(
                 continue
             try:
                 if entry.is_dir(follow_symlinks=follow_symlinks):
+                    if entry.name.casefold() in skipped:
+                        continue
+                    if not follow_symlinks and _is_junction(entry):
+                        continue
                     if path_key(entry.path) not in excluded:
                         subdirs.append(entry.path)
                     continue
@@ -137,7 +198,9 @@ class Indexer:
     def run(
         self, roots: Iterable[str | Path] | None = None, *, mark_missing: bool = True
     ) -> IndexStats:
-        root_paths = [Path(r).expanduser() for r in (roots or self.settings.paths.image_roots)]
+        if roots is None:
+            roots = stored_roots(self.db, self.settings)
+        root_paths = [Path(r).expanduser() for r in roots]
         stats = IndexStats(roots=[os.path.abspath(r) for r in root_paths])
         if not root_paths:
             stats.done = True
@@ -157,6 +220,7 @@ class Indexer:
                 exclude=[self.settings.data_dir],
                 skip_hidden=self.settings.index.skip_hidden,
                 follow_symlinks=self.settings.index.follow_symlinks,
+                skip_dirs=self.settings.index.skip_dirs,
             ):
                 stats.found += 1
                 key = path_key(path)
@@ -208,8 +272,9 @@ class Indexer:
             info = read_image_info(cand.path, cand.mtime)
             assert info.image is not None
             ph = str(imagehash.phash(info.image))
+            dh = str(imagehash.dhash(info.image))
             info.image = None  # free memory early
-            return _Result(cand, phash=ph, info=info)
+            return _Result(cand, phash=ph, dhash=dh, info=info)
         except Exception as exc:
             return _Result(cand, error=f"{type(exc).__name__}: {exc}")
 
@@ -224,20 +289,26 @@ class Indexer:
         if not ok:
             return
 
+        max_dist = self.settings.index.dhash_max_distance
         with self.db.write() as s:
-            hashes = {r.phash for r in ok}
-            keys = {r.cand.key for r in ok}
-            by_hash: dict[str, Image] = {
-                img.phash: img for img in s.scalars(select(Image).where(Image.phash.in_(hashes)))
-            }
-            by_key: dict[str, Image] = {
-                img.path_key: img
-                for img in s.scalars(select(Image).where(Image.path_key.in_(keys)))
-            }
-            dup_by_key: dict[str, DuplicateFile] = {
-                d.path_key: d
-                for d in s.scalars(select(DuplicateFile).where(DuplicateFile.path_key.in_(keys)))
-            }
+            by_hash: dict[str, list[Image]] = {}
+            for part in chunked(sorted({r.phash for r in ok if r.phash})):
+                for img in s.scalars(select(Image).where(Image.phash.in_(part))):
+                    by_hash.setdefault(img.phash, []).append(img)
+            keys = sorted({r.cand.key for r in ok})
+            by_key: dict[str, Image] = {}
+            dup_by_key: dict[str, DuplicateFile] = {}
+            for part in chunked(keys):
+                by_key.update(
+                    (img.path_key, img)
+                    for img in s.scalars(select(Image).where(Image.path_key.in_(part)))
+                )
+                dup_by_key.update(
+                    (d.path_key, d)
+                    for d in s.scalars(
+                        select(DuplicateFile).where(DuplicateFile.path_key.in_(part))
+                    )
+                )
 
             for r in ok:
                 c, info = r.cand, r.info
@@ -249,7 +320,7 @@ class Indexer:
                     stats.updated += 1
                     continue
 
-                owner = by_hash.get(r.phash)
+                owner = find_duplicate(by_hash.get(r.phash, []), r.phash, r.dhash, max_dist)
                 if owner is not None:
                     if owner.path_key != c.key and not os.path.exists(owner.path):
                         # The original file moved: re-point the image instead of duplicating.
@@ -276,7 +347,7 @@ class Indexer:
                 if stale_dup is not None:  # file was a duplicate before, content changed
                     s.delete(stale_dup)
                     s.flush()
-                img = Image(phash=r.phash, missing=False)
+                img = Image(phash=r.phash, dhash=r.dhash, missing=False)
                 self._apply_location(img, c)
                 self._apply_info(img, info)
                 img.stages = [
@@ -285,16 +356,46 @@ class Indexer:
                 img.properties = _metadata_rows(img)
                 s.add(img)
                 s.flush()
-                by_hash[r.phash] = img
+                by_hash.setdefault(r.phash, []).append(img)
                 by_key[c.key] = img
                 stats.new += 1
 
-    def _update_existing(self, s: Any, img: Image, r: _Result, by_hash: dict[str, Image]) -> None:
+    def _update_existing(
+        self, s: Any, img: Image, r: _Result, by_hash: dict[str, list[Image]]
+    ) -> None:
         assert r.phash is not None
         self._apply_info(img, r.info)
         img.size_bytes = r.cand.size
         img.mtime = r.cand.mtime
         img.missing = False
+        max_dist = self.settings.index.dhash_max_distance
+        content_changed = r.phash != img.phash or hash_distance(r.dhash, img.dhash) > max_dist
+        other = find_duplicate(
+            by_hash.get(r.phash, []), r.phash, r.dhash, max_dist, exclude_id=img.id
+        )
+        if content_changed and other is not None:
+            # New content equals another indexed image; keep the row but leave its hashes.
+            log.info("%s now duplicates image %s", r.cand.path, other.id)
+            content_changed = False
+        if content_changed:
+            if img in by_hash.get(img.phash, []):
+                by_hash[img.phash].remove(img)
+            img.phash, img.dhash = r.phash, r.dhash
+            by_hash.setdefault(r.phash, []).append(img)
+            # Results are stale -> drop them (faces with consistent cluster stats) and re-queue.
+            delete_image_faces(s, img.id, self.settings.face_crops_dir)
+            s.execute(
+                delete(ImageProperty).where(
+                    ImageProperty.image_id == img.id, ImageProperty.source != "exif"
+                )
+            )
+            s.execute(delete(VlmResult).where(VlmResult.image_id == img.id))
+            s.execute(
+                update(StageStatus)
+                .where(StageStatus.image_id == img.id)
+                .values(status=Status.PENDING, attempts=0, last_error=None, stage_version=None)
+            )
+        # Metadata properties are rebuilt last, so no bulk delete can remove them again.
         s.execute(
             delete(ImageProperty).where(
                 ImageProperty.image_id == img.id, ImageProperty.source == "exif"
@@ -303,33 +404,16 @@ class Indexer:
         for prop in _metadata_rows(img):
             prop.image_id = img.id
             s.add(prop)
-        if r.phash == img.phash:
-            return
-        if r.phash in by_hash and by_hash[r.phash].id != img.id:
-            # New content equals another indexed image; keep the row but leave its hash.
-            log.info("%s now duplicates image %s", r.cand.path, by_hash[r.phash].id)
-            return
-        by_hash.pop(img.phash, None)
-        img.phash = r.phash
-        by_hash[r.phash] = img
-        # Content changed: results are stale -> drop them and re-queue all stages.
-        s.execute(delete(Face).where(Face.image_id == img.id))
-        s.execute(delete(ImageProperty).where(ImageProperty.image_id == img.id))
-        s.execute(delete(VlmResult).where(VlmResult.image_id == img.id))
-        s.execute(
-            update(StageStatus)
-            .where(StageStatus.image_id == img.id)
-            .values(status=Status.PENDING, attempts=0, last_error=None, stage_version=None)
-        )
 
     @staticmethod
     def _apply_location(img: Image, c: _Candidate) -> None:
-        rel = os.path.relpath(c.path, c.root)
+        # rel_path / folder always use "/" so folder filters work the same on every OS
+        rel = os.path.relpath(c.path, c.root).replace(os.sep, "/")
         img.path = c.path
         img.path_key = c.key
         img.root = c.root
         img.rel_path = rel
-        img.folder = os.path.dirname(rel)
+        img.folder = posixpath.dirname(rel)
         img.filename = os.path.basename(c.path)
         img.ext = os.path.splitext(c.path)[1].lower()
         img.size_bytes = c.size
@@ -346,15 +430,75 @@ class Indexer:
         img.meta = info.meta
 
     def _mark_missing(self, roots: list[str]) -> int:
-        missing = 0
-        with self.db.write() as s:
-            for img in s.scalars(select(Image).where(Image.root.in_(roots))):
-                exists = os.path.exists(img.path)
-                if img.missing == exists:  # state changed
-                    img.missing = not exists
-                if not exists:
-                    missing += 1
-        return missing
+        """Flag vanished files without holding the write lock while touching the disk.
+
+        If an image's file is gone but one of its duplicates still exists, the image is
+        re-pointed to that copy. Duplicate records whose file vanished are removed.
+        """
+        with self.db.session() as s:
+            images = s.execute(
+                select(Image.id, Image.path, Image.missing).where(Image.root.in_(roots))
+            ).all()
+            dups = s.execute(
+                select(
+                    DuplicateFile.id,
+                    DuplicateFile.image_id,
+                    DuplicateFile.path,
+                    DuplicateFile.path_key,
+                    DuplicateFile.size_bytes,
+                    DuplicateFile.mtime,
+                )
+            ).all()
+        # --- disk checks, no transaction open
+        image_exists = {i: os.path.exists(p) for i, p, _m in images}
+        dup_exists = {d[0]: os.path.exists(d[2]) for d in dups}
+        dups_by_image: dict[int, list[Any]] = {}
+        for d in dups:
+            if dup_exists[d[0]]:
+                dups_by_image.setdefault(d[1], []).append(d)
+        promote: dict[int, Any] = {}
+        for image_id, _path, _missing in images:
+            if not image_exists[image_id] and dups_by_image.get(image_id):
+                promote[image_id] = dups_by_image[image_id][0]
+        vanished_dups = [d_id for d_id, ok in dup_exists.items() if not ok]
+        flag_changes = [
+            (i, not image_exists[i])
+            for i, _p, was_missing in images
+            if i not in promote and was_missing == image_exists[i]
+        ]
+        # --- apply in short write transactions
+        for part in chunked(vanished_dups):
+            with self.db.write() as s:
+                s.execute(delete(DuplicateFile).where(DuplicateFile.id.in_(part)))
+        for part in chunked(flag_changes, 500):
+            with self.db.write() as s:
+                for image_id, missing in part:
+                    s.execute(update(Image).where(Image.id == image_id).values(missing=missing))
+        for part in chunked(list(promote.items()), 200):
+            with self.db.write() as s:
+                for image_id, d in part:
+                    img = s.get(Image, image_id)
+                    dup = s.get(DuplicateFile, d[0])
+                    if img is None or dup is None:
+                        continue
+                    root = _root_for(d[2], roots)
+                    s.delete(dup)
+                    s.flush()
+                    self._apply_location(img, _Candidate(root, d[2], d[3], d[4], d[5]))
+                    img.missing = False
+                    log.info("image %s moved to its duplicate %s", image_id, d[2])
+        return sum(1 for i, _p, _m in images if not image_exists[i] and i not in promote)
+
+
+def _root_for(path: str, roots: list[str]) -> str:
+    """The scan root that contains ``path`` (the deepest one), else its directory."""
+    key = os.path.normcase(path)
+    best = ""
+    for root in roots:
+        r = os.path.normcase(root)
+        if key.startswith(r.rstrip("\\/") + os.sep) and len(r) > len(best):
+            best = root
+    return best or os.path.dirname(path)
 
 
 def _metadata_rows(img: Image) -> list[ImageProperty]:
@@ -368,11 +512,18 @@ def ensure_stage_rows(db: Database, stages: Iterable[str]) -> int:
     """Create missing ``stage_status`` rows (e.g. after a new stage was enabled)."""
     created = 0
     with db.write() as s:
-        image_ids = list(s.scalars(select(Image.id)))
         for stage in stages:
-            have = set(s.scalars(select(StageStatus.image_id).where(StageStatus.stage == stage)))
-            for image_id in image_ids:
-                if image_id not in have:
-                    s.add(StageStatus(image_id=image_id, stage=stage, status=Status.PENDING))
-                    created += 1
+            missing = select(Image.id, literal(stage), literal(Status.PENDING), literal(0)).where(
+                ~exists(
+                    select(StageStatus.image_id).where(
+                        StageStatus.image_id == Image.id, StageStatus.stage == stage
+                    )
+                )
+            )
+            res = s.execute(
+                insert(StageStatus).from_select(
+                    ["image_id", "stage", "status", "attempts"], missing
+                )
+            )
+            created += res.rowcount or 0
     return created

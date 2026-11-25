@@ -12,8 +12,8 @@ from ...export import export_images
 from ...pipeline import control
 from ...query import (
     ImageFilter,
-    all_image_ids,
     count_images,
+    neighbours,
     page_images,
     person_counts,
     property_counts,
@@ -62,7 +62,7 @@ def gallery(request: Request) -> Response:
     with c.db.session() as s:
         total = count_images(s, f)
         images = page_images(s, f, 0, size)
-        facets_all = property_counts(s, f)
+        facets_all = property_counts(s, f, keys=FACET_KEYS)
         facets = {k: facets_all[k][:12] for k in FACET_KEYS if k in facets_all}
         people = person_counts(s, f)[:30]
         all_persons = list(s.scalars(select(Person).order_by(Person.name)))
@@ -154,11 +154,8 @@ def image_detail(request: Request, image_id: int) -> Response:
         for p in sorted(img.properties, key=lambda p: (p.key, -(p.confidence or 0))):
             props.setdefault(p.key, []).append(p)
         f = ImageFilter.from_params(request.query_params)
-        # neighbours inside the current filter (for prev/next navigation)
-        ids = all_image_ids(s, f)
-    pos = ids.index(image_id) if image_id in ids else -1
-    prev_id = ids[pos - 1] if pos > 0 else None
-    next_id = ids[pos + 1] if 0 <= pos < len(ids) - 1 else None
+        # neighbours inside the current filter and sort order (keyset queries)
+        prev_id, next_id = neighbours(s, f, image_id)
     return render(
         request,
         "image.html",

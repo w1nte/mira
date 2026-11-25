@@ -17,7 +17,7 @@ from ..db.session import Database
 from ..indexer import ensure_stage_rows
 from ..pipeline import control
 from ..pipeline.runner import BackgroundRunner, PipelineRunner
-from ..pipeline.stages import STAGE_NAMES, default_stage_factory
+from ..pipeline.stages import STAGE_NAMES, default_stage_factory, stage_versions
 
 log = logging.getLogger(__name__)
 
@@ -81,15 +81,41 @@ class AppContext:
         self.db.create_all()
         ensure_stage_rows(self.db, settings.pipeline.stages or list(STAGE_NAMES))
         stale_after = max(30.0, settings.pipeline.heartbeat_seconds * 6)
-        if not control.is_runner_alive(self.db, stale_after=stale_after):
-            recovered = control.recover_stale(self.db)
-            if recovered:
-                log.info("recovered %d interrupted items from a previous run", recovered)
+        # atomic: does nothing while another process (e.g. a CLI run) sends heartbeats
+        recovered = control.recover_stale(self.db, stale_after=stale_after)
+        if recovered:
+            log.info("recovered %d interrupted items from a previous run", recovered)
         self.runner = BackgroundRunner(
             PipelineRunner(self.db, settings, default_stage_factory(self.db, settings))
         )
         self.jobs = JobManager()
         self._health: tuple[float, dict[str, Any]] = (0.0, {})
+        self._versions: tuple[float, dict[str, str]] = (-1.0, {})
+        self._search: Any = None
+        self._search_lock = threading.Lock()
+
+    @property
+    def search(self) -> Any:
+        """The (lazily created) natural-language search engine."""
+        with self._search_lock:
+            if self._search is None:
+                from ..search.engine import SearchEngine
+
+                self._search = SearchEngine(self.db, self.settings)
+            return self._search
+
+    def stage_versions(self) -> dict[str, str]:
+        """Current stage versions; re-read only when the vocabulary file changes."""
+        from ..vlm.schema import default_vocabulary_path
+
+        path = self.settings.vlm.vocabulary_file or default_vocabulary_path()
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            mtime = 0.0
+        if mtime != self._versions[0] or not self._versions[1]:
+            self._versions = (mtime, stage_versions(self.settings))
+        return self._versions[1]
 
     def vlm_health(self, max_age: float = 30.0) -> dict[str, Any]:
         ts, cached = self._health
@@ -98,6 +124,7 @@ class AppContext:
         from ..vlm.backend import make_backend
         from ..vlm.schema import Vocabulary
 
+        backend = None
         try:
             backend = make_backend(
                 self.settings.vlm, Vocabulary.load(self.settings.vlm.vocabulary_file)
@@ -105,6 +132,9 @@ class AppContext:
             health = backend.health()
         except Exception as exc:  # pragma: no cover - defensive
             health = {"ok": False, "error": str(exc)}
+        finally:
+            if backend is not None:
+                backend.close()
         self._health = (time.monotonic(), health)
         return health
 

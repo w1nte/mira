@@ -64,7 +64,10 @@ class Image(Base):
     height: Mapped[int | None] = mapped_column(Integer)
     recorded_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
     date_source: Mapped[str] = mapped_column(String(32), default="mtime")
-    phash: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    # Duplicate = same pHash AND nearly the same dHash (see indexer.find_duplicate); the pHash
+    # alone collides for distinct but similar images (blank pages, same-template forms).
+    phash: Mapped[str] = mapped_column(String(32), index=True)
+    dhash: Mapped[str] = mapped_column(String(32), index=True, default="")
     # "metadata" is reserved on declarative classes, hence the attribute name ``meta``.
     meta: Mapped[dict[str, Any]] = mapped_column("metadata", JSON, default=dict)
     camera: Mapped[str | None] = mapped_column(Text, index=True)
@@ -279,3 +282,18 @@ class VlmResult(Base):
     caption: Mapped[str | None] = mapped_column(Text)
     duration_s: Mapped[float | None] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class ImageEmbedding(Base):
+    """Text embedding of an image's search document (see ``search.document``)."""
+
+    __tablename__ = "image_embeddings"
+
+    image_id: Mapped[int] = mapped_column(
+        ForeignKey("images.id", ondelete="CASCADE"), primary_key=True
+    )
+    model: Mapped[str] = mapped_column(Text)
+    dim: Mapped[int] = mapped_column(Integer)
+    vector: Mapped[bytes] = mapped_column(LargeBinary)  # float16, L2-normalised
+    doc_hash: Mapped[str] = mapped_column(String(40))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)

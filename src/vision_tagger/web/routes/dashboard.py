@@ -9,30 +9,24 @@ from fastapi.responses import Response
 from sqlalchemy import func, select
 
 from ...db.models import AppSetting, Cluster, DuplicateFile, Face, Image, Person, Run, utcnow
-from ...indexer import Indexer
+from ...indexer import ROOTS_KEY, Indexer, stored_roots
 from ...pipeline import control
-from ...pipeline.stages import STAGE_NAMES, stage_versions
+from ...pipeline.stages import STAGE_NAMES
 from ..common import ctx, redirect, render
 from ..context import Job
 
 router = APIRouter()
 
-ROOTS_KEY = "image_roots"
-
 
 def _roots(request: Request) -> list[str]:
     c = ctx(request)
-    with c.db.session() as s:
-        stored = s.get(AppSetting, ROOTS_KEY)
-        if stored and stored.value:
-            return list(stored.value)
-    return [str(p) for p in c.settings.paths.image_roots]
+    return stored_roots(c.db, c.settings)
 
 
 def status_context(request: Request) -> dict[str, Any]:
     c = ctx(request)
     counts = control.stage_counts(c.db)
-    versions = stage_versions(c.settings)
+    versions = c.stage_versions()
     outdated = control.outdated_counts(c.db, versions)
     ctrl = control.get_control(c.db)
     runs = control.latest_runs(c.db, limit=6)
@@ -174,7 +168,7 @@ def change_state(request: Request, state: str) -> Response:
         return redirect(request, "/", msg=f"{n} items skipped.")
     if state == "requeue-outdated":
         stage = request.query_params.get("stage", "")
-        versions = stage_versions(c.settings)
+        versions = c.stage_versions()
         if stage not in versions:
             return redirect(request, "/", err="Unknown stage.")
         n = control.requeue_outdated(c.db, stage, versions[stage])

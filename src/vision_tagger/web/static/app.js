@@ -15,6 +15,21 @@
   });
 })();
 
+// Confirmation dialogs: <form data-confirm="..."> or <button data-confirm="...">.
+// The text lives in a data attribute so user data never ends up inside JavaScript code.
+document.addEventListener(
+  "submit",
+  function (ev) {
+    const msg =
+      (ev.submitter && ev.submitter.dataset.confirm) || ev.target.dataset.confirm;
+    if (msg && !window.confirm(msg)) {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+    }
+  },
+  true
+);
+
 // Helpers used from Alpine components.
 window.vt = {
   count(scope) {

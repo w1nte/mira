@@ -48,12 +48,19 @@ class IndexConfig(BaseModel):
     commit_every: int = 200
     follow_symlinks: bool = False
     skip_hidden: bool = True
+    # A file is a duplicate if its pHash equals an indexed one AND the dHash differs in at
+    # most this many bits (re-encodes / resized copies differ by 0-4 bits).
+    dhash_max_distance: int = 5
+    # Folder names that are never scanned (Windows system folders on drive roots).
+    skip_dirs: list[str] = Field(
+        default_factory=lambda: ["$RECYCLE.BIN", "System Volume Information", "$WinREAgent"]
+    )
 
 
 class PipelineConfig(BaseModel):
     batch_size: int = 16
     max_attempts: int = 3
-    stages: list[str] = Field(default_factory=lambda: ["faces", "vlm"])
+    stages: list[str] = Field(default_factory=lambda: ["faces", "vlm", "embed"])
     heartbeat_seconds: float = 5.0
 
 
@@ -96,6 +103,26 @@ class VlmConfig(BaseModel):
     synonyms_file: Path | None = None
 
 
+class SearchWeights(BaseModel):
+    semantic: float = 0.55
+    properties: float = 0.35
+    keywords: float = 0.10
+
+
+class SearchConfig(BaseModel):
+    # LLM used to interpret queries / re-rank results; defaults to vlm.model (text-only use)
+    model: str | None = None
+    embed_model: str = "nomic-embed-text"
+    # nomic-embed-text expects task prefixes; set both to "" for models that don't (bge-m3)
+    query_prefix: str = "search_query: "
+    document_prefix: str = "search_document: "
+    embed_batch: int = 16
+    result_limit: int = 200
+    rerank_top: int = 40
+    rerank_batch: int = 20
+    weights: SearchWeights = Field(default_factory=SearchWeights)
+
+
 class DerivedConfig(BaseModel):
     work_path_keywords: list[str] = Field(
         default_factory=lambda: [
@@ -125,6 +152,9 @@ class WebConfig(BaseModel):
     port: int = 8765
     page_size: int = 120
     thumb_size: int = 320
+    # Extra Host names accepted by the UI (e.g. the machine's LAN name when host="0.0.0.0").
+    # Requests for any other host are rejected to block DNS-rebinding attacks.
+    allowed_hosts: list[str] = Field(default_factory=list)
 
 
 _config_file: Path | None = None
@@ -153,6 +183,7 @@ class Settings(BaseSettings):
     faces: FacesConfig = Field(default_factory=FacesConfig)
     vlm: VlmConfig = Field(default_factory=VlmConfig)
     derived: DerivedConfig = Field(default_factory=DerivedConfig)
+    search: SearchConfig = Field(default_factory=SearchConfig)
     export: ExportConfig = Field(default_factory=ExportConfig)
     web: WebConfig = Field(default_factory=WebConfig)
 

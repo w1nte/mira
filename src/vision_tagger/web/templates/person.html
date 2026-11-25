@@ -12,7 +12,7 @@
     <form method="post" action="/persons/{{ person.id }}/rename" class="row">
       <input type="text" name="name" value="{{ person.name }}"><button>Rename</button>
     </form>
-    <form method="post" action="/persons/{{ person.id }}/delete" onsubmit="return confirm('Delete {{ person.name }}? Clusters stay but become unnamed.')"><button class="danger">Delete</button></form>
+    <form method="post" action="/persons/{{ person.id }}/delete" data-confirm="Delete {{ person.name }}? Clusters stay but become unnamed."><button class="danger">Delete</button></form>
   </div>
 </div>
 

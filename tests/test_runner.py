@@ -70,7 +70,7 @@ def test_full_run_marks_done_and_errors(indexed, settings):
         "faces": FakeStage(indexed, settings, fail_ids={3}),
         "vlm": FakeStage(indexed, settings, name="vlm"),
     }
-    summary = PipelineRunner(indexed, settings, stages.__getitem__).run()
+    summary = PipelineRunner(indexed, settings, stages.__getitem__).run(["faces", "vlm"])
     assert summary.status == "completed"
     assert summary.processed == {"faces": 10, "vlm": 10}
     assert summary.failed == {"faces": 1, "vlm": 0}
@@ -193,3 +193,75 @@ def test_concurrent_stage(indexed, settings):
     summary = PipelineRunner(indexed, settings, lambda _n: stage).run(["faces"], batch_size=5)
     assert summary.processed["faces"] == 10 and summary.failed["faces"] == 1
     assert statuses(indexed)[4] == Status.ERROR
+
+
+def test_heartbeat_continues_during_long_image(indexed, settings):
+    """A single slow image must not make the run look dead (other processes would recover it)."""
+    settings.pipeline.heartbeat_seconds = 0.1
+    seen = []
+
+    def on_process(_image_id):
+        seen.append(control.get_control(indexed).heartbeat_at)
+        time.sleep(0.6)
+        seen.append(control.get_control(indexed).heartbeat_at)
+
+    stage = FakeStage(indexed, settings, on_process=on_process)
+    PipelineRunner(indexed, settings, lambda _n: stage).run(["faces"], limit=1)
+    assert seen[1] > seen[0]
+
+
+def test_try_acquire_refuses_live_runner(indexed, settings):
+    run_id, _ = control.try_acquire(indexed, ["faces"], 4, None, stale_after=30)
+    with pytest.raises(RunnerBusyError):
+        control.try_acquire(indexed, ["faces"], 4, None, stale_after=30)
+    # a stale heartbeat (crashed runner) is taken over
+    with indexed.write() as s:
+        from datetime import timedelta
+
+        from vision_tagger.db.models import Control, utcnow
+
+        s.get(Control, 1).heartbeat_at = utcnow() - timedelta(minutes=5)
+    new_id, _ = control.try_acquire(indexed, ["faces"], 4, None, stale_after=30)
+    assert new_id != run_id
+    # recover_stale with a fresh heartbeat leaves the live run alone
+    assert control.recover_stale(indexed, stale_after=30) == 0
+    assert control.get_control(indexed).active_run_id == new_id
+
+
+def test_finished_old_run_does_not_reset_newer_run(indexed, settings):
+    from vision_tagger.pipeline.runner import RunSummary
+
+    runner = PipelineRunner(indexed, settings, lambda _n: FakeStage(indexed, settings))
+    old_id, _ = control.try_acquire(indexed, ["faces"], 4, None, stale_after=30)
+    with indexed.write() as s:
+        from vision_tagger.db.models import Control
+
+        s.get(Control, 1).heartbeat_at = None  # old runner died
+    new_id, _ = control.try_acquire(indexed, ["faces"], 4, None, stale_after=30)
+    runner._finish_run(RunSummary(run_id=old_id, status="failed"))
+    ctrl = control.get_control(indexed)
+    assert ctrl.active_run_id == new_id and ctrl.desired_state == control.RUNNING
+
+
+def test_mark_does_not_overwrite_requeued_row(indexed, settings):
+    def on_process(image_id):
+        if image_id == 1:  # user re-queues the image while it is being processed
+            with indexed.write() as s:
+                row = s.get(StageStatus, (1, "faces"))
+                row.status = Status.PENDING
+                row.run_id = None
+
+    stage = FakeStage(indexed, settings, on_process=on_process)
+    PipelineRunner(indexed, settings, lambda _n: stage).run(["faces"], limit=1)
+    assert statuses(indexed)[1] == Status.PENDING
+
+
+def test_missing_images_are_not_claimed(indexed, settings):
+    from vision_tagger.db.models import Image
+
+    with indexed.write() as s:
+        s.get(Image, 2).missing = True
+    stage = FakeStage(indexed, settings)
+    PipelineRunner(indexed, settings, lambda _n: stage).run(["faces"])
+    assert 2 not in stage.processed
+    assert statuses(indexed)[2] == Status.PENDING

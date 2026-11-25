@@ -16,5 +16,6 @@
     {% if vlm_health.get('version') %}<small>Ollama {{ vlm_health.version }}</small>{% endif %}
     {% if vlm_health.get('error') %}<div><small style="color:var(--err)">{{ vlm_health.error }}</small></div>{% endif %}
   </dd>
+  <dt>Search</dt><dd>embeddings <code>{{ settings.search.embed_model }}</code>{% if vlm_health.get('installed') is not none %}{% set em = settings.search.embed_model if ':' in settings.search.embed_model else settings.search.embed_model ~ ':latest' %}{% if em in vlm_health.installed %} <span class="badge ok">ready</span>{% else %} <span class="badge warn">not pulled</span> <small>ollama pull {{ settings.search.embed_model }}</small>{% endif %}{% endif %} · LLM <code>{{ settings.search.model or settings.vlm.model }}</code></dd>
   <dt>Data directory</dt><dd><code>{{ settings.data_dir }}</code></dd>
 </dl>

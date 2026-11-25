@@ -20,9 +20,13 @@ start and control it from a local web UI. Originals are never moved or modified.
 - **Index (step 0).** Recursive scan that records path, file name, recording date (EXIF →
   file-name pattern → mtime), a dynamic JSON metadata column (camera, lens, exposure, GPS, …)
   and a perceptual hash (`imagehash.phash`).
-  - A pHash that is already indexed is **not** added again; the file is recorded as a
-    duplicate.
-  - Moved files are re-linked, and changed files are re-queued.
+  - A file whose pHash is already indexed **and** whose dHash nearly matches (re-encodes,
+    resized copies) is **not** added again; it is recorded as a duplicate. Distinct images
+    that only collide on the pHash (blank pages, same-template forms) stay separate.
+  - Moved files are re-linked, and changed files are re-queued. If an original disappears,
+    one of its duplicates takes its place.
+  - System folders (`$RECYCLE.BIN`, `System Volume Information`) are skipped, and link loops
+    can't trap the scan.
 - **Resumable batches.** Every image has a state per stage (`pending / running / done / error /
   skipped`) in the database. Runs claim work in batches and commit after every image.
   - You can **pause, resume, stop** or kill a run at any time; interrupted images are picked up
@@ -31,8 +35,10 @@ start and control it from a local web UI. Originals are never moved or modified.
   - Results produced with an older model, prompt or vocabulary show up as *outdated* and can be
     re-queued.
 - **Stage 1: faces.** InsightFace (`buffalo_l`) detection plus 512-d embeddings. Clustering uses
-  DBSCAN (cosine distance) and **keeps your manual work**: clusters you named, merged or split
-  are locked and never dissolved by re-clustering.
+  DBSCAN (cosine distance) and **keeps your manual work**:
+  - Clusters you named, merged or split are locked and never dissolved by re-clustering.
+  - Re-running the stage (e.g. after changing the detector settings) carries names, manual
+    moves and removed faces over to the new detections.
   - A **reference DB** (`references/<Person Name>/*.jpg`) names clusters automatically or
     suggests a name.
 - **Stage 2: properties.** Qwen2.5-VL (or any Ollama vision model) answers a fixed JSON schema
@@ -43,6 +49,14 @@ start and control it from a local web UI. Originals are never moved or modified.
     memory, likely purpose, sensitive info.
   - A derived `work_image = yes / maybe / no` combines these with file metadata to filter out
     work photos.
+- **Natural-language search.** Ask in any language, for example "Anna and Ben at the beach in
+  summer 2021, no work photos".
+  - The local LLM turns the request into persons, dates and required, preferred or excluded
+    properties, validated against your real vocabulary and person list.
+  - A text-embedding index (Stage 3) adds semantic similarity over everything extracted per
+    image: caption, visible text, all properties, folder and date.
+  - **Deep search** lets the LLM double-check the best ~40 results and explain why each fits.
+  - Without an LLM, a keyword fallback (English and German) still works.
 - **Web UI.**
   - Face cluster overview with inline naming, merge, split, move, auto-split and remove.
   - Persons, including merging persons.
@@ -70,6 +84,7 @@ start and control it from a local web UI. Originals are never moved or modified.
 4. **Ollama** from <https://ollama.com/download>, then pull the model:
    ```powershell
    ollama pull qwen2.5vl:7b      # ~6 GB VRAM; qwen2.5vl:3b for smaller GPUs, qwen3-vl:8b also works
+   ollama pull nomic-embed-text  # small text-embedding model for the search index
    ```
 5. **vision-tagger:**
    ```powershell
@@ -111,6 +126,7 @@ uv run vision-tagger cluster [--full]
 uv run vision-tagger retry-errors --stage vlm
 uv run vision-tagger requeue-outdated --stage vlm
 uv run vision-tagger export "D:\Export\Anna at the beach" --filter "p=1&t=location_type:beach" --layout date
+uv run vision-tagger search "Anna am Strand im Sommer, ohne Arbeitsfotos" --deep
 ```
 
 `Ctrl+C` during `run` stops gracefully. Running `run` again continues where it stopped.
@@ -126,6 +142,7 @@ uv run vision-tagger export "D:\Export\Anna at the beach" --filter "p=1&t=locati
 | **Properties** | Every extracted property grouped by topic, with counts. Tick values and show images with **all** / **any** of them. Per property: sample images per value, **merge / rename / delete** values (remembered for future results). |
 | **Images** | Gallery with infinite scroll and a filter builder: persons (AND/OR, NOT), properties (AND/OR, NOT), date range, folder, camera, faces, text search, sort. Facets refine the current result. **Export** the result. Filters are part of the URL, so they can be bookmarked. |
 | **Image** | Full image with face boxes and names, all properties with source and confidence, metadata, duplicates, raw VLM JSON, per-stage status and re-run buttons. |
+| **Search** | Search box in the top bar on every page. Shows how the request was understood (persons, required / preferred / excluded properties, dates, keywords), ranks the results and, with **Deep search**, gives the LLM's reason for each. "Open in filter builder" turns the strict part into a gallery filter; results can be exported. |
 | **Overview** | Timeline (year → month → day), breakdowns by folder, camera, file type, date reliability, work/personal, orientation, and a sortable metadata table. |
 
 ## How the property extraction stays stable
@@ -145,6 +162,28 @@ All properties end up in one key/value table (`image_properties`) with `source`
 and for clustering images by their properties later (one-hot vectors per image).
 
 To customise the fields, copy `vocabulary.yaml` and set `vlm.vocabulary_file` in `config.toml`.
+
+## How search works
+
+1. **Interpretation.** The request goes to the LLM (`search.model`, by default the VLM model)
+   together with the vocabulary, the most frequent free-text values, the person names and the
+   date range. The JSON answer is checked against the database: unknown persons or values
+   become free-text keywords instead of failing.
+2. **Candidates.** Persons, required and excluded properties, and dates filter strictly. If
+   nothing is left, required properties are relaxed into preferences.
+3. **Ranking** combines three signals:
+   - semantic similarity of an English rewrite of the request to each image's document
+     embedding;
+   - matches with the preferred properties, weighted by the LLM and by confidence;
+   - keyword hits in captions, visible text, values and paths.
+
+   Person names are not part of the embedded documents, so renaming people never requires
+   re-indexing.
+4. **Deep search.** The LLM scores the top results from short descriptions (including person
+   names) and gives a one-line reason in the language of your request.
+
+The search index is kept up to date automatically: images whose VLM results or property values
+change are queued for Stage 3 again.
 
 ## Configuration
 
@@ -191,11 +230,18 @@ uv run pytest -v
 GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs ruff and the full
 test suite on Ubuntu and Windows.
 
+## Security
+
+The UI is meant for your own machine. It listens on `127.0.0.1`, only answers requests whose
+`Host` is this machine (blocks DNS rebinding) and rejects form submissions coming from other
+websites (CSRF). If you expose it on your network (`web.host = "0.0.0.0"`), add the machine's
+name to `web.allowed_hosts`. There is no login, so only do that on a trusted network.
+
 ## Notes and limitations
 
-- Deduplication uses an exact pHash match, as requested. Visually near-identical images
-  (re-encodes, resized copies, sometimes blank documents) collapse into one entry. Every
-  collapsed file stays listed under *duplicates*, so nothing is lost.
+- Deduplication: a file is a duplicate if its pHash matches and its dHash is within
+  `index.dhash_max_distance` bits. Every collapsed file stays listed under *duplicates*, so
+  nothing is lost.
 - Symlink export needs Developer Mode on Windows. Otherwise vision-tagger falls back to
   copying.
 - InsightFace's pretrained `buffalo_l` models are licensed for **non-commercial research

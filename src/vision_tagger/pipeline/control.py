@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import timedelta
 from typing import Any
 
 from sqlalchemy import and_, func, select, update
+from sqlalchemy.orm import Session
 
 from ..db.models import Control, Run, StageStatus, Status, utcnow
 from ..db.session import Database
@@ -46,10 +48,7 @@ def set_progress(db: Database, key: str, value: Any) -> None:
 
 
 def is_runner_alive(db: Database, stale_after: float = 30.0) -> bool:
-    ctrl = get_control(db)
-    if ctrl.active_run_id is None or ctrl.heartbeat_at is None:
-        return False
-    return utcnow() - ctrl.heartbeat_at < timedelta(seconds=stale_after)
+    return _alive(get_control(db), stale_after)
 
 
 # --------------------------------------------------------------------------- maintenance
@@ -82,6 +81,22 @@ def requeue(db: Database, stage: str, image_ids: list[int] | None = None) -> int
         )
 
 
+def mark_pending(s: Session, stage: str, image_ids: Iterable[int]) -> None:
+    """Re-queue ``stage`` for these images inside an open session (skips rows in work)."""
+    from ..db.util import chunked
+
+    for part in chunked(sorted(set(image_ids))):
+        s.execute(
+            update(StageStatus)
+            .where(
+                StageStatus.stage == stage,
+                StageStatus.image_id.in_(part),
+                StageStatus.status != Status.RUNNING,
+            )
+            .values(status=Status.PENDING, attempts=0, last_error=None)
+        )
+
+
 def requeue_outdated(db: Database, stage: str, version: str) -> int:
     with db.write() as s:
         stmt = (
@@ -96,29 +111,80 @@ def requeue_outdated(db: Database, stage: str, version: str) -> int:
         return s.execute(stmt).rowcount or 0
 
 
-def recover_stale(db: Database) -> int:
-    """Reset rows stuck in ``running`` (from a crashed or killed run) to ``pending``."""
-    with db.write() as s:
-        n = (
-            s.execute(
-                update(StageStatus)
-                .where(StageStatus.status == Status.RUNNING)
-                .values(status=Status.PENDING)
-            ).rowcount
-            or 0
-        )
+class RunnerBusyError(RuntimeError):
+    """Another runner (this or another process) holds the pipeline."""
+
+
+def _alive(ctrl: Control | None, stale_after: float) -> bool:
+    if ctrl is None or ctrl.active_run_id is None or ctrl.heartbeat_at is None:
+        return False
+    return utcnow() - ctrl.heartbeat_at < timedelta(seconds=stale_after)
+
+
+def _recover(s: Session) -> int:
+    n = (
         s.execute(
-            update(Run)
-            .where(Run.status.in_([RUNNING, PAUSED]))
-            .values(status="interrupted", ended_at=utcnow())
-        )
+            update(StageStatus)
+            .where(StageStatus.status == Status.RUNNING)
+            .values(status=Status.PENDING)
+        ).rowcount
+        or 0
+    )
+    s.execute(
+        update(Run)
+        .where(Run.status.in_([RUNNING, PAUSED]))
+        .values(status="interrupted", ended_at=utcnow())
+    )
+    ctrl = s.get(Control, 1)
+    if ctrl is not None:
+        ctrl.active_run_id = None
+        ctrl.active_stage = None
+        ctrl.desired_state = STOPPED
+    return n
+
+
+def recover_stale(db: Database, stale_after: float | None = None) -> int:
+    """Reset rows stuck in ``running`` (from a crashed or killed run) to ``pending``.
+
+    With ``stale_after`` nothing happens while a runner still sends heartbeats; the check and
+    the reset happen in one ``BEGIN IMMEDIATE`` transaction, so they cannot race a starting run.
+    """
+    with db.write() as s:
+        if stale_after is not None and _alive(s.get(Control, 1), stale_after):
+            return 0
+        return _recover(s)
+
+
+def try_acquire(
+    db: Database, stages: list[str], batch_size: int, limit: int | None, stale_after: float
+) -> tuple[int, int]:
+    """Atomically check that no runner is alive, recover stale rows and register a new run.
+
+    Returns ``(run_id, recovered_rows)``; raises :class:`RunnerBusyError` if a live runner
+    holds the pipeline.
+    """
+    with db.write() as s:
         ctrl = s.get(Control, 1)
-        if ctrl is not None:
-            ctrl.active_run_id = None
-            ctrl.active_stage = None
-            if ctrl.desired_state != STOPPED:
-                ctrl.desired_state = STOPPED
-        return n
+        if _alive(ctrl, stale_after):
+            raise RunnerBusyError("another runner is active on this database")
+        recovered = _recover(s)
+        run = Run(
+            stages=",".join(stages),
+            batch_size=batch_size,
+            limit=limit,
+            status=RUNNING,
+            heartbeat_at=utcnow(),
+        )
+        s.add(run)
+        s.flush()
+        ctrl = s.get(Control, 1)
+        assert ctrl is not None
+        ctrl.desired_state = RUNNING
+        ctrl.active_run_id = run.id
+        ctrl.heartbeat_at = utcnow()
+        ctrl.active_stage = None
+        ctrl.message = None
+        return run.id, recovered
 
 
 # --------------------------------------------------------------------------- status

@@ -26,7 +26,7 @@ parameter  meaning                                                example
 from __future__ import annotations
 
 import calendar
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -36,6 +36,7 @@ from sqlalchemy import Select, and_, exists, func, not_, or_, select
 from sqlalchemy.orm import Session
 
 from .db.models import Cluster, Face, Image, ImageProperty, Person, StageStatus, VlmResult
+from .db.util import like_escape
 
 SORTS = ("date_desc", "date_asc", "name", "path", "faces", "size")
 
@@ -251,12 +252,11 @@ def conditions(f: ImageFilter) -> list[Any]:
     if end:
         conds.append(Image.recorded_at <= end)
     if f.folder:
-        folder = f.folder.strip("/\\")
+        folder = f.folder.replace("\\", "/").strip("/")
         conds.append(
             or_(
                 Image.folder == folder,
-                Image.folder.like(folder + "/%"),
-                Image.folder.like(folder + "\\%"),
+                Image.folder.like(like_escape(folder) + "/%", escape="\\"),
             )
         )
     if f.camera:
@@ -274,14 +274,14 @@ def conditions(f: ImageFilter) -> list[Any]:
             st = st.where(StageStatus.status == f.status)
         conds.append(exists(st))
     if f.text:
-        like = f"%{f.text}%"
+        like = f"%{like_escape(f.text)}%"
         conds.append(
             or_(
-                Image.filename.ilike(like),
-                Image.rel_path.ilike(like),
+                Image.filename.ilike(like, escape="\\"),
+                Image.rel_path.ilike(like, escape="\\"),
                 exists(
                     select(VlmResult.image_id).where(
-                        VlmResult.image_id == Image.id, VlmResult.caption.ilike(like)
+                        VlmResult.image_id == Image.id, VlmResult.caption.ilike(like, escape="\\")
                     )
                 ),
             )
@@ -311,6 +311,67 @@ def _ordered(stmt: Select, f: ImageFilter) -> Select:
     return stmt.order_by(Image.recorded_at.desc(), Image.id.desc())
 
 
+_MIN_DATE = datetime(1, 1, 1)
+
+# sort mode -> (sort expression, column descending?, id descending?)  (must match _ordered)
+_KEYSET: dict[str, tuple[Callable[[], Any], bool, bool]] = {
+    "date_desc": (lambda: func.coalesce(Image.recorded_at, _MIN_DATE), True, True),
+    "date_asc": (lambda: func.coalesce(Image.recorded_at, _MIN_DATE), False, False),
+    "name": (lambda: Image.filename, False, False),
+    "path": (lambda: Image.rel_path, False, False),
+    "size": (lambda: Image.size_bytes, True, False),
+}
+
+
+def neighbours(s: Session, f: ImageFilter, image_id: int) -> tuple[int | None, int | None]:
+    """Previous / next image in the gallery order of ``f`` (keyset queries, no full id list)."""
+    if f.sort not in _KEYSET:
+        ids = all_image_ids(s, f)
+        if image_id not in ids:
+            return None, None
+        pos = ids.index(image_id)
+        return (ids[pos - 1] if pos > 0 else None, ids[pos + 1] if pos + 1 < len(ids) else None)
+    make_expr, col_desc, id_desc = _KEYSET[f.sort]
+    expr = make_expr()
+    value = s.scalar(select(expr).where(Image.id == image_id))
+    if value is None:
+        return None, None
+    conds = conditions(f)
+
+    def step(forward: bool) -> int | None:
+        later_col = (expr < value) if (col_desc == forward) else (expr > value)
+        later_id = (Image.id < image_id) if (id_desc == forward) else (Image.id > image_id)
+        order_col = expr.desc() if (col_desc == forward) else expr.asc()
+        order_id = Image.id.desc() if (id_desc == forward) else Image.id.asc()
+        return s.scalar(
+            select(Image.id)
+            .where(*conds, or_(later_col, and_(expr == value, later_id)))
+            .order_by(order_col, order_id)
+            .limit(1)
+        )
+
+    return step(False), step(True)
+
+
+def folder_children(s: Session, f: ImageFilter) -> list[tuple[str, str, int]]:
+    """Immediate sub-folders of ``f.folder`` (or of the roots) with image counts.
+
+    Returns ``(full_folder, display_name, count)``; images directly inside the current folder
+    are reported with ``display_name == ""``.
+    """
+    prefix = (f.folder or "").replace("\\", "/").strip("/")
+    counts: dict[str, int] = {}
+    stmt = select(Image.folder, func.count(Image.id)).where(*conditions(f)).group_by(Image.folder)
+    for folder, n in s.execute(stmt):
+        folder = (folder or "").strip("/")
+        rest = folder[len(prefix) :].lstrip("/") if prefix else folder
+        child = rest.split("/", 1)[0] if rest else ""
+        counts[child] = counts.get(child, 0) + n
+    out = [("/".join(p for p in (prefix, child) if p), child, n) for child, n in counts.items()]
+    out.sort(key=lambda t: (t[1] == "", -t[2], t[1].casefold()))
+    return out
+
+
 def image_ids_subquery(f: ImageFilter):
     return select(Image.id).where(*conditions(f))
 
@@ -333,9 +394,15 @@ def all_image_ids(s: Session, f: ImageFilter) -> list[int]:
 
 # --------------------------------------------------------------------------- facets
 def property_counts(
-    s: Session, f: ImageFilter | None = None, key: str | None = None
+    s: Session,
+    f: ImageFilter | None = None,
+    key: str | None = None,
+    keys: Iterable[str] | None = None,
 ) -> dict[str, list[tuple[str, int]]]:
-    """``{key: [(value, count), ...]}`` among the filtered images, most frequent first."""
+    """``{key: [(value, count), ...]}`` among the filtered images, most frequent first.
+
+    ``key`` / ``keys`` restrict the (expensive) aggregation to the properties actually shown.
+    """
     stmt = select(ImageProperty.key, ImageProperty.value, func.count(ImageProperty.image_id))
     if f is not None and not f.is_empty:
         stmt = stmt.where(ImageProperty.image_id.in_(image_ids_subquery(f)))
@@ -345,6 +412,8 @@ def property_counts(
         )
     if key:
         stmt = stmt.where(ImageProperty.key == key)
+    if keys is not None:
+        stmt = stmt.where(ImageProperty.key.in_(list(keys)))
     stmt = stmt.group_by(ImageProperty.key, ImageProperty.value).order_by(
         ImageProperty.key, func.count(ImageProperty.image_id).desc(), ImageProperty.value
     )

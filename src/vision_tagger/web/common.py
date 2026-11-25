@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 from fastapi import Request
 from fastapi.responses import RedirectResponse, Response
@@ -41,14 +41,18 @@ def redirect(
 
 
 def back(request: Request, default: str = "/") -> str:
-    ref = request.headers.get("referer") or default
-    # drop old flash params
-    for key in ("msg=", "err="):
-        if key in ref:
-            base, _, query = ref.partition("?")
-            parts = [p for p in query.split("&") if not p.startswith(key)]
-            ref = base + ("?" + "&".join(parts) if parts else "")
-    return ref
+    """Where to return after a POST: the referring page of *this* UI, else ``default``.
+
+    Only the path and query of a same-host Referer are used (no open redirects).
+    """
+    ref = request.headers.get("referer")
+    if not ref:
+        return default
+    parts = urlsplit(ref)
+    if parts.netloc.lower() != request.headers.get("host", "").lower() or not parts.path:
+        return default
+    query = "&".join(p for p in parts.query.split("&") if p and not p.startswith(("msg=", "err=")))
+    return parts.path + (f"?{query}" if query else "")
 
 
 def ints(values: list[str] | None) -> list[int]:

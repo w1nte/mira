@@ -271,3 +271,26 @@ def test_real_ollama(settings, vocab):
     raw = backend.analyze(im, system_prompt(vocab), "Catalogue this image.", vocab.json_schema())
     out = vocab.coerce(raw)
     assert out["image_type"] in vocab.fields["image_type"].values
+
+
+def test_unreachable_backend_aborts_without_burning_attempts(indexed, settings, vocab):
+    from vision_tagger.vlm.backend import VlmConnectionError
+
+    class Down(FakeBackend):
+        healthy = True
+
+        def health(self):
+            return {"ok": self.healthy, "error": "connection refused"}
+
+        def analyze(self, *a, **k):
+            self.healthy = False  # server died after setup
+            raise VlmConnectionError("cannot reach Ollama")
+
+    stage = VlmStage(indexed, settings, backend=Down(vocab))
+    summary = PipelineRunner(indexed, settings, lambda _n: stage).run(["vlm"])
+    assert summary.status == "failed"
+    assert "unreachable" in summary.messages[0]
+    with indexed.session() as s:
+        rows = list(s.scalars(select(StageStatus)))
+        assert {r.status for r in rows} == {Status.PENDING}
+        assert {r.attempts for r in rows} == {0}

@@ -30,7 +30,7 @@
           <div class="checks">
             {% for st in stages %}
             <label><input type="checkbox" name="stages" value="{{ st }}" checked>
-              {{ {'faces': 'Faces (InsightFace + clustering)', 'vlm': 'Properties (' ~ settings.vlm.model ~ ')'}[st] }}</label>
+              {{ {'faces': 'Faces (InsightFace + clustering)', 'vlm': 'Properties (' ~ settings.vlm.model ~ ')', 'embed': 'Search index (' ~ settings.search.embed_model ~ ')'}.get(st, st) }}</label>
             {% endfor %}
           </div>
         </div>
@@ -55,7 +55,7 @@
       <div class="row">
         <form method="post" action="/actions/import-references"><button>Import references</button></form>
         <form method="post" action="/actions/recluster"><button>Cluster new faces</button></form>
-        <form method="post" action="/actions/recluster?full=1" onsubmit="return confirm('Re-cluster all faces? Named / edited clusters are kept.')"><button>Full re-cluster</button></form>
+        <form method="post" action="/actions/recluster?full=1" data-confirm="Re-cluster all faces? Named / edited clusters are kept."><button>Full re-cluster</button></form>
       </div>
     </section>
 
@@ -64,7 +64,7 @@
     </section>
   </div>
 
-  <div id="status" hx-get="/partials/status" hx-trigger="every 2s" hx-swap="innerHTML">
+  <div id="status" hx-get="/partials/status" hx-trigger="every 2s [document.visibilityState === 'visible']" hx-swap="innerHTML">
     {% include "partials/status.html" %}
   </div>
 </div>

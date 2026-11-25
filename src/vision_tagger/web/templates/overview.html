@@ -60,7 +60,29 @@
   </section>
   {% endmacro %}
 
-  {{ breakdown('Folders', folders, 'folder') }}
+  <section class="card tight">
+    <h3>Folders</h3>
+    {% if f.folder %}
+      {% set parts = f.folder.strip('/').split('/') %}
+      <div class="chips" style="margin-bottom:.5rem">
+        <a class="chip" href="/overview?{{ f.query_string(folder=None) }}">All</a>
+        {% for i in range(parts | length) %}
+          <a class="chip {{ 'active' if loop.last }}" href="/overview?{{ f.query_string(folder=parts[:i + 1] | join('/')) }}">{{ parts[i] }}</a>
+        {% endfor %}
+      </div>
+    {% endif %}
+    {% set top = (folders | map(attribute=2) | max) if folders else 0 %}
+    <table class="hbars">
+      {% for full, name, n in folders[:40] %}
+      <tr>
+        <td>{% if name %}<a href="/overview?{{ f.query_string(folder=full) }}">📁 {{ name }}</a>{% else %}<span class="muted">(images directly here)</span>{% endif %}</td>
+        <td class="bar"><div class="hbar" style="width: {{ pct(n, top) }}%"></div></td>
+        <td class="num">{{ n }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% if f.folder %}<small><a href="/images?{{ f.query_string() }}">Show images in this folder →</a></small>{% endif %}
+  </section>
   {{ breakdown('Cameras', cameras, 'camera') }}
   {{ breakdown('File types', exts, None) }}
   {{ breakdown('Date source', date_sources, None) }}

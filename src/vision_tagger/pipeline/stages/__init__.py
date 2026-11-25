@@ -7,9 +7,9 @@ from collections.abc import Callable
 from ...config import Settings
 from ...db.session import Database
 from .base import Stage
-from .versions import faces_stage_version, vlm_stage_version
+from .versions import embed_stage_version, faces_stage_version, vlm_stage_version
 
-STAGE_NAMES = ("faces", "vlm")
+STAGE_NAMES = ("faces", "vlm", "embed")
 
 
 def default_stage_factory(db: Database, settings: Settings) -> Callable[[str], Stage]:
@@ -24,6 +24,10 @@ def default_stage_factory(db: Database, settings: Settings) -> Callable[[str], S
             from .vlm import VlmStage
 
             return VlmStage(db, settings)
+        if name == "embed":
+            from .embed import EmbedStage
+
+            return EmbedStage(db, settings)
         raise KeyError(f"unknown stage {name!r}")
 
     return factory
@@ -31,7 +35,11 @@ def default_stage_factory(db: Database, settings: Settings) -> Callable[[str], S
 
 def stage_versions(settings: Settings) -> dict[str, str]:
     """Current version string per stage, without loading any model."""
-    return {"faces": faces_stage_version(settings), "vlm": vlm_stage_version(settings)}
+    return {
+        "faces": faces_stage_version(settings),
+        "vlm": vlm_stage_version(settings),
+        "embed": embed_stage_version(settings),
+    }
 
 
 __all__ = ["STAGE_NAMES", "Stage", "default_stage_factory", "stage_versions"]

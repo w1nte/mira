@@ -50,6 +50,12 @@ packages = ["src/vision_tagger"]
 
 [tool.uv]
 conflicts = [[{ extra = "gpu" }, { extra = "cpu" }]]
+# Only resolve versions that ship wheels for these platforms (some nvidia-* releases are
+# Linux-only, e.g. nvidia-cublas 13.10.1.6, which broke `uv sync --extra gpu` on Windows).
+required-environments = [
+    "sys_platform == 'win32' and platform_machine == 'AMD64'",
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+]
 
 # insightface 0.7.3 ships only as an sdist whose setup.py imports numpy and Cython.
 [tool.uv.extra-build-dependencies]
