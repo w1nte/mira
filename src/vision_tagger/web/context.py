@@ -91,6 +91,18 @@ class AppContext:
         self.jobs = JobManager()
         self._health: tuple[float, dict[str, Any]] = (0.0, {})
         self._versions: tuple[float, dict[str, str]] = (-1.0, {})
+        self._search: Any = None
+        self._search_lock = threading.Lock()
+
+    @property
+    def search(self) -> Any:
+        """The (lazily created) natural-language search engine."""
+        with self._search_lock:
+            if self._search is None:
+                from ..search.engine import SearchEngine
+
+                self._search = SearchEngine(self.db, self.settings)
+            return self._search
 
     def stage_versions(self) -> dict[str, str]:
         """Current stage versions; re-read only when the vocabulary file changes."""

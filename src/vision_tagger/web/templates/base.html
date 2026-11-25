@@ -20,7 +20,12 @@
       <a href="/properties" class="{{ 'active' if path.startswith('/properties') }}">Properties</a>
       <a href="/images" class="{{ 'active' if path.startswith('/images') }}">Images</a>
       <a href="/overview" class="{{ 'active' if path.startswith('/overview') }}">Overview</a>
+      <a href="/search" class="{{ 'active' if path.startswith('/search') }}">Search</a>
     </nav>
+    <form class="navsearch" method="get" action="/search" role="search">
+      <input type="search" name="q" aria-label="Search images" value="{{ request.query_params.get('q', '') if path.startswith('/search') else '' }}"
+             placeholder="Search: “Anna at the beach, summer 2021, no work photos”">
+    </form>
   </header>
   <main class="{% block main_class %}container{% endblock %}">
     {% if msg %}<div class="flash ok" x-data="{show: true}" x-show="show" x-init="setTimeout(() => show = false, 6000)">{{ msg }}</div>{% endif %}

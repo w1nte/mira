@@ -54,3 +54,12 @@ def test_cli_init_writes_config(tmp_path, monkeypatch):
     out = invoke("init")
     assert (tmp_path / "config.toml").exists()
     assert "database" in out
+
+
+def test_cli_search(cli_env):
+    cfg, _tmp = cli_env
+    invoke("-c", str(cfg), "index")
+    invoke("-c", str(cfg), "run", "--stage", "vlm", "--stage", "embed")
+    out = invoke("-c", str(cfg), "search", "trees and a car", "--limit", "2")
+    assert "mode=basic" in out and "semantic=on" in out
+    assert out.count(".jpg") == 2

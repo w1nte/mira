@@ -16,7 +16,7 @@ dhash_max_distance = 5              # duplicate = same pHash AND dHash differing
 [pipeline]
 batch_size = 16                     # images claimed per batch
 max_attempts = 3                    # automatic retries per image and stage
-stages = ["faces", "vlm"]
+stages = ["faces", "vlm", "embed"]
 
 [faces]
 model = "buffalo_l"                 # InsightFace model pack (non-commercial license)
@@ -46,6 +46,15 @@ concurrency = 1                     # parallel requests; match OLLAMA_NUM_PARALL
 keep_alive = "10m"
 # vocabulary_file = "my_vocabulary.yaml"   # copy src/vision_tagger/resources/vocabulary.yaml to customise
 # synonyms_file = "my_synonyms.yaml"
+
+[search]
+# model = "qwen2.5vl:7b"            # LLM for query understanding / deep search (default: vlm.model)
+embed_model = "nomic-embed-text"    # text embeddings for the search index (ollama pull nomic-embed-text)
+query_prefix = "search_query: "     # nomic expects these prefixes; use "" for e.g. bge-m3
+document_prefix = "search_document: "
+result_limit = 200
+rerank_top = 40                     # how many results Deep search lets the LLM judge
+# weights = { semantic = 0.55, properties = 0.35, keywords = 0.10 }
 
 [derived]
 work_path_keywords = ["screenshot", "bildschirmfoto", "scan", "work", "arbeit", "office", "invoice", "rechnung", "receipt", "whiteboard"]

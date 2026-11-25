@@ -554,6 +554,8 @@ class KeywordInterpreter:
             if tok in NEGATIONS:
                 negate_next = True
                 continue
+            if tok.isdigit():  # years are handled as the date range
+                continue
             term = self._term(tok, tokens[i + 1] if i + 1 < len(tokens) else None, ctx)
             if term is not None:
                 consumed.add(i)

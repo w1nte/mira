@@ -203,7 +203,7 @@ def test_embed_stage_aborts_without_model(db, settings, vocab):
 
 
 def test_embedding_matrix_incremental(library, settings):
-    db, backend = library
+    db, _backend = library
     m = EmbeddingMatrix(db)
     m.ensure("nomic-embed-text")
     assert m.count == 5

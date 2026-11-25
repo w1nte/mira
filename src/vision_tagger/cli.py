@@ -261,6 +261,49 @@ def export(
 
 
 @app.command()
+def search(
+    query: Annotated[str, typer.Argument(help="What you are looking for, in any language.")],
+    deep: Annotated[bool, typer.Option("--deep", help="Let the LLM re-rank and explain.")] = False,
+    limit: Annotated[int, typer.Option("--limit", "-n")] = 20,
+) -> None:
+    """Natural-language image search (LLM interpretation + semantic index)."""
+    from sqlalchemy import select
+
+    from .db.models import Image
+    from .search.engine import SearchEngine
+
+    db = _db()
+    result = SearchEngine(db, _settings()).search(query, deep=deep, limit=limit)
+    it = result.interpretation
+    parts = [f"mode={it.mode}", f"semantic={'on' if result.semantic_used else 'off'}"]
+    if it.persons:
+        parts.append("persons=" + ",".join(n for _, n in it.persons))
+    if it.must or it.should:
+        parts.append("props=" + ",".join(f"{t.key}:{t.value}" for t in [*it.must, *it.should]))
+    if it.exclude:
+        parts.append("not=" + ",".join(f"{t.key}:{t.value}" for t in it.exclude))
+    if it.date_from or it.date_to:
+        parts.append(f"dates={it.date_from or ''}..{it.date_to or ''}")
+    typer.echo(" ".join(parts))
+    for note in result.notes:
+        typer.echo(f"  note: {note}")
+    with db.session() as s:
+        paths = {
+            image_id: path
+            for image_id, path in s.execute(
+                select(Image.id, Image.path).where(Image.id.in_([h.image_id for h in result.hits]))
+            )
+        }
+    for rank, h in enumerate(result.hits, 1):
+        line = f"{rank:>3}. {h.score:.2f}  {paths.get(h.image_id, h.image_id)}"
+        if h.reason:
+            line += f"  - {h.reason}"
+        typer.echo(line)
+    if not result.hits:
+        typer.echo("no matches")
+
+
+@app.command()
 def serve(
     host: Annotated[str | None, typer.Option()] = None,
     port: Annotated[int | None, typer.Option()] = None,

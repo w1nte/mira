@@ -215,3 +215,22 @@ def test_no_user_data_in_inline_js(client):
     page = ok(client.get(f"/persons/{pid}")).text
     assert "confirm(" not in page
     assert 'data-confirm="Delete O&#39;Brien &lt;/script&gt;?' in page
+
+
+def test_search_page_and_results(client):
+    page = ok(client.get("/")).text
+    assert 'class="navsearch"' in page
+    page = ok(client.get("/search")).text
+    assert "Try:" in page
+    page = ok(client.get("/search?q=trees%20and%20cars&deep=1")).text
+    assert 'hx-get="/search/results?q=trees+and+cars&amp;deep=1"' in page
+    html = ok(client.get("/search/results?q=trees and cars&deep=1")).text
+    assert "basic mode" in html  # fake backend: keyword interpretation
+    assert "/media/thumb/" in html
+    assert ok(client.get("/search/results?q=")).text == ""
+    r = client.post(
+        "/search/export",
+        data={"ids": "1,2", "target": "/tmp/x", "q": "x"},
+        headers={"Origin": "http://evil.example"},
+    )
+    assert r.status_code == 403  # CSRF protection also covers the search export

@@ -49,6 +49,14 @@ start and control it from a local web UI. Originals are never moved or modified.
     memory, likely purpose, sensitive info.
   - A derived `work_image = yes / maybe / no` combines these with file metadata to filter out
     work photos.
+- **Natural-language search.** Ask in any language, for example "Anna and Ben at the beach in
+  summer 2021, no work photos".
+  - The local LLM turns the request into persons, dates and required, preferred or excluded
+    properties, validated against your real vocabulary and person list.
+  - A text-embedding index (Stage 3) adds semantic similarity over everything extracted per
+    image: caption, visible text, all properties, folder and date.
+  - **Deep search** lets the LLM double-check the best ~40 results and explain why each fits.
+  - Without an LLM, a keyword fallback (English and German) still works.
 - **Web UI.**
   - Face cluster overview with inline naming, merge, split, move, auto-split and remove.
   - Persons, including merging persons.
@@ -76,6 +84,7 @@ start and control it from a local web UI. Originals are never moved or modified.
 4. **Ollama** from <https://ollama.com/download>, then pull the model:
    ```powershell
    ollama pull qwen2.5vl:7b      # ~6 GB VRAM; qwen2.5vl:3b for smaller GPUs, qwen3-vl:8b also works
+   ollama pull nomic-embed-text  # small text-embedding model for the search index
    ```
 5. **vision-tagger:**
    ```powershell
@@ -117,6 +126,7 @@ uv run vision-tagger cluster [--full]
 uv run vision-tagger retry-errors --stage vlm
 uv run vision-tagger requeue-outdated --stage vlm
 uv run vision-tagger export "D:\Export\Anna at the beach" --filter "p=1&t=location_type:beach" --layout date
+uv run vision-tagger search "Anna am Strand im Sommer, ohne Arbeitsfotos" --deep
 ```
 
 `Ctrl+C` during `run` stops gracefully. Running `run` again continues where it stopped.
@@ -132,6 +142,7 @@ uv run vision-tagger export "D:\Export\Anna at the beach" --filter "p=1&t=locati
 | **Properties** | Every extracted property grouped by topic, with counts. Tick values and show images with **all** / **any** of them. Per property: sample images per value, **merge / rename / delete** values (remembered for future results). |
 | **Images** | Gallery with infinite scroll and a filter builder: persons (AND/OR, NOT), properties (AND/OR, NOT), date range, folder, camera, faces, text search, sort. Facets refine the current result. **Export** the result. Filters are part of the URL, so they can be bookmarked. |
 | **Image** | Full image with face boxes and names, all properties with source and confidence, metadata, duplicates, raw VLM JSON, per-stage status and re-run buttons. |
+| **Search** | Search box in the top bar on every page. Shows how the request was understood (persons, required / preferred / excluded properties, dates, keywords), ranks the results and, with **Deep search**, gives the LLM's reason for each. "Open in filter builder" turns the strict part into a gallery filter; results can be exported. |
 | **Overview** | Timeline (year → month → day), breakdowns by folder, camera, file type, date reliability, work/personal, orientation, and a sortable metadata table. |
 
 ## How the property extraction stays stable
@@ -151,6 +162,28 @@ All properties end up in one key/value table (`image_properties`) with `source`
 and for clustering images by their properties later (one-hot vectors per image).
 
 To customise the fields, copy `vocabulary.yaml` and set `vlm.vocabulary_file` in `config.toml`.
+
+## How search works
+
+1. **Interpretation.** The request goes to the LLM (`search.model`, by default the VLM model)
+   together with the vocabulary, the most frequent free-text values, the person names and the
+   date range. The JSON answer is checked against the database: unknown persons or values
+   become free-text keywords instead of failing.
+2. **Candidates.** Persons, required and excluded properties, and dates filter strictly. If
+   nothing is left, required properties are relaxed into preferences.
+3. **Ranking** combines three signals:
+   - semantic similarity of an English rewrite of the request to each image's document
+     embedding;
+   - matches with the preferred properties, weighted by the LLM and by confidence;
+   - keyword hits in captions, visible text, values and paths.
+
+   Person names are not part of the embedded documents, so renaming people never requires
+   re-indexing.
+4. **Deep search.** The LLM scores the top results from short descriptions (including person
+   names) and gives a one-line reason in the language of your request.
+
+The search index is kept up to date automatically: images whose VLM results or property values
+change are queued for Stage 3 again.
 
 ## Configuration
 
