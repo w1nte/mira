@@ -16,6 +16,7 @@
       {% for v, l in [('size','Largest first'),('unnamed','Unnamed first'),('newest','Newest first')] %}
       <option value="{{ v }}" {{ 'selected' if sort == v }}>{{ l }}</option>{% endfor %}
     </select>
+    <a class="btn" href="/quiz?mode=name" title="Name clusters as a game">🎲 Name them as a game</a>
     <a class="btn" href="/faces/unclustered">Unclustered ({{ unclustered }})</a>
     <a class="btn" href="/faces/ignored">Ignored ({{ ignored }})</a>
   </form>

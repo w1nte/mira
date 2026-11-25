@@ -234,3 +234,42 @@ def test_search_page_and_results(client):
         headers={"Origin": "http://evil.example"},
     )
     assert r.status_code == 403  # CSRF protection also covers the search export
+
+
+def test_quiz_pages_and_actions(client):
+    db = client.ctx.db
+    from vision_tagger.faces import clustering as C
+
+    ok(client.get("/quiz"))  # fewer than two named persons -> friendly hint
+    page = ok(client.get("/quiz?mode=name")).text
+    assert "Who is this?" in page
+    with db.session() as s:
+        cids = list(s.scalars(select(Cluster.id).order_by(Cluster.id)))
+    r = ok(client.post("/quiz/name", data={"mode": "name", "cluster_id": cids[0], "name": "Anna"}))
+    assert "Named" in r.text
+    with db.write() as s:
+        C.name_cluster(s, cids[1], "Ben")
+    page = ok(client.get("/quiz?mode=quiz")).text
+    assert "Who's that?" in page and 'data-key="1"' in page
+    with db.session() as s:
+        face = s.scalar(select(Face).where(Face.cluster_id == cids[0]))
+        ben = s.scalar(select(Person).where(Person.name == "Ben"))
+    r = ok(
+        client.post(
+            "/quiz/answer",
+            data={
+                "mode": "quiz",
+                "face_id": face.id,
+                "choice": ben.id,
+                "image_id": face.image_id,
+                "streak": "4",
+            },
+        )
+    )
+    assert "Nope" in r.text and "That's not Anna!" in r.text
+    r = ok(
+        client.post("/quiz/fix", data={"mode": "quiz", "face_id": face.id, "action": "unassign"})
+    )
+    assert "Removed" in r.text
+    with db.session() as s:
+        assert s.get(Face, face.id).cluster_id is None
