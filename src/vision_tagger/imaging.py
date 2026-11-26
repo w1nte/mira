@@ -25,8 +25,13 @@ except ImportError:  # pragma: no cover - optional
 
 Image.MAX_IMAGE_PIXELS = 300_000_000  # allow large panoramas, still guard against bombs
 
+# Longer side of the large preview (the gallery's lightbox), cached next to the thumbnails.
+# Sharp on most screens, and a 12 MP JPEG still decodes at half size (draft mode) for it.
+PREVIEW_SIZE = 1600
+
 __all__ = [
     "HEIF_SUPPORTED",
+    "PREVIEW_SIZE",
     "ImageInfo",
     "UnidentifiedImageError",
     "date_from_filename",

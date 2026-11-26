@@ -258,14 +258,13 @@ document.addEventListener("change", function (ev) {
 });
 
 // Gallery selection: while photos are ticked (or after "Select"), a click on a photo ticks it
-// instead of opening it.
+// instead of opening it (or the lightbox).
 document.addEventListener("click", function (ev) {
   if (ev.button !== 0 || !ev.target.closest) return;
   const tile = ev.target.closest(".tile");
   if (!tile || ev.target.closest("input")) return;
-  const scope = tile.closest("[data-select-scope]");
   const box = tile.querySelector("input.pick");
-  if (!scope || !box || !(scope.classList.contains("selecting") || scope.querySelector("input.pick:checked"))) return;
+  if (!box || !window.vt.selecting(tile)) return;
   ev.preventDefault();
   box.click();
 });
@@ -278,7 +277,395 @@ window.vt = {
   toggleAll(scope, on) {
     scope.querySelectorAll("input[type=checkbox].pick").forEach((b) => (b.checked = on));
   },
+  // true while the selection of el's grid is on ("Select", or a photo is ticked)
+  selecting(el) {
+    const scope = el.closest("[data-select-scope]");
+    return !!scope && (scope.classList.contains("selecting") || !!scope.querySelector("input.pick:checked"));
+  },
 };
+
+// Lightbox (partials/lightbox.html): a plain click on a photo of a grid marked [data-lightbox]
+// shows it large over the page instead of opening its page. Ctrl/⌘/Shift-click and the middle
+// button still open the photo page (new tab or window), and so does a click during a selection
+// (it ticks the photo) or on a covered NSFW tile (data-covered: the page has no URL of its
+// picture). The tile links carry what the overlay shows: data-id, data-preview-url, data-title,
+// data-date, data-people (JSON), data-w / data-h (pixels) and data-missing; never inline code.
+// - History: opening adds one entry, so the browser's Back button closes the lightbox; closing
+//   it with ×, Esc or a click beside the photo goes back over that entry, so Back afterwards
+//   leaves the page at once. Previous / next replace the entry (it names the photo shown), and
+//   "Open details" keeps it: Back from the photo page returns to the lightbox. Scroll
+//   restoration is off meanwhile: the page stays at the photo last shown.
+// - Previous / next: ← / →, the arrows, a swipe. At the last tile the gallery's next page is
+//   loaded (its [data-lightbox-more] element); the neighbours' previews are fetched ahead.
+// - A covered tile in between shows the black cover and "Open details"; nothing is fetched.
+(function () {
+  const dialog = document.querySelector("[data-lightbox-dialog]");
+  if (!dialog || typeof dialog.showModal !== "function") return;
+  const root = document.documentElement;
+  const part = (name) => dialog.querySelector("[data-lb-" + name + "]");
+  const stage = part("stage");
+  const frame = part("frame");
+  const photo = part("photo");
+  const placeholder = part("placeholder");
+  const cover = part("cover");
+  const spinner = part("spinner");
+  const missingNote = part("missing");
+  const original = part("original");
+  const prevBtn = part("prev");
+  const nextBtn = part("next");
+  const PREVIEW = parseInt(dialog.dataset.previewSize, 10) || 1600;
+  const lang = root.lang || undefined;
+
+  let scope = null; // the [data-lightbox] grid of the photo shown
+  let current = null; // the tile link of the photo shown
+  let seq = 0; // counts the photos shown: load events of earlier ones are ignored
+  let loadingPhoto = false;
+  let loadingMore = null; // Promise while the next page of tiles loads
+  let waitingMore = false; // "next" at the last tile waits for it
+  let backPending = false; // closed: waiting for history.back() to arrive
+  let queued = null; // a tile clicked meanwhile
+  let preloads = [];
+  let swipe = null;
+  let swipedAt = 0;
+
+  const tiles = () => (scope ? Array.from(scope.querySelectorAll("a[data-id]")) : []);
+  const moreLoader = () => scope && scope.querySelector("[data-lightbox-more]");
+  const isCovered = (a) => a.hasAttribute("data-covered") || !a.dataset.previewUrl;
+  const shownId = () => (history.state && history.state.vtLightbox) || null;
+
+  function busy() {
+    spinner.hidden = !(loadingPhoto || waitingMore);
+  }
+
+  // keep the tile shown in view behind the overlay (closing returns to it)
+  function reveal(a) {
+    const r = a.getBoundingClientRect();
+    const top = parseFloat(getComputedStyle(root).getPropertyValue("--topbar-h")) || 0;
+    if (r.top < top || r.bottom > window.innerHeight) a.scrollIntoView({ block: "center" });
+  }
+
+  function names(a) {
+    try {
+      const list = JSON.parse(a.dataset.people || "[]");
+      return Array.isArray(list) ? list.map(String) : [];
+    } catch (e) {
+      return [];
+    }
+  }
+  function listText(list) {
+    if (!list.length) return "";
+    try {
+      return new Intl.ListFormat(lang, { type: "conjunction" }).format(list);
+    } catch (e) {
+      return list.join(", ");
+    }
+  }
+  function dateText(iso) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (isNaN(d)) return iso;
+    const opts = /T00:00$/.test(iso) ? { dateStyle: "long" } : { dateStyle: "long", timeStyle: "short" };
+    try {
+      return new Intl.DateTimeFormat(lang, opts).format(d);
+    } catch (e) {
+      return iso;
+    }
+  }
+
+  // The frame gets the size the preview will be shown at (fitted, never enlarged), so the
+  // thumbnail placeholder and the preview cover the same area and nothing jumps.
+  function layout() {
+    if (!current) return;
+    const cs = getComputedStyle(stage);
+    const availW = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const availH = stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    const w0 = +current.dataset.w;
+    const h0 = +current.dataset.h;
+    let w = 640;
+    let h = 480;
+    if (isCovered(current)) {
+      // the cover: 4:3 like the tiles' black placeholder
+    } else if (frame.classList.contains("ready") && photo.naturalWidth) {
+      w = photo.naturalWidth;
+      h = photo.naturalHeight;
+    } else if (w0 > 0 && h0 > 0) {
+      const s = Math.min(1, PREVIEW / Math.max(w0, h0));
+      w = w0 * s;
+      h = h0 * s;
+    } else if (placeholder.naturalWidth) {
+      w = placeholder.naturalWidth;
+      h = placeholder.naturalHeight;
+    }
+    const scale = Math.max(0, Math.min(1, availW / w, availH / h));
+    frame.style.width = Math.max(1, Math.round(w * scale)) + "px";
+    frame.style.height = Math.max(1, Math.round(h * scale)) + "px";
+  }
+
+  function updateNav() {
+    const all = tiles();
+    const i = all.indexOf(current);
+    prevBtn.setAttribute("aria-disabled", i <= 0 ? "true" : "false");
+    nextBtn.setAttribute("aria-disabled", i < 0 || (i >= all.length - 1 && !moreLoader()) ? "true" : "false");
+  }
+
+  // the previews of the neighbours, once the photo shown is there (covered ones: never)
+  function preloadNeighbours() {
+    const all = tiles();
+    const i = all.indexOf(current);
+    preloads = [all[i + 1], all[i - 1]]
+      .filter((a) => a && !isCovered(a))
+      .map((a) => {
+        const im = new Image();
+        im.decoding = "async";
+        im.src = a.dataset.previewUrl;
+        return im;
+      });
+  }
+
+  function show(a) {
+    current = a;
+    const token = ++seq;
+    const covered = isCovered(a);
+    const missing = a.hasAttribute("data-missing");
+    part("title").textContent = a.dataset.title || "";
+    part("date").textContent = dateText(a.dataset.date);
+    part("people").textContent = covered ? "" : listText(names(a));
+    const page = a.getAttribute("href");
+    dialog.querySelectorAll("[data-lb-details]").forEach((link) => link.setAttribute("href", page));
+    original.hidden = covered || missing;
+    original.setAttribute("href", covered || missing ? page : "/media/image/" + encodeURIComponent(a.dataset.id));
+    cover.hidden = !covered;
+    missingNote.hidden = !missing;
+    frame.classList.remove("ready");
+    frame.classList.toggle("covered", covered);
+    photo.onload = photo.onerror = placeholder.onload = null;
+    photo.removeAttribute("src");
+    placeholder.removeAttribute("src");
+    photo.alt = covered ? "" : a.dataset.title || "";
+    loadingPhoto = !covered;
+    if (!covered) {
+      const thumb = a.querySelector("img");
+      const thumbUrl = thumb && (thumb.currentSrc || thumb.getAttribute("src"));
+      placeholder.onload = () => token === seq && layout();
+      if (thumbUrl) placeholder.src = thumbUrl;
+      const done = (ok) => {
+        if (token !== seq) return;
+        loadingPhoto = false;
+        frame.classList.toggle("ready", ok);
+        busy();
+        layout();
+        preloadNeighbours();
+      };
+      photo.onload = () => done(true);
+      photo.onerror = () => done(false);
+      photo.src = a.dataset.previewUrl;
+    } else {
+      preloadNeighbours();
+    }
+    busy();
+    layout();
+    updateNav();
+    reveal(a);
+    const all = tiles();
+    if (all.indexOf(a) >= all.length - 3) loadMore(); // fetch the next page ahead
+  }
+
+  // the gallery's next page (HTMX, the element that loads it when scrolled into view):
+  // resolves to true once new tiles are there
+  function loadMore() {
+    if (loadingMore) return loadingMore;
+    const more = moreLoader();
+    if (!more) return Promise.resolve(false);
+    const before = tiles().length;
+    const grid = scope;
+    loadingMore = new Promise((resolve) => {
+      let timer = null;
+      const observer = new MutationObserver(() => {
+        if (tiles().length > before) finish(true);
+        else if (!grid.contains(more)) finish(false);
+      });
+      function finish(grew) {
+        observer.disconnect();
+        clearTimeout(timer);
+        loadingMore = null;
+        if (dialog.open) updateNav();
+        resolve(grew);
+      }
+      observer.observe(grid, { childList: true });
+      timer = setTimeout(() => finish(tiles().length > before), 20000);
+      if (!more.hasAttribute("data-hx-revealed") && window.htmx) {
+        more.setAttribute("data-hx-revealed", "true"); // HTMX's own scroll check: once
+        window.htmx.trigger(more, "revealed");
+      }
+    });
+    return loadingMore;
+  }
+
+  function step(delta) {
+    if (!current) return;
+    const all = tiles();
+    const i = all.indexOf(current);
+    const j = i + delta;
+    if (i < 0 || j < 0) return;
+    if (j < all.length) {
+      show(all[j]);
+      history.replaceState({ vtLightbox: all[j].dataset.id }, "");
+      return;
+    }
+    if (delta < 0 || !moreLoader()) return;
+    const from = current;
+    waitingMore = true;
+    busy();
+    loadMore().then((grew) => {
+      waitingMore = false;
+      busy();
+      if (grew && dialog.open && current === from) step(delta);
+    });
+  }
+
+  function open(a, push) {
+    if (backPending) {
+      queued = a; // the history entry of the last lightbox is still being left
+      return;
+    }
+    scope = a.closest("[data-lightbox]");
+    if (!dialog.open) {
+      const gutter = window.innerWidth - root.clientWidth; // keep the layout when the page
+      root.style.setProperty("--lb-gutter", Math.max(0, gutter) + "px"); // loses its scrollbar
+      root.classList.add("lb-open");
+      dialog.showModal();
+    }
+    show(a);
+    dialog.focus();
+    if (push) {
+      history.scrollRestoration = "manual"; // copied to the new entry
+      history.pushState({ vtLightbox: a.dataset.id }, "");
+    }
+  }
+
+  function close() {
+    if (dialog.open) dialog.close();
+  }
+
+  // every way of closing ends here (×, Esc, backdrop, swipe, Back, a close request)
+  dialog.addEventListener("close", function () {
+    const a = current;
+    seq++;
+    current = null;
+    preloads = [];
+    loadingPhoto = false;
+    waitingMore = false;
+    photo.onload = photo.onerror = placeholder.onload = null;
+    photo.removeAttribute("src");
+    placeholder.removeAttribute("src");
+    root.classList.remove("lb-open");
+    root.style.removeProperty("--lb-gutter");
+    if (a && a.isConnected) a.focus({ preventScroll: true });
+    if (shownId()) {
+      backPending = true;
+      history.back();
+    } else {
+      history.scrollRestoration = "auto";
+    }
+  });
+  dialog.addEventListener("cancel", function (ev) {
+    ev.preventDefault();
+    close();
+  });
+
+  function reopen(id) {
+    const a = Array.from(document.querySelectorAll("[data-lightbox] a[data-id]")).find((t) => t.dataset.id === String(id));
+    if (a) {
+      open(a, false);
+    } else {
+      history.replaceState(null, "");
+      history.scrollRestoration = "auto";
+    }
+  }
+
+  window.addEventListener("popstate", function () {
+    if (backPending) {
+      backPending = false;
+      history.scrollRestoration = "auto";
+      const a = queued;
+      queued = null;
+      if (a && a.isConnected) open(a, true);
+      return;
+    }
+    const id = shownId();
+    if (!id && dialog.open) close();
+    else if (id && !dialog.open) reopen(id); // Forward after Back
+  });
+  // back from another page (bfcache keeps the lightbox as it was; a reload opens it again)
+  window.addEventListener("pageshow", function () {
+    const id = shownId();
+    if (!id && dialog.open) close();
+    else if (id && !dialog.open) reopen(id);
+  });
+
+  document.addEventListener("click", function (ev) {
+    if (ev.defaultPrevented || ev.button !== 0 || ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.altKey) return;
+    const a = ev.target.closest && ev.target.closest("[data-lightbox] a[data-id]");
+    if (!a || isCovered(a) || window.vt.selecting(a)) return;
+    ev.preventDefault();
+    open(a, true);
+  });
+
+  dialog.addEventListener("click", function (ev) {
+    const t = ev.target;
+    if (t.closest("[data-lb-close]")) close();
+    else if (t.closest("[data-lb-prev]")) step(-1);
+    else if (t.closest("[data-lb-next]")) step(1);
+    else if ((t === dialog || t === stage) && Date.now() - swipedAt > 500) close(); // beside the photo
+  });
+
+  // While the lightbox is open every key is its own: no gallery shortcuts, no "/" search.
+  document.addEventListener(
+    "keydown",
+    function (ev) {
+      if (!dialog.open) return;
+      ev.stopImmediatePropagation();
+      if (ev.altKey || ev.ctrlKey || ev.metaKey || ev.shiftKey) return;
+      const onControl = ev.target !== dialog && ev.target.closest && ev.target.closest("a, button");
+      if (ev.key === "Escape") {
+        ev.preventDefault();
+        close();
+      } else if (ev.key === "ArrowLeft" || ev.key === "ArrowRight") {
+        ev.preventDefault();
+        step(ev.key === "ArrowLeft" ? -1 : 1);
+      } else if (ev.key === "Enter" && !onControl) {
+        ev.preventDefault();
+        part("details").click();
+      }
+    },
+    true
+  );
+
+  // swipe left / right: next / previous; down: close (touch and pen)
+  stage.addEventListener("pointerdown", function (ev) {
+    swipe = ev.pointerType !== "mouse" && ev.isPrimary ? { x: ev.clientX, y: ev.clientY } : null;
+  });
+  stage.addEventListener("pointercancel", function () {
+    swipe = null;
+  });
+  stage.addEventListener("pointerup", function (ev) {
+    if (!swipe || !ev.isPrimary) return;
+    const dx = ev.clientX - swipe.x;
+    const dy = ev.clientY - swipe.y;
+    swipe = null;
+    if (Math.abs(dx) > 50 && Math.abs(dx) > 1.5 * Math.abs(dy)) {
+      swipedAt = Date.now();
+      step(dx < 0 ? 1 : -1);
+    } else if (dy > 90 && dy > 1.5 * Math.abs(dx)) {
+      swipedAt = Date.now();
+      close();
+    }
+  });
+
+  window.addEventListener("resize", function () {
+    if (dialog.open) layout();
+  });
+})();
 
 // Quiz keyboard shortcuts: 1-4 pick an answer, Enter = next / skip.
 document.addEventListener("keydown", function (ev) {

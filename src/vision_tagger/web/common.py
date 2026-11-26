@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from .. import APP_NAME, __version__, i18n, updates
 from ..i18n import N_, _
+from ..imaging import PREVIEW_SIZE
 from ..query import ImageFilter, property_counts
 from ..updates import Offer
 from ..vlm.models import phase_text, pull_message
@@ -37,6 +38,7 @@ templates.env.globals.update(
     js_i18n=i18n.js_strings,
     app_name=APP_NAME,
     app_version=__version__,
+    preview_size=PREVIEW_SIZE,
 )
 
 

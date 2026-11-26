@@ -208,7 +208,7 @@
     {% endif %}
     {% include "partials/filter_summary.html" %}
     {% if images %}
-      <div class="thumbs" id="grid">
+      <div class="thumbs" id="grid" data-lightbox>
         {% include "partials/image_grid.html" %}
       </div>
       <form id="gallery-actions" method="post" action="/images/nsfw" class="actionbar" x-show="n > 0" x-cloak>
@@ -224,4 +224,5 @@
   </div>
 </div>
 </div>
+{% if images %}{% include "partials/lightbox.html" %}{% endif %}
 {% endblock %}

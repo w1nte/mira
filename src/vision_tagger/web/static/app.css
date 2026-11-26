@@ -670,6 +670,84 @@ img[data-nsfw] { object-fit: contain !important; background: #000; transform: no
 .nsfw-panel p { display: flex; gap: 6px; align-items: baseline; margin: 0 0 10px; }
 .nsfw-panel .row { gap: 6px; }
 
+/* ------------------------------------------------------------------ lightbox */
+/* A large preview over the gallery (partials/lightbox.html, app.js). Dark in both themes, like
+ * any photo viewer: color-scheme dark gives its buttons the dark tokens. Full screen. */
+html.lb-open { overflow: hidden; padding-right: var(--lb-gutter, 0px); }
+.lightbox {
+  color-scheme: dark;
+  position: fixed; inset: 0;
+  width: 100%; height: 100%; max-width: none; max-height: none;
+  margin: 0; padding: 0; border: 0;
+  background: rgb(0 0 0 / .96); color: var(--text);
+  overflow: hidden; overscroll-behavior: contain; touch-action: none;
+}
+.lightbox::backdrop { background: transparent; }
+.lightbox[open] {
+  display: grid; animation: lb-in .14s ease-out;
+  grid-template: "info actions" auto "stage stage" minmax(0, 1fr) / minmax(0, 1fr) auto;
+}
+.lightbox:focus { outline: none; }
+@keyframes lb-in { from { opacity: 0; } }
+.lb-info { grid-area: info; min-width: 0; padding: 10px 0 10px 20px; }
+.lb-title { margin: 0; overflow: hidden; font-size: 1.05rem; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
+.lb-meta { margin: 0; overflow: hidden; color: var(--text-2); font-size: .9rem; white-space: nowrap; text-overflow: ellipsis; }
+.lb-meta span:not(:empty) + span:not(:empty)::before { content: " · "; }
+.lb-actions { grid-area: actions; display: flex; align-items: center; justify-content: flex-end; gap: 6px; padding: 10px 12px; }
+.lb-actions .icon-btn { width: 36px; height: 36px; color: var(--text); }
+.lb-actions .icon-btn:hover { background: var(--hover); }
+.lb-stage { grid-area: stage; position: relative; display: flex; align-items: center; justify-content: center; min-height: 0; padding: 4px 72px 24px; }
+.lb-frame { position: relative; flex: none; }
+.lb-frame > img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; }
+.lb-photo { opacity: 0; transition: opacity .15s; }
+.lb-frame.ready .lb-photo { opacity: 1; }
+.lb-frame.ready .lb-placeholder, .lb-frame.covered > img { visibility: hidden; }
+.lb-cover {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  padding: 24px; border: 1px solid #262626; border-radius: 4px;
+  background: #000; color: #f2f2f2; text-align: center;
+}
+.lb-cover > .i { width: 40px; height: 40px; color: #9a9a9a; }
+.lb-cover > b { font-size: 1.5rem; letter-spacing: .12em; }
+.lb-cover > p { max-width: 30em; margin: 0 0 6px; color: #bdbdbd; }
+.lb-spinner {
+  position: absolute; top: 50%; left: 50%; width: 36px; height: 36px; margin: -18px 0 0 -18px;
+  border: 3px solid rgb(255 255 255 / .22); border-top-color: #fff; border-radius: 50%;
+  pointer-events: none; animation: spin .8s linear infinite, lb-later .2s .25s both;
+}
+@keyframes lb-later { from { opacity: 0; } to { opacity: 1; } } /* fast loads don't flash it */
+.lb-note {
+  position: absolute; left: 50%; bottom: 30px; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 6px; max-width: calc(100% - 32px); margin: 0; padding: 6px 12px;
+  border-radius: 999px; background: rgb(0 0 0 / .72); color: #f2f2f2; font-size: .9rem; pointer-events: none;
+}
+.lb-nav {
+  position: absolute; top: 50%; z-index: 1; width: 48px; height: 48px; margin-top: -24px; padding: 0;
+  border: 0; border-radius: 50%; background: rgb(255 255 255 / .1); color: #fff;
+}
+.lb-nav:hover { background: rgb(255 255 255 / .2); }
+.lb-nav .i { width: 24px; height: 24px; }
+.lb-prev { left: 14px; }
+.lb-next { right: 14px; }
+.lb-nav[aria-disabled="true"] { opacity: .25; cursor: default; }
+.lb-nav[aria-disabled="true"]:hover { background: rgb(255 255 255 / .1); }
+@media (max-width: 700px) {
+  /* phones: the buttons on top, the photo full width, its name and date below it */
+  .lightbox[open] { grid-template: "actions" auto "stage" minmax(0, 1fr) "info" auto / minmax(0, 1fr); }
+  .lb-actions { padding: 8px; }
+  .lb-info { padding: 10px 16px max(16px, env(safe-area-inset-bottom)); }
+  .lb-stage { padding: 0; }
+  .lb-nav { width: 40px; height: 40px; margin-top: -20px; background: rgb(0 0 0 / .45); }
+  .lb-prev { left: 6px; }
+  .lb-next { right: 6px; }
+  .lb-details { padding: 0 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lightbox[open] { animation: none; }
+  .lb-photo { transition: none; }
+}
+
 .strip { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 3px; }
 .strip .thumb { border-radius: 3px; }
 .result { display: flex; flex-direction: column; gap: 6px; }

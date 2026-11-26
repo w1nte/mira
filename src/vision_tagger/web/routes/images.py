@@ -128,6 +128,23 @@ def _nsfw_filter(c, s, request: Request, f: ImageFilter) -> dict | None:
     }
 
 
+def _people(s, images: list[Image]) -> dict[int, list[str]]:
+    """The named persons on each photo of a gallery page (the lightbox's info bar): one
+    indexed query per page."""
+    out: dict[int, list[str]] = {}
+    for part in chunked([img.id for img in images]):
+        for image_id, name in s.execute(
+            select(Face.image_id, Person.name)
+            .join(Cluster, Cluster.id == Face.cluster_id)
+            .join(Person, Person.id == Cluster.person_id)
+            .where(Face.image_id.in_(part), Face.ignored.is_(False))
+            .distinct()
+            .order_by(Person.name)
+        ):
+            out.setdefault(image_id, []).append(name)
+    return out
+
+
 MAX_TIMELINE_MONTHS = 1200  # 100 years; older dates are almost always wrong camera clocks
 
 
@@ -182,6 +199,7 @@ def gallery(request: Request) -> Response:
     with c.db.session() as s:
         total = count_images(s, f)
         images = page_images(s, f, 0, size)
+        people_on = _people(s, images)
         facets_all = cached_property_counts(c, s, f, keys=FACET_KEYS)
         facets = {k: facets_all[k][:12] for k in FACET_KEYS if k in facets_all}
         people = person_counts(s, f)[:30]
@@ -210,6 +228,7 @@ def gallery(request: Request) -> Response:
         total=total,
         timeline=timeline,
         images=images,
+        people_on=people_on,
         next_page=2 if total > size else None,
         facets=facets,
         facet_keys=[k for k in FACET_KEYS if k in facets or k in alternatives["facets"]],
@@ -234,10 +253,12 @@ def gallery_page(request: Request, page: int = 2) -> Response:
     with c.db.session() as s:
         total = count_images(s, f)
         images = page_images(s, f, (page - 1) * size, size)
+        people_on = _people(s, images)
     return render(
         request,
         "partials/image_grid.html",
         images=images,
+        people_on=people_on,
         f=f,
         next_page=page + 1 if page * size < total else None,
     )

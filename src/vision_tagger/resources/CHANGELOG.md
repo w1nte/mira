@@ -9,6 +9,7 @@ Mira shows them on its "What's new" page, and each GitHub release uses its secti
 - NSFW photos show as black tiles until you open them; a local check finds them, and you can mark photos yourself (photo page, gallery → Select).
 - Search finds photos by what they show, in any language and right after the import, without Ollama: the new "Visual search" stage (SigLIP 2).
 - "Similar photos" on a photo's page lists the photos that look like it; also `vision-tagger similar <id>`.
+- Images: a click on a photo shows it large over the gallery; arrow keys or a swipe for the next one, Esc to close, "Open details" for its page.
 
 ### Changed
 - Search ranks by what photos show first, then their descriptions, properties and words; results that match nothing are left out.

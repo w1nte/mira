@@ -115,6 +115,13 @@ def nsfw_shown(context) -> bool:
 
 
 @pass_context
+def nsfw_covered(context, image_id: int) -> bool:
+    """True if the photo gets a cover on this page: its tile carries no picture URL at all, so
+    the gallery's lightbox shows the cover for it too and a click opens the photo page."""
+    return cover_for(_request(context), image=image_id) is not None
+
+
+@pass_context
 def thumb(
     context, image_id: int, size: int | None = None, *, cls="", alt="", lazy=True, link=False
 ):
@@ -159,6 +166,7 @@ def safe_first(context, image_ids) -> list[int]:
 
 GLOBALS = {
     "nsfw_shown": nsfw_shown,
+    "nsfw_covered": nsfw_covered,
     "thumb": thumb,
     "face_img": face_img,
     "animal_img": animal_img,
