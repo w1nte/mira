@@ -45,6 +45,7 @@ from .routes import (
     pwa,
     quiz,
     search,
+    updates,
 )
 from .routes import (
     auth as auth_routes,
@@ -120,6 +121,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         quiz,
         generations,
         geo,
+        updates,
     ):
         app.include_router(module.router)
 

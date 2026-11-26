@@ -15,9 +15,10 @@ from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
 from sqlalchemy.orm import Session
 
-from .. import APP_NAME, i18n
+from .. import APP_NAME, i18n, updates
 from ..i18n import N_, _
 from ..query import ImageFilter, property_counts
+from ..updates import Offer
 from ..vlm.models import phase_text, pull_message
 from .context import AppContext
 
@@ -239,6 +240,30 @@ def pct(part: int | float, total: int | float) -> float:
     return round(100.0 * part / total, 1) if total else 0.0
 
 
+def update_offer(request: Request) -> Offer | None:
+    """A newer Mira to tell about (sidebar, Home); None when there is none or the check is off.
+
+    Cheap (from memory): the sidebar asks on every page.
+    """
+    c: AppContext | None = getattr(request.app.state, "ctx", None)
+    return c.updates.offer() if c is not None else None
+
+
+#: why an update check failed (``updates.NETWORK`` ...), translated when shown
+UPDATE_ERRORS = {
+    updates.NETWORK: N_("Could not reach GitHub. Is this computer online?"),
+    updates.RATE_LIMITED: N_("GitHub turned the request down for now (too many requests)."),
+    updates.HTTP_ERROR: N_("GitHub sent an unexpected answer."),
+    updates.INVALID: N_("GitHub sent an unexpected answer."),
+}
+
+
+def update_error(code: str | None) -> str:
+    if not code:
+        return ""
+    return i18n.gettext(UPDATE_ERRORS.get(code, UPDATE_ERRORS[updates.HTTP_ERROR]))
+
+
 _ICON_TOKEN = re.compile(r"^[a-z0-9 -]*$")
 
 
@@ -267,4 +292,6 @@ templates.env.globals.update(
     pet_label=pet_label,
     pull_message=pull_message,
     pull_phase=phase_text,
+    update_offer=update_offer,
+    update_error=update_error,
 )

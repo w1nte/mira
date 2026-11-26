@@ -411,6 +411,21 @@ def test_webview_windows_are_destroyed_on_quit(tmp_path, monkeypatch):
     assert not started  # quit before it opened: no window at all
 
 
+def test_webview_opens_links_to_other_sites_in_the_browser(tmp_path, monkeypatch):
+    """target="_blank" links (the release page of an update) go to the user's browser."""
+    started = []
+    fake = types.SimpleNamespace(
+        windows=[],
+        settings={"ALLOW_DOWNLOADS": False, "OPEN_EXTERNAL_LINKS_IN_BROWSER": False},
+        create_window=lambda *args, **kwargs: None,
+        start=lambda **kwargs: started.append(kwargs),
+    )
+    monkeypatch.setitem(sys.modules, "webview", fake)
+    D.WebviewWindow(tmp_path).show("http://127.0.0.1:1/", lambda: 0.0)
+    assert started
+    assert fake.settings == {"ALLOW_DOWNLOADS": True, "OPEN_EXTERNAL_LINKS_IN_BROWSER": True}
+
+
 # --------------------------------------------------------------------------- installers' commands
 @pytest.fixture
 def desktop_library(tmp_path, monkeypatch):

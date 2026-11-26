@@ -117,3 +117,8 @@ port = 8765
 # password: set VT_WEB__PASSWORD instead of writing it here (strongly recommended in remote mode)
 page_size = 120
 thumb_size = 320
+
+# [updates]
+# check = "auto"                    # "auto": the installed app looks for a new release once a day;
+#                                   # "on" (also from source, server, Docker) or "off"
+# prereleases = false               # also tell about release candidates and betas

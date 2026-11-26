@@ -1,0 +1,35 @@
+{# The version and the update check (Environment card on the Pipeline page). Expects ``up``
+   (updates.Status). "Check now" swaps this block; release notes are never shown here, only
+   linked (they are text from the internet). #}
+<div class="update-status" id="update-status">
+  <div class="row">
+    <span>{{ app_name }} {{ up.current }}</span>
+    {% if up.offer %}<span class="badge accent">{{ _('Update available') }}</span>
+    {% elif up.up_to_date %}<span class="badge ok">{{ _('up to date') }}</span>{% endif %}
+  </div>
+  {% if not up.enabled %}
+    {% set setting %}<code>check = "on"</code>{% endset %}
+    {% set section %}<code>[updates]</code>{% endset %}
+    <small class="muted">{% if up.mode == 'off' %}{{ _('Automatic update checks are off.') }}{% else %}{{ _('Only the installed app looks for updates by itself.') }}{% endif %}
+      {{ _('To turn the check on, set %(setting)s in the %(section)s section of config.toml.', setting=setting, section=section) }}</small>
+  {% else %}
+    {% if up.offer %}
+      <small>{{ _('Mira %(version)s is available (you have %(current)s)', version=up.offer.version, current=up.offer.current) }}{% if up.offer.published %} · <span class="nowrap">{{ _('Released on %(date)s', date=up.offer.published) }}</span>{% endif %}</small>
+      <div class="row">
+        <a href="{{ up.offer.url }}" target="_blank" rel="noopener">{{ icon('external', 'sm') }}{{ _('What’s new') }}</a>
+        {% if up.offer.download_url %}<a href="{{ up.offer.download_url }}" target="_blank" rel="noopener" title="{{ up.offer.download_name }}">{{ icon('download', 'sm') }}{{ _('Download') }}</a>{% endif %}
+      </div>
+    {% elif not up.checked_at %}
+      <small class="muted">{{ _('Not checked yet.') }}</small>
+    {% endif %}
+    {% if up.error %}
+      <div class="note warn">{{ icon('alert', 'sm') }}<small>{{ update_error(up.error) }} {{ _('Mira tries again later.') }}</small></div>
+    {% endif %}
+    <div class="row">
+      <form method="post" action="/updates/check" hx-post="/updates/check" hx-target="#update-status" hx-swap="outerHTML" hx-disabled-elt="find button">
+        <button class="small">{{ icon('refresh', 'sm') }}{{ _('Check now') }}</button>
+      </form>
+      {% if up.checked_at %}{% set when %}<span class="nowrap">{{ up.checked_at | dt }}</span>{% endset %}<small class="muted">{{ _('Last check: %(time)s', time=when) }}</small>{% endif %}
+    </div>
+  {% endif %}
+</div>

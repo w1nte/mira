@@ -15,6 +15,26 @@
   </div>
 </div>
 
+{# a newer Mira (updates.UpdateChecker): "Not now" hides it for this version only #}
+{% set update = update_offer(request) %}
+{% if update and not update.dismissed %}
+<div class="nudges update-nudge" id="update-nudge">
+  <div class="nudge static">{{ icon('arrow-up') }}
+    <span><b>{{ _('Mira %(version)s is available (you have %(current)s)', version=update.version, current=update.current) }}</b>
+      <small>{% if update.download_url %}{{ _('Download the new setup and run it. Your library is kept and brought up to date.') }}{% elif request.app.state.ctx.settings.remote_mode %}{{ _('See the release page for what’s new and how to update.') }}{% else %}{{ _('Get the setup for this computer from the release page and run it. Your library is kept and brought up to date.') }}{% endif %}</small>
+    </span>
+    <div class="row">
+      <a class="btn small" href="{{ update.url }}" target="_blank" rel="noopener">{{ icon('external', 'sm') }}{{ _('What’s new') }}</a>
+      {% if update.download_url %}<a class="btn primary small" href="{{ update.download_url }}" target="_blank" rel="noopener" title="{{ update.download_name }}">{{ icon('download', 'sm') }}{{ _('Download') }}</a>{% endif %}
+      <form method="post" action="/updates/dismiss" hx-post="/updates/dismiss" hx-target="#update-nudge" hx-swap="outerHTML">
+        <input type="hidden" name="version" value="{{ update.version }}">
+        <button class="ghost small">{{ _('Not now') }}</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 {# missing Ollama models / Ollama not installed: loaded after the page, Ollama may be slow #}
 <div hx-get="/partials/models-nudge" hx-trigger="load" hx-swap="outerHTML"></div>
 
