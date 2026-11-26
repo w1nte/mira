@@ -120,6 +120,14 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "### Mira $version ($NAME)" >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Changelog section for the release
+        # The app shows its own version's changes on "What's new". When the release step of
+        # CLAUDE.md ("Changelog") was forgotten, the entries are still under Unreleased: file
+        # them under the tag in this build (main gets the same change by a pull request, see
+        # the publish job). Before the install, which copies the package into the venv.
+        if: env.TAG != ''
+        run: uv run --no-project python packaging/changelog.py release "$TAG"
+
       - name: Free disk space (Linux gpu)
         # the CUDA libraries are in the venv, the app folder and the archive
         if: runner.os == 'Linux' && matrix.flavor == 'gpu'
@@ -224,10 +232,19 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: write  # the changelog pull request for main (see below)
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Changelog section for the release
+        # as in the builds: Unreleased filed under the tag when the release step was forgotten
+        continue-on-error: true  # never keeps the files from being attached
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          cp src/vision_tagger/resources/CHANGELOG.md "$RUNNER_TEMP/released-changelog.md"
+          python3 packaging/changelog.py release "$TAG"
       - name: Release notes from the changelog (only if the release has none)
         # Notes written on GitHub stay as they are. A problem here never keeps the files from
         # being attached, hence continue-on-error.
@@ -249,6 +266,41 @@ jobs:
           fi
           cat notes.md
           gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file notes.md
+      - name: Changelog for main (pull request, when the release step was forgotten)
+        # Moves the entries that were under Unreleased in the released commit into the tag's
+        # section on main; entries added to main since stay Unreleased. Through the API, so the
+        # checkout keeps no credentials. Creating the pull request needs "Allow GitHub Actions
+        # to create and approve pull requests" (Settings → Actions → General); without it the
+        # branch is still pushed and the log says so.
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+          FILE: src/vision_tagger/resources/CHANGELOG.md
+        run: |
+          main_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)
+          gh api "repos/$GITHUB_REPOSITORY/contents/$FILE?ref=$main_sha" > main.json
+          jq -r .content main.json | base64 -d > main-changelog.md
+          file_sha=$(jq -r .sha main.json)
+          cp main-changelog.md before.md
+          python3 packaging/changelog.py --file main-changelog.md release "$TAG" \
+            --entries-from "$RUNNER_TEMP/released-changelog.md"
+          if cmp -s before.md main-changelog.md; then
+            echo "main's changelog already has the section for $TAG."
+            exit 0
+          fi
+          branch="changelog/release-$TAG"
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/heads/$branch" \
+            -f "sha=$main_sha" > /dev/null || echo "branch $branch exists already"
+          gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/$FILE" \
+            -f "message=Changelog: release $TAG" -f "branch=$branch" -f "sha=$file_sha" \
+            -f "content=$(base64 -w0 main-changelog.md)" > /dev/null
+          body="The release $TAG was published while its changes were still under Unreleased."
+          body="$body This files them under \`## $TAG\` (CLAUDE.md, Changelog, release step 1)."
+          if ! gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$branch" \
+              --title "Changelog: release $TAG" --body "$body"; then
+            echo "::warning title=Changelog::Branch $branch has the changelog for $TAG; merge it into main (Actions may not create pull requests here)."
+          fi
       - uses: actions/download-artifact@v4
         with:
           pattern: Mira-*
