@@ -7,7 +7,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <title>{% block title %}vision-tagger{% endblock %} · vision-tagger</title>
+  <title>{% block title %}{{ app_name }}{% endblock %} · {{ app_name }}</title>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
@@ -28,7 +28,7 @@
     <a class="navlink{{ ' active' if active }}" href="{{ href }}"{% if active %} aria-current="page"{% endif %}{% if hint %} title="{{ hint }}"{% endif %}>{{ icon(icon_name) }}<span>{{ text }}</span></a>
   {%- endmacro %}
   <aside class="sidebar" id="sidebar">
-    <a class="brand" href="/"><span class="mark" aria-hidden="true"></span>vision-tagger</a>
+    <a class="brand" href="/"><span class="mark" aria-hidden="true"></span>{{ app_name }}</a>
     <nav aria-label="{{ _('Main') }}">
       {{ navlink('/', 'home', _('Home'), path == '/') }}
       <div class="navgroup">{{ _('Library') }}</div>

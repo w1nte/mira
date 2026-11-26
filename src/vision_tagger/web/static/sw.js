@@ -1,4 +1,4 @@
-// vision-tagger service worker: makes the web UI an installable app.
+// Mira service worker: makes the web UI an installable app.
 // - the app shell (styles, scripts, icons) is cached and refreshed in the background,
 // - pages come from the network; without a connection an offline page is shown,
 // - thumbnails that were already seen are cached (at most MAX_THUMBS),

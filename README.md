@@ -1,4 +1,7 @@
-# vision-tagger
+# Mira
+
+*Formerly vision-tagger. The Python package, the `vision-tagger` command and the repository
+keep that name.*
 
 A local pipeline that indexes a large photo collection, finds and clusters faces, and extracts
 stable, filterable properties with a local vision-language model (Qwen2.5-VL via Ollama). You
@@ -59,15 +62,15 @@ are never moved or modified.
     image: caption, visible text, all properties, folder and date.
   - **Deep search** lets the LLM double-check the best ~40 results and explain why each fits.
   - Without an LLM, a keyword fallback (English and German) still works.
-- **Ages and doubtful dates.** Give a person a birth year, or let vision-tagger estimate one
+- **Ages and doubtful dates.** Give a person a birth year, or let Mira estimate one
   from photo dates and face ages.
   - **Face ages from two models.** InsightFace's age model turns babies and children into young
-    adults (a 12-year-old easily comes out as 40). vision-tagger adds AgeNet, a small network
+    adults (a 12-year-old easily comes out as 40). Mira adds AgeNet, a small network
     from [face-api](https://github.com/vladmandic/face-api) (MIT license) trained on many
     children and old people, and combines both. AgeNet is used alone for children and teenagers,
     and both count equally from about 35 years on.
   - **Your birth years make it better.** Every birth year you set also shows how far off the
-    face model is on *your* photos. vision-tagger learns a correction per age range from those
+    face model is on *your* photos. Mira learns a correction per age range from those
     faces and applies it to everyone else.
   - **Robust estimate.** The birth year is a weighted median of "photo year − face age". It
     trusts EXIF dates more than file times, faces of children more than those of adults (their
@@ -115,7 +118,7 @@ The simplest way on Windows: download the setup program from the
   It comes as a `.exe` plus `.bin` files: keep them in one folder and start the `.exe`.
 - **cpu** for every other PC (slower face detection, much smaller download).
 
-vision-tagger then starts from the Start menu like any other application, in a window of its
+Mira then starts from the Start menu like any other application, in a window of its
 own. Closing the window stops it (a running pipeline is paused and continues on the next start);
 starting it again while it runs opens another window. Install **Ollama** as well (step 4 below)
 for properties and search.
@@ -143,7 +146,7 @@ checks it, and Inno Setup packs it.
    *Desktop development with C++*.
 3. **A recent NVIDIA driver.** The `gpu` extra installs `onnxruntime-gpu[cuda,cudnn]`, which
    brings the CUDA and cuDNN runtime as pip packages, so a separate CUDA install is not needed.
-   vision-tagger calls `onnxruntime.preload_dlls()` so these DLLs are found. Current
+   Mira calls `onnxruntime.preload_dlls()` so these DLLs are found. Current
    onnxruntime-gpu builds target CUDA 13, which needs driver R580 or newer. If CUDA can't be
    loaded, InsightFace falls back to the CPU and the dashboard shows a warning. Check
    **Environment** on the dashboard.
@@ -152,7 +155,7 @@ checks it, and Inno Setup packs it.
    ollama pull qwen2.5vl:7b      # ~6 GB VRAM; qwen2.5vl:3b for smaller GPUs, qwen3-vl:8b also works
    ollama pull nomic-embed-text  # small text-embedding model for the search index
    ```
-5. **vision-tagger:**
+5. **Mira:**
    ```powershell
    git clone https://github.com/w1nte/vision-tagger.git
    cd vision-tagger
@@ -171,7 +174,7 @@ uv sync --extra gpu
 uv run vision-tagger migrate          # upgrades the database schema; writes a backup copy first
 ```
 
-- If the database is older than the code, vision-tagger refuses to start and tells you to run
+- If the database is older than the code, Mira refuses to start and tells you to run
   `vision-tagger migrate`.
 - All pending migrations run in a single transaction, so a failed migration leaves the database
   as it was.
@@ -253,7 +256,7 @@ and exported keywords stay the same in every language. Searches can be typed in 
 (follows your operating system), *Light* or *Dark*. The choice is kept in a cookie (`vt_theme`),
 so every page is rendered in the right theme from the start, without flashing.
 
-**Install as an app.** vision-tagger is a Progressive Web App. In Chrome or Edge, click
+**Install as an app.** Mira is a Progressive Web App. In Chrome or Edge, click
 **Install app** in the sidebar (or the install icon in the address bar); on Android use *Add to
 home screen*, on iOS *Share → Add to Home Screen*. It then opens in its own window, with its own
 icon. Browsers allow this on `localhost` and over HTTPS, so a server needs HTTPS (see below).
@@ -261,7 +264,7 @@ Without a connection the app shows an offline page instead of a browser error.
 
 ## Remote mode and Docker
 
-In **remote mode** vision-tagger runs on a server (a NAS, a home server, a cloud machine) and
+In **remote mode** Mira runs on a server (a NAS, a home server, a cloud machine) and
 you upload your photos through the web UI. Uploaded photos are indexed and analysed
 automatically.
 
@@ -289,7 +292,7 @@ docker compose exec ollama ollama pull nomic-embed-text
 
 Then open `http://<server>:8765`, log in and upload photos on the *Import* page.
 
-- [`docker-compose.yml`](docker-compose.yml) starts vision-tagger and Ollama. The volumes
+- [`docker-compose.yml`](docker-compose.yml) starts Mira and Ollama. The volumes
   `vt-data` (database, thumbnails, models) and `vt-photos` (the uploaded photos) keep your data.
   To use a host folder, replace `vt-photos:/photos` with e.g. `./photos:/photos`.
 - NVIDIA GPU: build with `EXTRA: gpu` and uncomment the two `deploy` sections (needs the NVIDIA
@@ -318,7 +321,7 @@ size in the proxy (`client_max_body_size 0;` in nginx); each request is at most 
 
 ## Using the results in other applications
 
-Exports carry what vision-tagger found as **XMP**, the metadata standard photo applications
+Exports carry what Mira found as **XMP**, the metadata standard photo applications
 share. The originals are never modified.
 
 | What | Where it ends up |
@@ -328,7 +331,7 @@ share. The originals are never modified.
 | Caption of the vision model | `dc:description` |
 | People, with the area of each face | `Iptc4xmpExt:PersonInImage`, MWG face regions (`mwg-rs:Regions`) |
 | Capture date, including dates you corrected (not file-time guesses) | `exif:DateTimeOriginal`, `xmp:CreateDate`, `photoshop:DateCreated` |
-| All raw values with confidence | `vt:Properties` (vision-tagger namespace) |
+| All raw values with confidence | `vt:Properties` (Mira namespace) |
 
 Choose in the export dialog (or with `--xmp/--no-xmp`, `--embed/--no-embed`,
 `--index/--no-index`):
@@ -480,7 +483,7 @@ signed with a key stored in the data folder.
 - Deduplication: a file is a duplicate if its pHash matches and its dHash is within
   `index.dhash_max_distance` bits. Every collapsed file stays listed under *duplicates*, so
   nothing is lost.
-- Symlink export needs Developer Mode on Windows. Otherwise vision-tagger falls back to
+- Symlink export needs Developer Mode on Windows. Otherwise Mira falls back to
   copying.
 - InsightFace's pretrained `buffalo_l` models are licensed for **non-commercial research
   purposes** only.
@@ -490,4 +493,4 @@ signed with a key stored in the data folder.
   before (no new face detection). It is added automatically whenever **faces** runs. Set
   `faces.age_model = "insightface"` to keep the old behaviour.
 - Face ages are estimates. Expect about ±2 years for children and ±5–10 years for adults. Set
-  the birth years of a few people for exact ages; vision-tagger then also corrects the others.
+  the birth years of a few people for exact ages; Mira then also corrects the others.

@@ -15,7 +15,7 @@ from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
 from sqlalchemy.orm import Session
 
-from .. import i18n
+from .. import APP_NAME, i18n
 from ..i18n import N_
 from ..query import ImageFilter, property_counts
 from .context import AppContext
@@ -29,7 +29,10 @@ templates.env.install_gettext_callables(  # type: ignore[attr-defined]
     i18n.gettext, i18n.ngettext, newstyle=True, pgettext=i18n.pgettext
 )
 templates.env.globals.update(
-    languages=i18n.LANGUAGES, current_lang=i18n.current, js_i18n=i18n.js_strings
+    languages=i18n.LANGUAGES,
+    current_lang=i18n.current,
+    js_i18n=i18n.js_strings,
+    app_name=APP_NAME,
 )
 
 

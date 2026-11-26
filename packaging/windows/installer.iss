@@ -2,7 +2,8 @@
 ;
 ;   iscc /DAppVersion=0.1.0 /DFlavor=gpu packaging\windows\installer.iss
 ;
-; Installs per user (no administrator rights) into %LOCALAPPDATA%\Programs\vision-tagger.
+; Installs per user (no administrator rights) into %LOCALAPPDATA%\Programs\Mira (an update of
+; an installation from before the rename stays in its folder).
 ; The library (config, database, thumbnails) lives in %LOCALAPPDATA%\vision-tagger and is kept
 ; on uninstall and update; the photos themselves are never touched.
 
@@ -12,8 +13,8 @@
 #ifndef Flavor
   #define Flavor "gpu"
 #endif
-#define AppName "vision-tagger"
-#define AppExe "vision-tagger.exe"
+#define AppName "Mira"
+#define AppExe "Mira.exe"
 
 [Setup]
 AppId={{BDA0ECA7-54BD-4B4D-82BE-1592C783603F}
@@ -65,6 +66,10 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [InstallDelete]
 ; files of the previous version that this one no longer has must not linger
 Type: filesandordirs; Name: "{app}\_internal"
+; the app and its shortcuts were called vision-tagger before
+Type: files; Name: "{app}\vision-tagger.exe"
+Type: files; Name: "{autoprograms}\vision-tagger.lnk"
+Type: files; Name: "{autodesktop}\vision-tagger.lnk"
 
 [Files]
 Source: "..\..\dist\vision-tagger\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs

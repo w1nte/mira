@@ -40,3 +40,17 @@ def test_pwa_files_are_public_with_a_password(settings):
         for path in ("/manifest.webmanifest", "/sw.js", "/static/offline.html", "/healthz"):
             assert c.get(path).status_code == 200, path
         assert c.get("/api/status").status_code == 401
+
+
+def test_users_see_the_name_mira(settings):
+    from vision_tagger import APP_NAME
+
+    assert APP_NAME == "Mira"
+    app = create_app(settings)
+    with TestClient(app) as c:
+        m = c.get("/manifest.webmanifest").json()
+        assert m["name"] == m["short_name"] == "Mira"
+        page = c.get("/").text
+        assert "· Mira</title>" in page and "</span>Mira</a>" in page  # tab title and brand
+        assert "vision-tagger" not in page.split("<body", 1)[1].split("<script", 1)[0]
+        assert "Mira" in (STATIC_DIR / "offline.html").read_text(encoding="utf-8")

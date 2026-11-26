@@ -127,5 +127,5 @@ def download_results(request: Request, ids: str = "") -> Response:
     return StreamingResponse(
         stream_zip(c.db, ints(ids.split(","))),
         media_type="application/zip",
-        headers={"Content-Disposition": 'attachment; filename="vision-tagger-search.zip"'},
+        headers={"Content-Disposition": 'attachment; filename="mira-search.zip"'},
     )

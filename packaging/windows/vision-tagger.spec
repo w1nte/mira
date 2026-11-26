@@ -1,4 +1,4 @@
-# PyInstaller spec of the desktop app: vision-tagger.exe (window) and vision-tagger-cli.exe
+# PyInstaller spec of the desktop app: Mira.exe (window) and vision-tagger-cli.exe
 # (command line) in one folder, which installer.iss packs into a setup program.
 #
 #   uv sync --locked --no-dev --no-editable --extra gpu --extra desktop --group packaging
@@ -60,7 +60,7 @@ app_exe = EXE(
     pyz,
     scripts_for("entry_app"),
     exclude_binaries=True,
-    name="vision-tagger",
+    name="Mira",
     console=False,
     icon=icon,
     upx=False,
