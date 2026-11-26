@@ -351,9 +351,14 @@ def _clear_dir(folder: Path) -> None:
 
 
 def clear_cache_dirs(settings: Settings) -> None:
-    """Delete the caches keyed by image or face id: thumbnails, face crops, aligned portraits
-    and grow-up animations. They are made again on demand."""
-    for folder in (settings.thumbs_dir, settings.face_crops_dir, settings.cache_dir / "aligned"):
+    """Delete the caches keyed by image, face or animal id: thumbnails, face and animal crops,
+    aligned portraits and grow-up animations. They are made again on demand."""
+    for folder in (
+        settings.thumbs_dir,
+        settings.face_crops_dir,
+        settings.animal_crops_dir,
+        settings.cache_dir / "aligned",
+    ):
         _clear_dir(folder)
 
 

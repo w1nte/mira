@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .. import APP_NAME, i18n
 from ..config import Settings, load_settings
-from ..db.models import Face, Image, PersonReference
+from ..db.models import Animal, Face, Image, PersonReference
 from ..imaging import (
     ensure_face_crop,
     ensure_thumbnail,
@@ -29,13 +29,12 @@ from .auth import Auth, load_secret
 from .common import STATIC_DIR, ctx
 from .context import AppContext
 from .routes import (
-    auth as auth_routes,
-)
-from .routes import (
+    animals,
     dashboard,
     database,
     faces,
     generations,
+    geo,
     home,
     images,
     importing,
@@ -45,6 +44,9 @@ from .routes import (
     pwa,
     quiz,
     search,
+)
+from .routes import (
+    auth as auth_routes,
 )
 from .security import allowed_hostnames, guard
 
@@ -108,12 +110,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         database,
         faces,
         persons,
+        animals,
         properties,
         images,
         overview,
         search,
         quiz,
         generations,
+        geo,
     ):
         app.include_router(module.router)
 
@@ -181,6 +185,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     im,
                     tuple(v * scale for v in bbox),  # type: ignore[arg-type]
                     size=c.settings.faces.crop_size,
+                )
+        return FileResponse(target, media_type="image/webp", headers=_cache_headers())
+
+    @app.get("/media/animal/{animal_id}")
+    def animal_crop(request: Request, animal_id: int) -> Response:
+        c = ctx(request)
+        target = face_crop_path(c.settings.animal_crops_dir, animal_id)
+        if not target.exists():
+            with c.db.session() as s:
+                animal = s.get(Animal, animal_id)
+                if animal is None:
+                    raise HTTPException(404)
+                img = s.get(Image, animal.image_id)
+                assert img is not None
+                path, w = img.path, img.width
+                bbox = (animal.x1, animal.y1, animal.x2, animal.y2)
+            with _GENERATE:
+                try:
+                    im = load_image(path, max_px=c.settings.animals.max_image_px)
+                except OSError as exc:
+                    raise HTTPException(404, str(exc)) from exc
+                scale = im.width / w if w else 1.0
+                ensure_face_crop(
+                    c.settings.animal_crops_dir,
+                    animal_id,
+                    im,
+                    tuple(v * scale for v in bbox),  # type: ignore[arg-type]
+                    size=c.settings.animals.crop_size,
+                    margin=0.1,
                 )
         return FileResponse(target, media_type="image/webp", headers=_cache_headers())
 

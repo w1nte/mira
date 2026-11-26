@@ -49,6 +49,8 @@ MARKER = "vision-tagger"  # our sidecars contain it; others are never overwritte
 
 # properties that make good plain keywords; everything else is in the hierarchy only
 KEYWORD_KEYS = (
+    "pet",
+    "animal",
     "objects",
     "animals",
     "vehicles",

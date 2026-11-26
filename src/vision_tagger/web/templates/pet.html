@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}{{ pet_label(pet) }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <nav class="crumbs" aria-label="{{ _('Breadcrumb') }}"><a href="/animals">{{ _('Animals') }}</a></nav>
+    <div class="title-row">
+      {% if pet.cover_animal_id %}<img class="avatar lg" src="/media/animal/{{ pet.cover_animal_id }}" alt="">{% endif %}
+      <div>
+        <h1>{{ pet_label(pet) }}{% if pet.name %} <small>#{{ pet.id }}</small>{% endif %}</h1>
+        <small>{{ ngettext('%(num)d photo', '%(num)d photos', n_photos) }} · {{ pet.species | pretty('animal') }}{% if pet.locked %} · <span class="nowrap">{{ icon('lock', 'sm') }} {{ _('kept when grouping again') }}</span>{% endif %}</small>
+      </div>
+    </div>
+  </div>
+  <div class="row">
+    <a class="btn primary" href="/images?pet={{ pet.id }}">{{ icon('image', 'sm') }}{{ _('Show images') }}</a>
+  </div>
+</div>
+
+<div class="grid-2">
+  <section class="card">
+    <h2>{{ _('Name') }}</h2>
+    <form method="post" action="/pets/{{ pet.id }}/name" class="row">
+      <input type="text" name="name" list="pet-names" value="{{ pet.name or '' }}" placeholder="{{ _('e.g. %(example)s', example='Bello') }}" aria-label="{{ _('Name') }}" maxlength="200" style="flex:1">
+      <button class="primary">{{ _('Save') }}</button>
+    </form>
+    <p class="muted hint">{{ _('With a name, the photos can be found in search (“Bello at the beach”) and filtered in the gallery. Typing the name of another group merges the two.') }}</p>
+    <h3 style="margin-top:20px">{{ _('Species') }}</h3>
+    <form method="post" action="/pets/{{ pet.id }}/species" class="row">
+      <select name="species" aria-label="{{ _('Species') }}">
+        {% for sp in species_list %}<option value="{{ sp }}" {{ 'selected' if sp == pet.species }}>{{ sp | pretty('animal') }}</option>{% endfor %}
+      </select>
+      <button class="small">{{ _('Change') }}</button>
+    </form>
+    <p class="muted hint">{{ _('The detector sometimes takes a fluffy dog for a bear or a sheep – correct it here.') }}</p>
+  </section>
+  <section class="card">
+    <h2>{{ _('Similar groups') }}</h2>
+    {% if similar %}
+    <div class="table-wrap"><table>
+      {% for o, sim in similar %}
+      <tr>
+        <td style="width:60px"><a href="/pets/{{ o.id }}">{% if o.cover_animal_id %}<img class="avatar" src="/media/animal/{{ o.cover_animal_id }}" alt="">{% endif %}</a></td>
+        <td><a class="ink" href="/pets/{{ o.id }}">{{ pet_label(o) }}</a><br><small>{{ ngettext('%(num)d photo', '%(num)d photos', photos.get(o.id, 0)) }}</small></td>
+        <td class="num"><span class="badge {{ 'ok' if sim > 0.7 else ('warn' if sim > 0.5 else '') }}">{{ '%.0f' | format(sim * 100) }}%</span></td>
+        <td class="num">
+          <form method="post" action="/pets/merge">
+            <input type="hidden" name="pet_ids" value="{{ pet.id }}"><input type="hidden" name="pet_ids" value="{{ o.id }}">
+            <input type="hidden" name="target" value="{{ pet.id }}">
+            <button class="small">{{ _('Merge here') }}</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </table></div>
+    {% else %}<p class="muted">{{ _('No other groups.') }}</p>{% endif %}
+  </section>
+</div>
+
+<div class="section-title"><h2>{{ _('Photos') }}</h2><small class="muted">{{ pet.animal_count }}</small></div>
+{% if animals %}
+  {% include "partials/animal_grid.html" %}
+{% else %}
+  <div class="card empty">{{ _('No photos in this group any more. Its name is kept: when the animal is found again, its photos join it.') }}</div>
+{% endif %}
+{% if pages > 1 %}
+<nav class="pager" aria-label="{{ _('Pages') }}">
+  {% if page > 1 %}<a class="btn" href="?page={{ page-1 }}">{{ icon('chevron-left', 'sm') }}{{ _('Previous') }}</a>{% endif %}
+  <span class="muted">{{ _('Page %(page)s of %(pages)s', page=page, pages=pages) }}</span>
+  {% if page < pages %}<a class="btn" href="?page={{ page+1 }}">{{ _('Next') }}{{ icon('chevron-right', 'sm') }}</a>{% endif %}
+</nav>
+{% endif %}
+{% endblock %}

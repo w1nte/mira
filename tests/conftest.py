@@ -20,6 +20,7 @@ def settings(tmp_path: Path) -> Settings:
         pipeline={"batch_size": 4},
         index={"workers": 2, "commit_every": 3},
         web={"allowed_hosts": ["testserver"]},
+        geo={"download_gazetteer": False},  # tests never download (see tests/test_geo.py)
     )
     s.ensure_dirs()
     (tmp_path / "photos").mkdir(exist_ok=True)
@@ -42,8 +43,12 @@ def make_image(
     date: datetime | None = None,
     camera: tuple[str, str] | None = None,
     fmt: str | None = None,
+    gps: tuple[float, float] | None = None,
 ) -> Path:
-    """Create a structurally distinct image (different seeds -> different pHash)."""
+    """Create a structurally distinct image (different seeds -> different pHash).
+
+    ``gps`` writes EXIF GPS tags (decimal degrees; negative = south / west).
+    """
     rng = np.random.default_rng(seed)
     blocks = rng.integers(0, 255, size=(6, 8, 3), dtype=np.uint8)
     im = Image.fromarray(blocks).resize(size, Image.Resampling.NEAREST)
@@ -59,11 +64,29 @@ def make_image(
         exif[271], exif[272] = camera
     if date:
         exif.get_ifd(ExifTags.IFD.Exif)[36867] = date.strftime("%Y:%m:%d %H:%M:%S")
+    if gps:
+        write_gps(exif, *gps)
     kwargs = {}
-    if camera or date:
+    if camera or date or gps:
         kwargs["exif"] = exif
     im.save(path, fmt, **kwargs)
     return path
+
+
+def dms(value: float) -> tuple[float, float, float]:
+    """Decimal degrees -> EXIF degrees, minutes, seconds (unsigned)."""
+    value = abs(value)
+    d = int(value)
+    m = int((value - d) * 60)
+    return (float(d), float(m), round((value - d - m / 60) * 3600, 4))
+
+
+def write_gps(exif: Image.Exif, lat: float, lon: float) -> None:
+    gps = exif.get_ifd(ExifTags.IFD.GPSInfo)
+    gps[ExifTags.GPS.GPSLatitudeRef] = "N" if lat >= 0 else "S"
+    gps[ExifTags.GPS.GPSLatitude] = dms(lat)
+    gps[ExifTags.GPS.GPSLongitudeRef] = "E" if lon >= 0 else "W"
+    gps[ExifTags.GPS.GPSLongitude] = dms(lon)
 
 
 @pytest.fixture

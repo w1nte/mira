@@ -11,6 +11,7 @@ from vision_tagger.db.models import Cluster, Face, Person, PropertyAlias
 from vision_tagger.indexer import Indexer
 from vision_tagger.pipeline.runner import PipelineRunner
 from vision_tagger.pipeline.stages.ages import AgesStage
+from vision_tagger.pipeline.stages.animals import AnimalsStage
 from vision_tagger.pipeline.stages.embed import EmbedStage
 from vision_tagger.pipeline.stages.faces import FacesStage
 from vision_tagger.pipeline.stages.vlm import VlmStage
@@ -19,7 +20,7 @@ from vision_tagger.vlm.schema import Vocabulary
 from vision_tagger.web.app import create_app
 
 from .conftest import make_image
-from .helpers import FakeAgeEstimator
+from .helpers import FakeAgeEstimator, FakeAnimalAnalyzer
 from .test_faces_stage import FakeAnalyzer
 
 
@@ -36,6 +37,7 @@ def client(settings, photos, tmp_path):
                 ctx.db, settings, analyzer=FakeAnalyzer(), age_estimator=FakeAgeEstimator()
             ),
             "ages": AgesStage(ctx.db, settings, estimator=FakeAgeEstimator()),
+            "animals": AnimalsStage(ctx.db, settings, analyzer=FakeAnimalAnalyzer()),
             "vlm": VlmStage(ctx.db, settings, backend=FakeBackend(Vocabulary.load())),
             "embed": EmbedStage(ctx.db, settings, backend=FakeBackend(Vocabulary.load())),
         }

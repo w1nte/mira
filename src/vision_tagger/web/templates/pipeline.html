@@ -4,7 +4,7 @@
 <div class="page-head">
   <div>
     <h1>{{ _('Pipeline') }}</h1>
-    <small>{{ _('Runs the analysis in batches: faces, ages, properties and the search index. You can pause, stop or restart at any time; progress is stored per photo.') }}</small>
+    <small>{{ _('Runs the analysis in batches: faces, ages, animals, properties and the search index. You can pause, stop or restart at any time; progress is stored per photo.') }}</small>
   </div>
   <a class="btn" href="/import">{{ icon('upload', 'sm') }}{{ _('Import photos') }}</a>
 </div>
@@ -18,7 +18,7 @@
           <div class="checks">
             {% for st in stages %}
             <label><input type="checkbox" name="stages" value="{{ st }}" checked>
-              {{ {'faces': _('Faces (InsightFace + clustering)'), 'ages': _('Ages (AgeNet + InsightFace)'), 'vlm': _('Properties (%(model)s)', model=settings.vlm.model), 'embed': _('Search index (%(model)s)', model=settings.search.embed_model)}.get(st, st) }}</label>
+              {{ {'faces': _('Faces (InsightFace + clustering)'), 'ages': _('Ages (AgeNet + InsightFace)'), 'animals': _('Animals (YOLOX + DINOv2 + grouping)'), 'vlm':_('Properties (%(model)s)', model=settings.vlm.model), 'embed': _('Search index (%(model)s)', model=settings.search.embed_model)}.get(st, st) }}</label>
             {% endfor %}
           </div>
         </div>
@@ -44,6 +44,15 @@
         <form method="post" action="/actions/import-references"><button>{{ _('Import references') }}</button></form>
         <form method="post" action="/actions/recluster"><button>{{ _('Cluster new faces') }}</button></form>
         <form method="post" action="/actions/recluster?full=1" data-confirm="{{ _('Re-cluster all faces? Named / edited clusters are kept.') }}"><button>{{ _('Full re-cluster') }}</button></form>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>{{ _('Animals') }}</h2>
+      <p class="muted">{{ _('Photos of the same animal are grouped after every run. Named groups and your changes are kept when the animals are grouped again.') }}</p>
+      <div class="row">
+        <form method="post" action="/actions/regroup-animals"><button>{{ _('Group new animals') }}</button></form>
+        <form method="post" action="/actions/regroup-animals?full=1" data-confirm="{{ _('Group all animals again? Named and edited groups are kept.') }}"><button>{{ _('Group all again') }}</button></form>
       </div>
     </section>
 

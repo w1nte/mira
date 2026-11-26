@@ -10,14 +10,14 @@
       <small class="muted">{{ ngettext('%(hits)s of %(num)d candidate · %(seconds)s s', '%(hits)s of %(num)d candidates · %(seconds)s s', result.candidates, hits=result.hits | length, seconds=result.seconds) }}</small>
     </div>
     <div class="row">
-      <a class="btn small" href="/images?{{ filter_qs }}" title="{{ _('The strict part (persons, required / excluded properties, dates) as a gallery filter') }}">{{ _('Open in filter builder') }}</a>
+      <a class="btn small" href="/images?{{ filter_qs }}" title="{{ _('The strict part (persons, pets, required / excluded properties, dates) as a gallery filter') }}">{{ _('Open in filter builder') }}</a>
       {% if result.hits %}
       <details class="dropdown">
         <summary class="btn small">{{ icon('download', 'sm') }}{{ _('Export') }}</summary>
         <div class="dropdown-panel">
           <h3>{{ ngettext('Export %(num)d result', 'Export these %(num)d results', result.hits | length) }}</h3>
           {% if request.app.state.ctx.settings.remote_mode %}
-          <a class="btn primary" href="/search/download.zip?ids={{ result.hits | map(attribute='image_id') | join(',') }}">{{ icon('download', 'sm') }}{{ _('Download ZIP') }}</a>
+          <a class="btn primary" download href="/search/download.zip?ids={{ result.hits | map(attribute='image_id') | join(',') }}">{{ icon('download', 'sm') }}{{ _('Download ZIP') }}</a>
           {% else %}
           <form method="post" action="/search/export">
             <input type="hidden" name="ids" value="{{ result.hits | map(attribute='image_id') | join(',') }}">
@@ -46,8 +46,10 @@
   </div>
   <div class="chips" style="margin-top:12px">
     {% for _id, name in it.persons %}<span class="chip active">{{ icon('user') }}{{ name }}</span>{% endfor %}
-    {% if it.persons | length > 1 %}<span class="chip">{{ _('all together') if it.persons_mode == 'all' else _('any of them') }}</span>{% endif %}
+    {% for _id, name in it.pets %}<span class="chip active">{{ icon('paw') }}{{ name }}</span>{% endfor %}
+    {% if (it.persons | length) + (it.pets | length) > 1 %}<span class="chip">{{ _('all together') if it.persons_mode == 'all' else _('any of them') }}</span>{% endif %}
     {% for _id, name in it.exclude_persons %}<span class="chip neg">{{ icon('user') }}{{ _('not %(name)s', name=name) }}</span>{% endfor %}
+    {% for _id, name in it.exclude_pets %}<span class="chip neg">{{ icon('paw') }}{{ _('not %(name)s', name=name) }}</span>{% endfor %}
     {% for t in it.must %}<span class="chip active" title="{{ _('required') }}">{{ t.key | label }}: {{ t.value | pretty(t.key) }}</span>{% endfor %}
     {% for t in it.should %}<span class="chip soft" title="{{ _('preferred, weight %(weight)s%%', weight='%.0f' | format(t.weight * 100)) }}">{{ t.key | label }}: {{ t.value | pretty(t.key) }}{% if t.weight < 1 %} <span class="w">{{ '%.0f' | format(t.weight * 100) }}%</span>{% endif %}</span>{% endfor %}
     {% for t in it.exclude %}<span class="chip neg">{{ _('not %(name)s', name=(t.key | label) ~ ': ' ~ t.value | pretty(t.key)) }}</span>{% endfor %}

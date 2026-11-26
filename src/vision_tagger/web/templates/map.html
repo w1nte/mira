@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Map') }}{% endblock %}
+{% block main_class %}wide{% endblock %}
+{% block head %}
+  <link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="/static/map.css">
+  <script src="/static/vendor/leaflet/leaflet.js" defer></script>
+  <script src="/static/vendor/leaflet.heat/leaflet-heat.js" defer></script>
+  <script src="/static/map.js" defer></script>
+{% endblock %}
+{% block content %}
+{% set qs = f.query_string() %}
+<div class="page-head">
+  <div>
+    <h1>{{ _('Map') }}</h1>
+    <small>{{ ngettext('%(num)d photo with a GPS position', '%(num)d photos with a GPS position', counts.gps) }}{% if not f.is_empty %} · {{ ngettext('%(num)d photo matches the filter', '%(num)d photos match the filter', total) }}{% endif %}</small>
+  </div>
+  <div class="row">
+    <a class="btn" href="/images{{ '?' ~ qs if qs }}">{{ icon('image', 'sm') }}{{ _('Gallery') }}</a>
+    {% if counts.gps %}<button type="button" class="btn primary" data-map-area hidden>{{ icon('search', 'sm') }}{{ _('Photos in this area') }}</button>{% endif %}
+    <details class="dropdown">
+      <summary class="btn">{{ icon('pin', 'sm') }}{{ _('Places') }}</summary>
+      <div class="dropdown-panel">
+        <h3>{{ _('Find places') }}</h3>
+        <p class="muted">{{ _('Groups the photos with a GPS position into places and names them after the nearest town (GeoNames). This also happens after every scan.') }}</p>
+        {% if nominatim %}<p class="muted">{{ _('OpenStreetMap names are on: the rounded position of each new place is sent to the Nominatim server once.') }}</p>{% endif %}
+        <form method="post" action="/places/find" class="row">
+          <button class="primary">{{ icon('refresh', 'sm') }}{{ _('Find new places') }}</button>
+          <button name="refresh" value="1" data-confirm="{{ _('Group all photos again and rename every place you did not name yourself?') }}">{{ _('Regroup and rename all') }}</button>
+        </form>
+      </div>
+    </details>
+  </div>
+</div>
+
+{% set base = '/map' %}
+{% include "partials/filter_summary.html" %}
+
+{% if job and job.name in ('places', 'index') %}
+<p class="note">{{ icon('info', 'sm') }}<small>{{ job.message or _('Finding places…') }}</small></p>
+{% endif %}
+{% if counts.unplaced %}
+<form method="post" action="/places/find" class="note warn">{{ icon('alert', 'sm') }}<small>{{ ngettext('%(num)d photo with a GPS position has no place yet.', '%(num)d photos with a GPS position have no place yet.', counts.unplaced) }}</small> <button class="small">{{ _('Find places') }}</button></form>
+{% endif %}
+
+{% if not counts.gps %}
+<div class="card empty">
+  <p>{% if f.is_empty %}{{ _('No photos with a GPS position yet.') }}{% else %}{{ _('None of the photos matching the filter has a GPS position.') }}{% endif %}</p>
+  <small>{{ _('Phones and many cameras store where a photo was taken (EXIF GPS). Photos with a position appear here after the next scan.') }}</small>
+</div>
+{% else %}
+<script type="application/json" id="map-i18n">{{ map_i18n | tojson }}</script>
+<div class="map-layout">
+  <div class="map-wrap">
+    <div id="map" class="map" role="region" aria-label="{{ _('Map of photo locations') }}"
+         data-points="/api/geo/points{{ '?' ~ qs if qs }}"
+         data-places="/api/geo/places{{ '?' ~ qs if qs }}"
+         data-place-api="/api/geo/places/"
+         data-query="{{ qs }}"
+         data-area-query="{{ area.query_string() }}"
+         data-tiles="{{ tile_url }}"
+         data-attribution="{{ tile_attribution }}"
+         data-max-zoom="{{ tile_max_zoom }}"
+         data-world="/static/vendor/natural-earth/world-110m.json"
+         {% if photo %}data-photo-id="{{ photo.id }}" data-photo-lat="{{ photo.lat }}" data-photo-lon="{{ photo.lon }}"{% endif %}></div>
+    <p class="map-status" id="map-status" role="status" hidden></p>
+  </div>
+  <aside class="map-places" aria-labelledby="places-title">
+    <h2 id="places-title">{{ _('Places') }} <small class="muted num">{{ places | length }}</small></h2>
+    {% if places %}
+    <ul class="place-list" id="place-list">
+      {% for p in places[:300] %}
+      <li data-place-row="{{ p.id }}">
+        <button type="button" class="icon-btn" data-focus="{{ p.id }}" title="{{ _('Show on the map') }}" aria-label="{{ _('Show on the map') }}">{{ icon('pin', 'sm') }}</button>
+        <a href="/images?{{ f.copy(place=p.id).query_string() }}" data-place-name>{{ p.name }}</a>
+        <span class="n num">{{ p.count }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="muted"><small>{{ _('No places yet: use “Find places”.') }}</small></p>
+    {% endif %}
+    <p class="map-credits"><small class="muted">{{ _('Place names: GeoNames (CC BY 4.0)') }}{% if nominatim %} · {{ _('OpenStreetMap contributors (ODbL)') }}{% endif %}</small></p>
+  </aside>
+</div>
+{% endif %}
+{% endblock %}

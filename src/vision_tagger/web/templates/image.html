@@ -32,12 +32,18 @@
             <span>{{ face.cluster.person.name if named else ('#' ~ face.cluster_id if face.cluster_id else '?') }}{% if face_ages.get(face.id) %} · {{ face_ages[face.id] }}{% endif %}</span>
           </a>
         {% endfor %}
+        {% for a in animals %}
+          <a class="facebox animalbox{{ '' if a.pet and a.pet.name else ' unnamed' }}{{ ' end' if a.x2 / img.width > 0.75 }}" href="{{ '/pets/' ~ a.pet_id if a.pet_id else '/animals/ungrouped' }}"
+             style="left: {{ 100 * a.x1 / img.width }}%; top: {{ 100 * a.y1 / img.height }}%; width: {{ 100 * (a.x2 - a.x1) / img.width }}%; height: {{ 100 * (a.y2 - a.y1) / img.height }}%">
+            <span>{{ pet_label(a.pet) if a.pet else a.species | pretty('animal') }}</span>
+          </a>
+        {% endfor %}
         {% endif %}
       </div>
     </div>
     <div class="row spread viewer-foot">
       {% if vlm and vlm.caption %}<p class="caption">{{ vlm.caption }}</p>{% else %}<span></span>{% endif %}
-      {% if img.faces %}<label class="toggle"><input type="checkbox" x-model="boxes"> {{ _('Face boxes') }}</label>{% endif %}
+      {% if img.faces or animals %}<label class="toggle"><input type="checkbox" x-model="boxes"> {{ _('Boxes') if animals else _('Face boxes') }}</label>{% endif %}
     </div>
   </div>
 
@@ -78,6 +84,23 @@
     </section>
     {% endif %}
 
+    {% if animals %}
+    <section>
+      <h3>{{ _('Animals') }}</h3>
+      <div class="chips">
+        {% for a in animals %}
+          {% if a.pet and a.pet.name %}
+            <a class="chip" href="/images?pet={{ a.pet_id }}">{{ icon('paw') }}{{ a.pet.name }}</a>
+          {% elif a.pet %}
+            <a class="chip" href="/pets/{{ a.pet_id }}" title="{{ _('Unnamed group – give it a name') }}">{{ icon('paw') }}{{ pet_label(a.pet) }}</a>
+          {% else %}
+            <a class="chip soft" href="/animals/ungrouped">{{ a.species | pretty('animal') }}</a>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+
     <section>
       <h3>{{ _('Details') }}</h3>
       <dl class="kv">
@@ -92,7 +115,7 @@
         <dt>{{ _('Size') }}</dt><dd>{{ img.width }} × {{ img.height }} · {{ img.size_bytes | bytes }} · {{ img.ext }}</dd>
         {% if img.camera %}<dt>{{ _('Camera') }}</dt><dd><a href="/images?camera={{ img.camera | urlencode }}">{{ icon('camera', 'sm') }} {{ img.camera }}</a></dd>{% endif %}
         {% if img.meta.get('lens') %}<dt>{{ _('Lens') }}</dt><dd>{{ img.meta.lens }}</dd>{% endif %}
-        {% if img.meta.get('gps') %}<dt>GPS</dt><dd>{{ img.meta.gps.lat }}, {{ img.meta.gps.lon }}</dd>{% endif %}
+        {% if img.lat is not none %}{% include "partials/photo_place.html" %}{% elif img.meta.get('gps') %}<dt>GPS</dt><dd>{{ img.meta.gps.lat }}, {{ img.meta.gps.lon }}</dd>{% endif %}
         <dt>pHash</dt><dd class="mono">{{ img.phash }}</dd>
       </dl>
       {% if img.duplicates %}

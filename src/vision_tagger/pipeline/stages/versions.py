@@ -18,6 +18,14 @@ def ages_stage_version(settings: Settings) -> str:
     return f"{model}-v1"
 
 
+def animals_stage_version(settings: Settings) -> str:
+    from ...animals.models import DINOV2_SMALL, YOLOX_S
+
+    cfg = settings.animals
+    models = f"yolox_s:{YOLOX_S.sha256[:8]}+dinov2s:{DINOV2_SMALL.sha256[:8]}"
+    return f"{models}-px{cfg.max_image_px}-s{cfg.min_score:g}-v1"
+
+
 def vlm_stage_version(settings: Settings, model: str | None = None) -> str:
     from ...vlm.prompt import prompt_version
     from ...vlm.schema import Vocabulary

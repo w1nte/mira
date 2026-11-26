@@ -262,6 +262,21 @@ def change_state(request: Request, state: str) -> Response:
             msg=_("Clustering started.") if ok else None,
             err=None if ok else _("Another job is running."),
         )
+    if state == "regroup-animals":
+        full = request.query_params.get("full") == "1"
+
+        def regroup_job(_j: Job) -> str:
+            from ...pipeline.stages.animals import group_animals
+
+            return group_animals(c.db, c.settings, full=full)
+
+        ok = c.jobs.start("regroup", regroup_job)
+        return redirect(
+            request,
+            "/pipeline",
+            msg=_("Grouping of the animals started.") if ok else None,
+            err=None if ok else _("Another job is running."),
+        )
     if state == "import-references":
 
         def job(_j: Job) -> Lazy:

@@ -25,6 +25,7 @@ EXAMPLES = [
     N_("screenshots and documents from work"),
     N_("sunsets at the sea"),
     N_("birthday party with cake"),
+    N_("dogs playing in the snow"),
 ]
 
 

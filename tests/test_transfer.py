@@ -207,6 +207,9 @@ def test_import_replaces_the_library_keeps_a_backup_and_clears_caches(library, s
     aligned.parent.mkdir(parents=True)
     aligned.write_bytes(b"x")
     assert any(settings.thumbs_dir.rglob("*.webp")) and any(settings.face_crops_dir.rglob("*"))
+    animal_crop = settings.animal_crops_dir / "0" / "1.jpg"  # keyed by animal id, too
+    animal_crop.parent.mkdir(parents=True, exist_ok=True)
+    animal_crop.write_bytes(b"jpeg")
     library.ctx.search  # noqa: B018 - creates the search engine (in-memory index)
     assert library.ctx._search is not None
 
@@ -232,6 +235,7 @@ def test_import_replaces_the_library_keeps_a_backup_and_clears_caches(library, s
     # caches keyed by ids are gone (made again on demand)
     assert not [p for p in settings.thumbs_dir.rglob("*") if p.is_file()]
     assert not [p for p in settings.face_crops_dir.rglob("*") if p.is_file()]
+    assert not animal_crop.exists()
     assert not aligned.exists()
     assert library.ctx._search is None
     assert not list(transfer.transfer_dir(settings).iterdir())  # temp file removed

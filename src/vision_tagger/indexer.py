@@ -19,6 +19,7 @@ from typing import Any
 import imagehash
 from sqlalchemy import delete, exists, insert, literal, select, update
 
+from .animals.grouping import delete_image_animals
 from .config import Settings
 from .db.models import (
     AppSetting,
@@ -37,6 +38,7 @@ from .faces.clustering import delete_image_faces
 from .imaging import (
     encode_thumbnail,
     ensure_thumbnail,
+    gps_position,
     read_image_info,
     save_thumbnail_bytes,
     thumbnail_path,
@@ -105,6 +107,7 @@ class IndexStats:
     thumbnails: int = 0  # thumbnails written
     thumbnails_todo: int = 0  # missing thumbnails of files indexed earlier
     thumbnails_warmed: int = 0  # ... of which created so far
+    places: str = ""  # summary of finding places (geo.places) after the scan
     error_samples: list[str] = field(default_factory=list)
     done: bool = False
 
@@ -275,6 +278,8 @@ class Indexer:
                 self._store_chunk(analysing, stats)
                 if mark_missing:
                     stats.missing = self._mark_missing(stats.roots)
+                if self.settings.geo.auto:
+                    self._find_places(stats)
                 if self.settings.index.thumbnails:
                     self._warm_thumbnails(pool, stats)
 
@@ -298,6 +303,17 @@ class Indexer:
             except OSError as exc:  # a cache: the gallery makes it on demand instead
                 log.debug("cannot write thumbnail %s: %s", image_id, exc)
         stats.processed += len(results)
+        self.progress(stats)
+
+    def _find_places(self, stats: IndexStats) -> None:
+        """Group new GPS positions into named places (a convenience: never fails the scan)."""
+        from .geo.places import find_places
+
+        try:
+            stats.places = find_places(self.db, self.settings, should_stop=self.should_stop).message
+        except Exception as exc:
+            log.warning("finding places failed: %s", exc)
+            stats.places = f"{type(exc).__name__}: {exc}"
         self.progress(stats)
 
     def _warm_thumbnails(self, pool: ThreadPoolExecutor, stats: IndexStats) -> None:
@@ -487,9 +503,11 @@ class Indexer:
             by_hash.setdefault(r.phash, []).append(img)
             # Results are stale -> drop them (faces with consistent cluster stats) and re-queue.
             delete_image_faces(s, img.id, self.settings.face_crops_dir)
+            delete_image_animals(s, img.id, self.settings.animal_crops_dir)
             s.execute(
                 delete(ImageProperty).where(
-                    ImageProperty.image_id == img.id, ImageProperty.source != "exif"
+                    ImageProperty.image_id == img.id,
+                    ImageProperty.source.not_in(("exif", "place")),  # place: from the position
                 )
             )
             s.execute(delete(VlmResult).where(VlmResult.image_id == img.id))
@@ -532,6 +550,10 @@ class Indexer:
             img.date_source = info.date_source
         img.camera = info.camera
         img.meta = info.meta
+        lat, lon = gps_position(info.meta) or (None, None)
+        if (img.lat, img.lon) != (lat, lon):
+            img.lat, img.lon = lat, lon
+            img.place_id = None  # placed again by geo.places (a user-named place takes it back)
 
     def check_locations(self, progress: Callable[[int, int], None] | None = None) -> int:
         """Check the file of *every* image (not only those below the current roots).

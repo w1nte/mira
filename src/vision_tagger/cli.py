@@ -265,6 +265,8 @@ def index(
         f"moved {stats.moved}, updated {stats.updated}, unchanged {stats.unchanged}, "
         f"missing {stats.missing}, errors {stats.errors}, thumbnails {stats.thumbnails}"
     )
+    if stats.places:
+        typer.echo(stats.places)
     for sample in stats.error_samples[:10]:
         typer.echo(f"  ! {sample}", err=True)
 
@@ -272,7 +274,8 @@ def index(
 @app.command()
 def run(
     stage: Annotated[
-        list[str] | None, typer.Option("--stage", "-s", help="faces / vlm (repeatable)")
+        list[str] | None,
+        typer.Option("--stage", "-s", help="faces / ages / animals / vlm / embed (repeatable)"),
     ] = None,
     batch_size: Annotated[int | None, typer.Option("--batch-size", "-b")] = None,
     limit: Annotated[
@@ -363,6 +366,18 @@ def cluster(
 
 
 @app.command()
+def pets(
+    full: Annotated[
+        bool, typer.Option(help="Dissolve the automatic groups first (named pets stay).")
+    ] = False,
+) -> None:
+    """(Re-)group the detected animals into pets and update their properties."""
+    from .pipeline.stages.animals import group_animals
+
+    typer.echo(group_animals(_db(), _settings(), full=full))
+
+
+@app.command()
 def refs() -> None:
     """Import the reference DB (references/<Person>/*.jpg) and name matching clusters."""
     from .faces.references import import_references
@@ -374,6 +389,24 @@ def refs() -> None:
     for f in stats.no_face:
         typer.echo(f"  no face found: {f}", err=True)
     typer.echo(cluster_and_match(db, _settings(), full=False))
+
+
+@app.command()
+def places(
+    refresh: Annotated[
+        bool,
+        typer.Option(
+            "--refresh", help="Regroup all photos and rename every place you did not name."
+        ),
+    ] = False,
+) -> None:
+    """Group GPS-tagged photos into named places (also runs after every index scan)."""
+    from .geo.places import find_places
+
+    result = find_places(
+        _db(), _settings(), refresh=refresh, progress=lambda m: typer.echo(f"  {m}")
+    )
+    typer.echo(result.message)
 
 
 @app.command("retry-errors")
