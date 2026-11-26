@@ -6,10 +6,13 @@
 * **CSRF:** any site open in the browser could otherwise submit forms to the UI (start an
   export to a network share, delete persons, ...). State-changing requests must come from the
   UI itself, checked with ``Origin`` / ``Sec-Fetch-Site`` / ``Referer``.
+* **This computer only:** what acts on the server's desktop (opening Explorer or Finder) is
+  offered only to requests made on the server's own computer (:func:`from_this_computer`).
 """
 
 from __future__ import annotations
 
+import ipaddress
 from collections.abc import Awaitable, Callable, Iterable
 from urllib.parse import urlsplit
 
@@ -47,6 +50,30 @@ def same_origin(request: Request) -> bool:
     if referer is not None:
         return urlsplit(referer).netloc.lower() == host
     return True  # no browser headers at all: CLI tools / scripts on this machine
+
+
+#: headers a reverse proxy adds: the request was not made on this computer, even if the proxy is
+PROXY_HEADERS = ("forwarded", "x-forwarded-for", "x-forwarded-host", "x-real-ip")
+
+
+def _loopback(address: str) -> bool:
+    try:
+        ip = ipaddress.ip_address(address)
+    except ValueError:
+        return False
+    mapped = getattr(ip, "ipv4_mapped", None)  # ::ffff:127.0.0.1
+    return ip.is_loopback or (mapped is not None and mapped.is_loopback)
+
+
+def from_this_computer(request: Request) -> bool:
+    """The request comes from a browser on the computer the server runs on: from a loopback
+    address (127.0.0.1, ::1), under a local host name, and not through a reverse proxy."""
+    client = request.client.host if request.client is not None else ""
+    if not _loopback(client):
+        return False
+    if _hostname(request.headers.get("host", "")) not in LOCAL_HOSTS:
+        return False
+    return not any(h in request.headers for h in PROXY_HEADERS)
 
 
 CallNext = Callable[[Request], Awaitable[Response]]

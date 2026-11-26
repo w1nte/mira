@@ -1,6 +1,8 @@
 {% extends "base.html" %}
+{% from "partials/reveal.html" import reveal_button with context %}
 {% block title %}{{ _('Database') }}{% endblock %}
 {% block content %}
+{% set clearing = job and job.name == 'clear' %}
 <div class="page-head">
   <div>
     <h1>{{ _('Database') }}</h1>
@@ -15,6 +17,31 @@
   <div class="stat"><div class="v">{{ counts.persons }}</div><div class="l">{{ _('Persons') }}</div></div>
   <div class="stat"><div class="v">{{ db_size | bytes }}</div><div class="l">{{ _('Database size') }}</div></div>
 </div>
+
+{% if not remote %}
+<div class="db-file">
+  <small class="muted">{{ _('Database file') }}</small> <span class="mono">{{ db_file }}</span>
+  {% if can_reveal(request) %}
+  <div class="row">
+    {{ reveal_button('database', 0, _('Show database file'), 'small') }}
+    {{ reveal_button('data', 0, _('Open data folder'), 'small') }}
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if clearing %}
+<section class="card db-cleared">
+  {% if running or job.status == 'failed' %}<div id="db-status">{% include "partials/database_status.html" %}</div>
+  {% else %}
+  <div class="db-cleared-done" role="status">
+    {{ icon('check') }}
+    <p><b>{{ job_title(job.name) }}</b> <small class="muted">{{ job.finished_at | dt }}</small><br>{{ job.message }}</p>
+    {% if not remote %}<a class="btn" href="/import">{{ _('Import photos') }}{{ icon('arrow-right', 'sm') }}</a>{% endif %}
+  </div>
+  {% endif %}
+</section>
+{% endif %}
 
 <div class="grid-2">
   <section class="card db-card">
@@ -51,12 +78,25 @@
       <form method="post" action="/database/check"><button class="small" {{ 'disabled' if running }}>{{ icon('refresh', 'sm') }}{{ _('Check again') }}</button></form>
     </div>
   </div>
-  <div id="db-status">{% include "partials/database_status.html" %}</div>
+  {% if not clearing %}<div id="db-status">{% include "partials/database_status.html" %}</div>{% endif %}
   {% if counts.missing %}
   <p>{{ ngettext('%(num)d photo was not found where Mira last saw it.', '%(num)d photos were not found where Mira last saw them.', counts.missing) }} <a href="/database/missing">{{ _('Show the list') }}{{ icon('arrow-right', 'sm') }}</a></p>
   {% elif counts.images %}
   <p class="muted">{{ _('Every photo is where Mira expects it.') }}</p>
   {% endif %}
   <p class="muted"><small>{% if remote %}{{ _('Mira recognises a photo by its content (perceptual hash): an upload of a missing photo links it again instead of adding it twice.') }}{% else %}{{ _('Mira recognises a photo by its content (perceptual hash): when a scan finds a missing photo in another folder, it links it again instead of adding it twice.') }} {% if roots %}{{ _('Library folders:') }} {% for r in roots %}<span class="mono">{{ r }}</span>{{ ', ' if not loop.last }}{% endfor %}. {% endif %}<a href="/import">{{ _('Add or scan folders') }}</a>{% endif %}</small></p>
+</section>
+
+<section class="card danger-zone" aria-labelledby="danger-zone">
+  <h2 id="danger-zone">{{ icon('alert') }}{{ _('Danger zone') }}</h2>
+  <div class="row spread danger-row">
+    <div>
+      <h3>{{ _('Clear the library') }}</h3>
+      <p class="muted">{{ _('Deletes everything Mira knows about your photos and starts over with an empty library. Your photo files are not touched, and a backup of the database is written first.') }}</p>
+    </div>
+    {% if busy %}<button type="button" class="danger" disabled title="{{ busy }}">{{ icon('trash', 'sm') }}{{ _('Clear the library…') }}</button>
+    {% else %}<a class="btn danger" href="/database/clear">{{ icon('trash', 'sm') }}{{ _('Clear the library…') }}</a>{% endif %}
+  </div>
+  {% if busy %}<div class="note warn">{{ icon('alert', 'sm') }}<small>{{ busy }}</small></div>{% endif %}
 </section>
 {% endblock %}

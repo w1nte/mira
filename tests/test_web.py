@@ -78,6 +78,8 @@ def test_pages_render(client):
         "/overview/table?order=size&desc=0",
         "/database",
         "/database/missing",
+        "/database/clear",
+        "/database/clear?step=2&understood=yes",
         "/partials/value-options?key=objects",
         "/api/status",
         "/api/clusters/search?q=",
@@ -470,6 +472,8 @@ def test_no_inline_event_handlers_and_icons_exist(client):
         "/generations",
         "/database",
         "/database/missing",
+        "/database/clear",
+        "/database/clear?step=2&understood=yes",
         f"/generations/{pid}",
         f"/generations/{pid}/compare/{pid + 1}",
     ]

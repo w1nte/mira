@@ -65,6 +65,23 @@ NOTES: dict[str, str] = {
     "Sidecars": "Name of the job that writes XMP sidecar files.",
     "Database import": "Name of the job that replaces the library with an imported database.",
     "Location check": "Name of the job that checks whether the photo files are still there.",
+    "Clearing the library": (
+        "Name of the job that deletes everything from the library database (the photo files "
+        "stay), also shown as a heading above its result."
+    ),
+    "Removing missing photos": (
+        "Name of the job that removes photos whose file is missing from the library database."
+    ),
+    "Danger zone": "Heading of the Database page's last card, with 'Clear the library'.",
+    "Show in folder": (
+        "Button on a photo's page: open Explorer (Windows) or Finder (macOS) with the photo's "
+        "file selected; on Linux the file manager opens its folder."
+    ),
+    "Open folder": "Button next to a library folder: open it in Explorer, Finder or similar.",
+    "Continue": "Button: go on to the second, last confirmation step.",
+    "Back": "Button: go back to the first confirmation step.",
+    "Actions": "Column heading for buttons (read by screen readers only).",
+    "Runs": "Pipeline runs: each start of the pipeline, with its result (history).",
     "Database": "Sidebar link and page title: export and import of the library database.",
     "folder picker|Start": "Folder picker: label of the top level (home folder and drives).",
     "sidebar|People": (
