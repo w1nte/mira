@@ -1,11 +1,11 @@
 # syntax=docker/dockerfile:1
 #
-# vision-tagger in remote mode: photos are uploaded through the web UI (or copied into the
+# Mira in remote mode: photos are uploaded through the web UI (or copied into the
 # /photos volume), indexed and analysed on the server.
 #
-#   docker build -t vision-tagger .                          # CPU
-#   docker build -t vision-tagger:gpu --build-arg EXTRA=gpu . # NVIDIA GPU (run with --gpus all)
-#   docker run -p 8765:8765 -e VT_WEB__PASSWORD=… -v vt-data:/data -v vt-photos:/photos vision-tagger
+#   docker build -t mira .                          # CPU
+#   docker build -t mira:gpu --build-arg EXTRA=gpu . # NVIDIA GPU (run with --gpus all)
+#   docker run -p 8765:8765 -e VT_WEB__PASSWORD=… -v vt-data:/data -v vt-photos:/photos mira
 #
 # See docker-compose.yml for a setup with Ollama (the vision model) next to it.
 

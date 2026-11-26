@@ -8,7 +8,7 @@ from functools import cache
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse, Response
 
-from ... import __version__
+from ... import APP_NAME, __version__
 from ...i18n import _
 from ..common import STATIC_DIR
 
@@ -41,8 +41,8 @@ def manifest() -> JSONResponse:
     return JSONResponse(
         {
             "id": "/",
-            "name": "vision-tagger",
-            "short_name": "vision-tagger",
+            "name": APP_NAME,
+            "short_name": APP_NAME,
             "description": _(
                 "Your photos: people, places and moments, found on your own computer."
             ),

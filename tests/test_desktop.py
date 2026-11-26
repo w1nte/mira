@@ -61,7 +61,7 @@ def test_window_serves_the_app_and_closing_stops_everything(settings):
 
     def check(url, idle_seconds):
         assert httpx.get(url + "healthz").json() == {"ok": True}
-        assert "vision-tagger" in httpx.get(url).text
+        assert "· Mira</title>" in httpx.get(url).text  # the display name
         assert idle_seconds() < 5
         # starting the app again opens another window instead of a second server
         assert D.InstanceLock(settings.data_dir / "desktop.json").notify_running()

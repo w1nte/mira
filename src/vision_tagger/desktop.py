@@ -1,4 +1,4 @@
-"""The desktop app (local mode): the web UI in a window of its own.
+"""The desktop app (local mode): Mira's web UI in a window of its own.
 
 ``vision-tagger desktop``, ``vision-tagger-app`` and the Windows installer start the server on a
 free local port and show the UI in a native window:
@@ -36,11 +36,13 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any
 
+from . import APP_NAME
 from .config import Settings
 
 log = logging.getLogger(__name__)
 
-APP_NAME = "vision-tagger"
+#: folder name of the per-user data (kept from before the app was called Mira)
+DATA_FOLDER = "vision-tagger"
 WINDOW_SIZE = (1280, 860)
 MIN_SIZE = (860, 560)
 #: a browser that exits this fast handed the window to a browser that was already running
@@ -60,7 +62,7 @@ def user_data_dir() -> Path:
         base = Path.home() / "Library" / "Application Support"
     else:
         base = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share")
-    return base / APP_NAME
+    return base / DATA_FOLDER
 
 
 def _toml_string(path: Path) -> str:
@@ -341,7 +343,7 @@ class DefaultBrowser:
             opened = webbrowser.open(url)
         if not opened:
             raise WindowUnavailable("no web browser found")
-        print(f"vision-tagger runs on {url} - press Ctrl+C to quit")
+        print(f"{APP_NAME} runs on {url} - press Ctrl+C to quit")
         _wait_until_idle(idle_seconds, self.idle_limit)
 
     def another(self, url: str) -> None:
@@ -451,7 +453,7 @@ def run(settings: Settings, *, windows: Windows | None = None, port: int | None 
     settings.ensure_dirs()
     lock = InstanceLock(settings.data_dir / "desktop.json")
     if lock.notify_running():
-        log.info("vision-tagger is already running: opened another window")
+        log.info("%s is already running: opened another window", APP_NAME)
         return 0
     from .db.migrate import upgrade_if_needed
 
@@ -522,14 +524,14 @@ def main(argv: list[str] | None = None) -> int:
     try:
         settings = load_desktop_settings()
     except Exception as exc:
-        show_error(f"vision-tagger could not read its settings:\n{exc}")
+        show_error(f"{APP_NAME} could not read its settings:\n{exc}")
         return 1
     log_path = setup_logging(settings)
     try:
         return run(settings)
     except Exception as exc:
         log.exception("the app failed")
-        show_error(f"vision-tagger could not start:\n{exc}\n\nDetails: {log_path}")
+        show_error(f"{APP_NAME} could not start:\n{exc}\n\nDetails: {log_path}")
         return 1
 
 
