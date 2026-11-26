@@ -13,6 +13,7 @@ from sqlalchemy import select
 from typer.testing import CliRunner
 
 from vision_tagger.db.migrate import (
+    DatabaseTooNew,
     MigrationRequired,
     alembic_config,
     current_revision,
@@ -20,6 +21,7 @@ from vision_tagger.db.migrate import (
     migration_engine,
     schema_status,
     upgrade,
+    upgrade_if_needed,
 )
 from vision_tagger.db.models import Base, Image, Person
 from vision_tagger.db.session import Database
@@ -209,6 +211,41 @@ def test_cli_migrate(tmp_path, monkeypatch):
     r = runner.invoke(app, ["migrate", "--check"])
     assert r.exit_code == 0 and "up to date" in r.output
     assert runner.invoke(app, ["status"]).exit_code == 0
+
+
+def test_database_of_a_newer_version_is_refused(tmp_path, monkeypatch):
+    """A downgrade of the app must not touch (or half-migrate) the newer database."""
+    from vision_tagger import config as config_mod
+    from vision_tagger.cli import app
+
+    path = tmp_path / "data" / "vision_tagger.sqlite3"
+    path.parent.mkdir()
+    upgrade(url_of(path), backup=False)
+    con = sqlite3.connect(path)
+    con.execute("UPDATE alembic_version SET version_num = '0999'")
+    con.commit()
+    con.close()
+    engine = migration_engine(url_of(path))
+    assert schema_status(engine).state == "newer"
+    engine.dispose()
+    with pytest.raises(DatabaseTooNew, match="newer version"):
+        upgrade(url_of(path))
+    with pytest.raises(DatabaseTooNew):
+        upgrade_if_needed(path)  # what the desktop app and `serve --migrate` do on start
+    db = Database(path)
+    with pytest.raises(DatabaseTooNew):
+        db.create_all()
+    db.dispose()
+    assert list(path.parent.iterdir()) == [path]  # no backup, nothing changed
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(config_mod, "_config_file", None)
+    monkeypatch.setenv("VT_PATHS__DATA_DIR", str(path.parent))
+    for args in (["migrate"], ["migrate", "--check"]):
+        r = CliRunner().invoke(app, args)
+        assert r.exit_code == 3 and "newer version" in r.output, r.output
+    r = CliRunner().invoke(app, ["status"])
+    assert r.exit_code == 2 and "newer version" in r.output
 
 
 def test_0003_replaces_indexes_and_keeps_data(tmp_path):
