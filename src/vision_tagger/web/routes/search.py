@@ -20,6 +20,7 @@ router = APIRouter()
 # shown in the UI language (one on purpose in another language: any language works)
 EXAMPLES = [
     N_("Anna and Ben at the beach in summer"),
+    N_("beach or mountains in summer 2021"),
     N_("snowy mountains without people"),
     N_("Weihnachten mit der Familie"),
     N_("screenshots and documents from work"),

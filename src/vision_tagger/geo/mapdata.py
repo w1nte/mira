@@ -86,7 +86,7 @@ def place_detail(s: Session, place_id: int, f: ImageFilter, limit: int = 8) -> d
     place = s.get(Place, place_id)
     if place is None:
         return None
-    conds = conditions(f.copy(place=place_id))
+    conds = conditions(f.copy(places=[place_id]))
     count = s.scalar(select(func.count()).select_from(Image).where(*conds)) or 0
     images = list(
         s.scalars(

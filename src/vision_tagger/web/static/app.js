@@ -223,6 +223,15 @@ document.addEventListener("keydown", function (ev) {
   });
 })();
 
+// Gallery facets: Ctrl+click (⌘+click) on a value adds it as an alternative ("or") to the
+// condition on the same property, instead of requiring it as well (link in data-or-href).
+document.addEventListener("click", function (ev) {
+  const link = ev.target.closest("a[data-or-href]");
+  if (!link || ev.button !== 0 || !(ev.ctrlKey || ev.metaKey) || ev.shiftKey || ev.altKey) return;
+  ev.preventDefault();
+  window.location.href = link.dataset.orHref;
+});
+
 // Confirmation dialogs: <form data-confirm="..."> or <button data-confirm="...">.
 // The text lives in a data attribute so user data never ends up inside JavaScript code.
 document.addEventListener(

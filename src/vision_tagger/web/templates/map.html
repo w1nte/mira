@@ -72,7 +72,7 @@
       {% for p in places[:300] %}
       <li data-place-row="{{ p.id }}">
         <button type="button" class="icon-btn" data-focus="{{ p.id }}" title="{{ _('Show on the map') }}" aria-label="{{ _('Show on the map') }}">{{ icon('pin', 'sm') }}</button>
-        <a href="/images?{{ f.copy(place=p.id).query_string() }}" data-place-name>{{ p.name }}</a>
+        <a href="/images?{{ f.copy(places=[p.id]).query_string() }}" data-place-name>{{ p.name }}</a>
         <span class="n num">{{ p.count }}</span>
       </li>
       {% endfor %}

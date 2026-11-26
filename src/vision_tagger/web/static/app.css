@@ -520,6 +520,19 @@ a.chip.ghost:hover { background: var(--hover); color: var(--text); }
 .chip.selectable:has(input:checked) { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .chip.selectable:has(input:checked) .n { color: inherit; opacity: .8; }
 .chip.selectable:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* alternatives ("or"): one chip per condition, an "or" between its values */
+.chip.alternatives { gap: 5px; }
+.chip .alt { display: inline-flex; align-items: center; gap: 4px; }
+.chip .key { color: var(--text-2); }
+.chip .or { color: var(--text-3); font-size: .82rem; font-style: italic; }
+.chip.option { border-style: dashed; }
+.facet-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.or-toggle {
+  height: 22px; padding: 0 9px; border-radius: 999px; gap: 0;
+  font-size: .8rem; font-weight: 500; color: var(--text-2); background: transparent;
+}
+.or-toggle:hover { color: var(--text); }
+.or-toggle.on, .or-toggle.on:hover { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 
 /* ------------------------------------------------------------------ data display */
 /* flex, not grid: the last row stretches, so no empty cells show the hairline colour */

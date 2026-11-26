@@ -8,12 +8,14 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from ...db.models import Animal, Cluster, Face, Image, ImageProperty, Person, Pet, Place, VlmResult
+from ...db.util import chunked
 from ...export import METADATA, ExportStats, export_images, write_sidecars_in_place
 from ...faces.ages import age_label, check_image_date, correct_image_date
 from ...i18n import Lazy, LazyJoin, _
 from ...pipeline import control
 from ...query import (
     ImageFilter,
+    _pairs,
     all_image_ids,
     count_images,
     date_histogram,
@@ -58,9 +60,9 @@ def _chips(s, f: ImageFilter) -> dict[str, object]:
             .where(Cluster.id.in_(f.clusters))
         ):
             cluster_names[cid] = name or _("Cluster #%(id)s", id=cid)
-    place_name = None
-    if f.place is not None:
-        place_name = s.scalar(select(Place.name).where(Place.id == f.place))
+    place_names: dict[int, str] = {}
+    for part in chunked(f.places):
+        place_names.update(s.execute(select(Place.id, Place.name).where(Place.id.in_(part))).all())
     pet_ids = set(f.pets) | set(f.exclude_pets)
     pet_names = (
         {p.id: pet_label(p) for p in s.scalars(select(Pet).where(Pet.id.in_(pet_ids)))}
@@ -70,9 +72,29 @@ def _chips(s, f: ImageFilter) -> dict[str, object]:
     return {
         "person_names": names,
         "cluster_names": cluster_names,
-        "place_name": place_name,
+        "place_names": place_names,
         "pet_names": pet_names,
     }
+
+
+def _alternatives(c, s, f: ImageFilter) -> dict[str, object]:
+    """What could be added with "or": the facets without their own condition.
+
+    A facet of a key the filter has a condition on counts the photos matching everything else
+    (one more count per such key); persons and pets likewise without the persons / pets.
+    """
+    facets = {}
+    for key in FACET_KEYS:
+        if key in f.prop_keys:
+            counts = cached_property_counts(c, s, f.without_key(key), key=key)
+            facets[key] = counts.get(key, [])[:12]
+    people: list = []
+    pets: list = []
+    if f.who_alternatives:
+        others = f.copy(persons=[], clusters=[], pets=[])
+        people = person_counts(s, others)[:14]
+        pets = pet_counts(s, others)[:14]
+    return {"facets": facets, "people": people, "pets": pets}
 
 
 MAX_TIMELINE_MONTHS = 1200  # 100 years; older dates are almost always wrong camera clocks
@@ -100,7 +122,7 @@ def _month_range(first: str, last: str) -> list[str]:
 def _timeline(c, s, f: ImageFilter) -> dict | None:
     """Photos per month for the timeline slider: all other filters apply, the dates do not
     (so the selection can be moved anywhere)."""
-    base = f.copy(date_from=None, date_to=None)
+    base = f.copy(date_from=None, date_to=None, dates=[])
     if base.is_empty:
         hist = c.cache.get(
             ("timeline", "month"), lambda s2: date_histogram(s2, ImageFilter(), "month")
@@ -134,6 +156,7 @@ def gallery(request: Request) -> Response:
         people = person_counts(s, f)[:30]
         all_persons = list(s.scalars(select(Person).order_by(Person.name)))
         pets = pet_counts(s, f)[:30]
+        alternatives = _alternatives(c, s, f)
         all_pets = list(s.scalars(select(Pet).where(Pet.name.is_not(None)).order_by(Pet.name)))
         keys = property_keys(s)
         cameras = [
@@ -157,6 +180,8 @@ def gallery(request: Request) -> Response:
         images=images,
         next_page=2 if total > size else None,
         facets=facets,
+        facet_keys=[k for k in FACET_KEYS if k in facets or k in alternatives["facets"]],
+        alternatives=alternatives,
         people=people,
         all_persons=all_persons,
         pets=pets,
@@ -187,7 +212,7 @@ def gallery_page(request: Request, page: int = 2) -> Response:
 
 @router.get("/images/add")
 def add_filter(request: Request) -> Response:
-    """Add a person / property chip to the current filter and redirect back to the gallery."""
+    """Add persons, pets or properties to the current filter and redirect back to the gallery."""
     params = request.query_params
     f = ImageFilter.from_params(params)
     target = params.get("target", "/images")
@@ -210,6 +235,12 @@ def add_filter(request: Request) -> Response:
     key, value = params.get("key", "").strip(), params.get("value", "").strip()
     if key and value:
         (f.exclude_props if exclude else f.props).append((key, value))
+    # values picked on the properties page: all required, or one OR condition ("any")
+    picked = [p for p in _pairs(params.getlist("pick")) if not f.has_prop(*p)]
+    if params.get("combine") == "any" and len(picked) > 1:
+        f = f.copy(prop_groups=[*f.prop_groups, picked])
+    else:
+        f = f.copy(props=[*f.props, *picked])
     return redirect(request, f"{target}?{f.query_string()}")
 
 

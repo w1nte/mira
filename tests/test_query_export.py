@@ -90,6 +90,108 @@ def test_person_and_property_combinations(library):
     assert ids_for(db, ImageFilter(exclude_persons=[p["anna"]])) == [i[3], i[4]]
 
 
+def test_alternatives_are_or_inside_and_across_conditions(library):
+    """(A or B) and C; exclusions still apply; persons keep their AND / OR switch."""
+    db, i, p = library
+    beach_or_seaside = [("location_type", "beach"), ("location_type", "seaside")]
+    assert ids_for(db, ImageFilter(prop_groups=[beach_or_seaside])) == [i[0], i[1], i[3]]
+    # (beach or seaside) and Ben
+    assert ids_for(db, ImageFilter(prop_groups=[beach_or_seaside], persons=[p["ben"]])) == [
+        i[1],
+        i[3],
+    ]
+    # alternatives of different keys: umbrella or work photo
+    umbrella_or_work = [("objects", "umbrella"), ("work_image", "yes")]
+    assert ids_for(db, ImageFilter(prop_groups=[umbrella_or_work])) == [i[0], i[2], i[4]]
+    # two OR conditions are AND-ed: (beach or seaside) and (umbrella or boat)
+    boats = [("objects", "umbrella"), ("objects", "boat")]
+    assert ids_for(db, ImageFilter(prop_groups=[beach_or_seaside, boats])) == [i[0], i[3]]
+    # and with a plain property condition
+    assert ids_for(
+        db, ImageFilter(props=[("work_image", "no")], prop_groups=[beach_or_seaside])
+    ) == [i[1]]
+    # exclusions stay strict: (beach or office) without Anna, without work photos
+    beach_or_office = [("location_type", "beach"), ("location_type", "office")]
+    assert ids_for(db, ImageFilter(prop_groups=[beach_or_office], exclude_persons=[p["anna"]])) == [
+        i[4]
+    ]
+    assert ids_for(
+        db, ImageFilter(prop_groups=[beach_or_office], exclude_props=[("work_image", "yes")])
+    ) == [i[0], i[1]]
+    # persons: "Anna or Ben" and "Anna and Ben" with any OR condition
+    both = ImageFilter(persons=[p["anna"], p["ben"]], prop_groups=[beach_or_seaside])
+    assert ids_for(db, both) == [i[1]]
+    assert ids_for(db, both.copy(persons_mode="any")) == [i[0], i[1], i[3]]
+
+
+def test_date_ranges_are_alternatives(library):
+    """Dates: 2020-01-05, 2021-02-05, 2020-03-05, 2021-04-05, 2020-05-05."""
+    db, i, _ = library
+    jan_or_april = ImageFilter(dates=[("2020-01", "2020-01"), ("2021-04", None)])
+    assert ids_for(db, jan_or_april) == [i[0], i[3]]
+    assert ids_for(db, jan_or_april.copy(date_from="2021")) == [i[3]]  # and the range
+    assert ids_for(db, ImageFilter(dates=[(None, "2020-01"), ("2020-05", "2020-05")])) == [
+        i[0],
+        i[4],
+    ]
+    # a single range is the usual from / to (date inputs, timeline)
+    one = ImageFilter(dates=[("2021", "2021")])
+    assert (one.date_from, one.date_to, one.dates) == ("2021", "2021", [])
+
+
+def test_alternatives_url_round_trip():
+    qs = (
+        "t=location_type%3Abeach%7Clocation_type%3Amountain&t=season%3Asummer"
+        "&d=2019&d=2021-06..2021-08&place=3&place=4&p=1&p=2&pm=any"
+    )
+    f = ImageFilter.from_params(QueryParams(qs))
+    assert f.prop_groups == [[("location_type", "beach"), ("location_type", "mountain")]]
+    assert f.props == [("season", "summer")]
+    assert f.dates == [("2019", "2019"), ("2021-06", "2021-08")]
+    assert f.places == [3, 4] and f.persons_mode == "any"
+    assert ImageFilter.from_params(QueryParams(f.query_string())) == f
+    assert f.has_prop("location_type", "mountain") and not f.has_prop("location_type", "city")
+    # values may hold commas, colons and parentheses (place names)
+    odd = ImageFilter.from_params(QueryParams("t=place:Neustadt (Coburg), Germany|place:A:B"))
+    assert odd.prop_groups == [[("place", "Neustadt (Coburg), Germany"), ("place", "A:B")]]
+    assert ImageFilter.from_params(QueryParams("d=..2005&d=2022..&d=bogus")).dates == [
+        (None, "2005"),
+        ("2022", None),
+    ]
+    # building alternatives: joins the condition on the same key, removing one splits it
+    single = ImageFilter(props=[("season", "summer"), ("objects", "boat")])
+    alt = ImageFilter.from_params(QueryParams(single.with_prop_alt("season", "winter")))
+    assert alt.props == [("objects", "boat")]
+    assert alt.prop_groups == [[("season", "summer"), ("season", "winter")]]
+    more = ImageFilter.from_params(QueryParams(alt.with_prop_alt("season", "spring")))
+    assert more.prop_groups == [[("season", "summer"), ("season", "winter"), ("season", "spring")]]
+    back = ImageFilter.from_params(QueryParams(alt.without_prop("season", "winter")))
+    assert back.props == [("objects", "boat"), ("season", "summer")] and not back.prop_groups
+    assert alt.without_key("season").prop_groups == [] and alt.without_key("season").props == [
+        ("objects", "boat")
+    ]
+    # without a condition on the key, an alternative is simply required
+    assert "t=weather%3Asnowy" in single.with_prop_alt("weather", "snowy")
+    anna_or = ImageFilter.from_params(QueryParams(ImageFilter(persons=[3]).with_person_alt(7)))
+    assert anna_or.persons == [3, 7] and anna_or.persons_mode == "any"
+
+
+def test_old_urls_keep_their_meaning(library):
+    """``tm=any`` (the former "any property" switch) and plain repeated ``t`` are unchanged."""
+    db, i, _ = library
+    old_any = ImageFilter.from_params(
+        QueryParams("t=location_type%3Abeach&t=location_type%3Aseaside&tm=any")
+    )
+    assert ids_for(db, old_any) == [i[0], i[1], i[3]]
+    assert old_any.query_string() == "t=location_type%3Abeach%7Clocation_type%3Aseaside"
+    old_all = ImageFilter.from_params(QueryParams("t=location_type:beach&t=objects:umbrella"))
+    assert ids_for(db, old_all) == [i[0]]
+    assert old_all.props == [("location_type", "beach"), ("objects", "umbrella")]
+    assert ImageFilter.from_params(QueryParams("place=12")).places == [12]
+    # a value with a "|" that does not start a new key:value stays one value
+    assert ImageFilter.from_params(QueryParams("t=tags:a|b")).props == [("tags", "a|b")]
+
+
 def test_date_folder_faces_filters(library):
     db, ids, _ = library
     assert ids_for(db, ImageFilter(date_from="2021", date_to="2021")) == [ids[1], ids[3]]

@@ -133,6 +133,11 @@ NOTES: dict[str, str] = {
     "changelog|New": "What's new page: heading above the new features of a version.",
     "changelog|Changed": "What's new page: heading above what works differently in a version.",
     "changelog|Fixed": "What's new page: heading above the bugs fixed in a version.",
+    "or": (
+        "Between alternatives of a filter or search condition ('Anna or Ben'), and the small "
+        "toggle in a gallery filter section that adds values as alternatives."
+    ),
+    "one of them": "Tooltip of a search chip with alternatives: one of them is enough.",
 }
 
 PLACEHOLDER = re.compile(r"%\(\w+\)[sd]")
