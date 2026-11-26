@@ -113,6 +113,12 @@ class PipelineRunner:
             )
             if recovered:
                 log.info("recovered %d interrupted items", recovered)
+            from ..indexer import ensure_stage_rows
+
+            # a stage enabled after images were indexed (e.g. "ages") has no rows yet
+            created = ensure_stage_rows(self.db, stage_names)
+            if created:
+                log.info("queued %d images for newly enabled stages", created)
             summary = RunSummary(run_id=run_id)
             self._hb = _Heartbeat(self.db, run_id, self.settings.pipeline.heartbeat_seconds)
             self._hb.start()

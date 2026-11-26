@@ -97,6 +97,28 @@ def mark_pending(s: Session, stage: str, image_ids: Iterable[int]) -> None:
         )
 
 
+def mark_done(s: Session, stage: str, image_ids: Iterable[int], version: str) -> None:
+    """Record ``stage`` as done for these images (work another stage did on the way)."""
+    from ..db.util import chunked
+
+    for part in chunked(sorted(set(image_ids))):
+        s.execute(
+            update(StageStatus)
+            .where(
+                StageStatus.stage == stage,
+                StageStatus.image_id.in_(part),
+                StageStatus.status != Status.RUNNING,
+            )
+            .values(
+                status=Status.DONE,
+                attempts=0,
+                last_error=None,
+                stage_version=version,
+                finished_at=utcnow(),
+            )
+        )
+
+
 def requeue_outdated(db: Database, stage: str, version: str) -> int:
     with db.write() as s:
         stmt = (

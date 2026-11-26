@@ -265,3 +265,13 @@ def test_missing_images_are_not_claimed(indexed, settings):
     PipelineRunner(indexed, settings, lambda _n: stage).run(["faces"])
     assert 2 not in stage.processed
     assert statuses(indexed)[2] == Status.PENDING
+
+
+def test_newly_enabled_stage_gets_its_images_queued(indexed, settings):
+    """A stage added after indexing (like "ages") has no status rows; the runner creates them."""
+    with indexed.session() as s:
+        assert not s.scalars(select(StageStatus).where(StageStatus.stage == "ages")).first()
+    stages = {"ages": FakeStage(indexed, settings, name="ages")}
+    summary = PipelineRunner(indexed, settings, stages.__getitem__).run(["ages"])
+    assert summary.processed == {"ages": 10}
+    assert set(statuses(indexed, "ages").values()) == {Status.DONE}

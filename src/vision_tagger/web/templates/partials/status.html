@@ -1,21 +1,21 @@
+{% set stage_titles = {'faces': 'Faces', 'ages': 'Face ages', 'vlm': 'Properties', 'embed': 'Search index'} %}
+{% set stage_notes = {'faces': 'Stage 1 · InsightFace', 'ages': 'Stage 1b · AgeNet + InsightFace', 'vlm': 'Stage 2 · VLM', 'embed': 'Stage 3 · text embeddings'} %}
 <div class="stack">
   <section class="card">
     <div class="row spread">
-      <h2 style="margin:0">Status</h2>
-      <div class="row">
-        {% if alive %}
-          <span class="badge {{ ctrl.desired_state }}">{{ 'paused' if ctrl.desired_state == 'paused' else 'running' }}{% if ctrl.active_stage %} · {{ ctrl.active_stage }}{% endif %}</span>
-        {% else %}
-          <span class="badge">idle</span>
-        {% endif %}
-      </div>
+      <h2 class="flush">Status</h2>
+      {% if alive %}
+        <span class="badge {{ ctrl.desired_state }}">{{ 'paused' if ctrl.desired_state == 'paused' else 'running' }}{% if ctrl.active_stage %} · {{ stage_titles.get(ctrl.active_stage, ctrl.active_stage) }}{% endif %}</span>
+      {% else %}
+        <span class="badge">idle</span>
+      {% endif %}
     </div>
     {% if active_run %}
-      <p class="muted" style="margin:.4rem 0 0">Run #{{ active_run.id }} · {{ active_run.processed }} processed, {{ active_run.failed }} failed
+      <p class="muted" style="margin:6px 0 0">Run #{{ active_run.id }} · {{ active_run.processed }} processed, {{ active_run.failed }} failed
         {% if rate %} · {{ '%.2f' | format(rate) }} img/s · ETA {{ eta | duration }}{% endif %}</p>
     {% endif %}
-    {% if runner_error %}<div class="flash err" style="margin:.6rem 0 0">{{ runner_error }}</div>{% endif %}
-    <div class="stats" style="margin-top:.8rem">
+    {% if runner_error %}<div class="flash err" style="margin:12px 0 0">{{ icon('alert') }}<span>{{ runner_error }}</span></div>{% endif %}
+    <div class="stats" style="margin-top:16px">
       <div class="stat"><div class="v">{{ totals.images }}</div><div class="l">Images</div></div>
       <div class="stat"><div class="v">{{ totals.duplicates }}</div><div class="l">Duplicates</div></div>
       <div class="stat"><div class="v">{{ totals.faces }}</div><div class="l">Faces</div></div>
@@ -25,61 +25,70 @@
     </div>
   </section>
 
-  {% for st in stages %}
-  {% set cnt = counts.get(st, {}) %}
-  {% set total = cnt.get('total', 0) %}
   <section class="card">
-    <div class="row spread">
-      <h3 style="margin:0">{{ {'faces': 'Stage 1 · Faces', 'vlm': 'Stage 2 · Properties (VLM)', 'embed': 'Stage 3 · Search index'}.get(st, st) }}</h3>
-      <small>{{ cnt.get('done', 0) }} / {{ total }} done ({{ pct(cnt.get('done', 0), total) }} %)</small>
-    </div>
-    <div class="progress" style="margin-top:.5rem">
-      <div class="p-done" style="width: {{ pct(cnt.get('done', 0), total) }}%"></div>
-      <div class="p-running" style="width: {{ pct(cnt.get('running', 0), total) }}%"></div>
-      <div class="p-error" style="width: {{ pct(cnt.get('error', 0), total) }}%"></div>
-      <div class="p-skipped" style="width: {{ pct(cnt.get('skipped', 0), total) }}%"></div>
-    </div>
-    <div class="legend">
-      <span>pending <b>{{ cnt.get('pending', 0) }}</b></span>
-      <span>running <b>{{ cnt.get('running', 0) }}</b></span>
-      <span>done <b>{{ cnt.get('done', 0) }}</b></span>
-      <span>errors <b>{{ cnt.get('error', 0) }}</b></span>
-      <span>skipped <b>{{ cnt.get('skipped', 0) }}</b></span>
-      {% if outdated.get(st) %}<span class="badge warn">{{ outdated[st] }} outdated</span>{% endif %}
-    </div>
-    <div class="row" style="margin-top:.6rem">
-      {% if cnt.get('error', 0) %}
-        <form method="post" action="/actions/retry-errors?stage={{ st }}"><button class="small">Retry errors</button></form>
-        <form method="post" action="/actions/skip-errors?stage={{ st }}"><button class="small">Skip errors</button></form>
-        <a class="btn small" href="/images?stage={{ st }}&status=error">Show errors</a>
+    <h2>Stages</h2>
+    <div class="stages">
+    {% for st in stages %}
+    {% set cnt = counts.get(st, {}) %}
+    {% set total = cnt.get('total', 0) %}
+    <div class="stage-row">
+      <div class="row spread">
+        <h3 class="flush">{{ stage_titles.get(st, st) }} <small class="muted">{{ stage_notes.get(st, '') }}</small></h3>
+        <small class="num">{{ cnt.get('done', 0) }} / {{ total }} · {{ pct(cnt.get('done', 0), total) }} %</small>
+      </div>
+      <div class="progress" style="margin-top:8px">
+        <div class="p-done" style="width: {{ pct(cnt.get('done', 0), total) }}%"></div>
+        <div class="p-running" style="width: {{ pct(cnt.get('running', 0), total) }}%"></div>
+        <div class="p-error" style="width: {{ pct(cnt.get('error', 0), total) }}%"></div>
+        <div class="p-skipped" style="width: {{ pct(cnt.get('skipped', 0), total) }}%"></div>
+      </div>
+      <div class="legend">
+        <span>pending <b>{{ cnt.get('pending', 0) }}</b></span>
+        <span>running <b>{{ cnt.get('running', 0) }}</b></span>
+        <span>done <b>{{ cnt.get('done', 0) }}</b></span>
+        <span>errors <b>{{ cnt.get('error', 0) }}</b></span>
+        <span>skipped <b>{{ cnt.get('skipped', 0) }}</b></span>
+        {% if outdated.get(st) %}<span class="badge warn">{{ outdated[st] }} outdated</span>{% endif %}
+      </div>
+      {% if cnt.get('error', 0) or outdated.get(st) %}
+      <div class="row" style="margin-top:10px">
+        {% if cnt.get('error', 0) %}
+          <form method="post" action="/actions/retry-errors?stage={{ st }}"><button class="small">{{ icon('refresh', 'sm') }}Retry errors</button></form>
+          <form method="post" action="/actions/skip-errors?stage={{ st }}"><button class="small">Skip errors</button></form>
+          <a class="btn small" href="/images?stage={{ st }}&status=error">Show errors</a>
+        {% endif %}
+        {% if outdated.get(st) %}
+          <form method="post" action="/actions/requeue-outdated?stage={{ st }}"><button class="small" title="Results were produced with an older model / prompt / vocabulary">Re-queue outdated</button></form>
+        {% endif %}
+      </div>
       {% endif %}
-      {% if outdated.get(st) %}
-        <form method="post" action="/actions/requeue-outdated?stage={{ st }}"><button class="small" title="Results were produced with an older model / prompt / vocabulary">Re-queue outdated</button></form>
-      {% endif %}
+    </div>
+    {% endfor %}
     </div>
   </section>
-  {% endfor %}
 
   {% if job or jobs %}
   <section class="card">
-    <h3>Jobs</h3>
+    <h2>Jobs</h2>
     {% if job and job.status == 'running' %}
-      <p style="margin:0"><span class="badge running">{{ job.name }}</span> {{ job.message }}</p>
+      <p class="flush"><span class="badge running">{{ job.name }}</span> {{ job.message }}</p>
       {% if job.progress and job.progress.get('candidates') %}
-        <div class="progress" style="margin-top:.4rem"><div class="p-running" style="width: {{ pct(job.progress.processed, job.progress.candidates) }}%"></div></div>
+        <div class="progress" style="margin-top:8px"><div class="p-running" style="width: {{ pct(job.progress.processed, job.progress.candidates) }}%"></div></div>
       {% endif %}
     {% endif %}
-    <table style="margin-top:.5rem">
+    {% if jobs %}
+    <div class="table-wrap"><table style="margin-top:8px">
       {% for j in jobs %}
-      <tr><td><span class="badge {{ j.status }}">{{ j.name }}</span></td><td>{{ j.message }}</td><td class="num"><small>{{ j.finished_at.strftime('%H:%M:%S') if j.finished_at }}</small></td></tr>
+      <tr><td style="width:1%"><span class="badge {{ j.status }}">{{ j.name }}</span></td><td>{{ j.message }}</td><td class="num"><small>{{ j.finished_at.strftime('%H:%M:%S') if j.finished_at }}</small></td></tr>
       {% endfor %}
-    </table>
+    </table></div>
+    {% endif %}
   </section>
   {% endif %}
 
   {% if errors %}
   <section class="card">
-    <h3>Recent errors</h3>
+    <h2>Recent errors</h2>
     <div class="table-wrap"><table>
       <tr><th>Stage</th><th>Image</th><th>Error</th><th class="num">Tries</th></tr>
       {% for e in errors[:10] %}
@@ -96,16 +105,18 @@
 
   {% if runs %}
   <section class="card">
-    <h3>Runs</h3>
+    <h2>Runs</h2>
     <div class="table-wrap"><table>
-      <tr><th>#</th><th>Stages</th><th>Status</th><th class="num">Processed</th><th class="num">Failed</th><th>Started</th><th>Note</th></tr>
+      <tr><th>#</th><th>Stages</th><th>Status</th><th class="num">Processed</th><th class="num">Started</th></tr>
       {% for r in runs %}
-      <tr>
-        <td>{{ r.id }}</td><td>{{ r.stages }}</td><td><span class="badge {{ r.status }}">{{ r.status }}</span></td>
-        <td class="num">{{ r.processed }}</td><td class="num">{{ r.failed }}</td>
-        <td><small>{{ r.started_at | dt }}</small></td>
-        <td><small>{{ (r.message or '')[:160] }}</small></td>
+      <tr{% if r.message %} class="has-sub"{% endif %}>
+        <td>{{ r.id }}</td>
+        <td>{{ r.stages.replace(',', ', ') }}</td>
+        <td><span class="badge {{ r.status }}">{{ r.status }}</span></td>
+        <td class="num">{{ r.processed }}{% if r.failed %} <small class="err-text">· {{ r.failed }} failed</small>{% endif %}</td>
+        <td class="num nowrap"><small title="{{ r.started_at | dt }}">{{ r.started_at | dt('%d %b %H:%M') }}</small></td>
       </tr>
+      {% if r.message %}<tr class="sub"><td></td><td colspan="4"><small class="muted">{{ r.message[:200] }}</small></td></tr>{% endif %}
       {% endfor %}
     </table></div>
   </section>

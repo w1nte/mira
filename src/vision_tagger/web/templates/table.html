@@ -4,22 +4,23 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <small><a href="/overview?{{ f.query_string() }}">← Overview</a></small>
-    <h1>Metadata table</h1>
-    <small>{{ total }} images</small>
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="/overview?{{ f.query_string() }}">Overview</a></nav>
+    <h1>Metadata table <small>{{ total }} images</small></h1>
   </div>
-  <a class="btn" href="/images?{{ f.query_string() }}">Gallery</a>
+  <div class="row">
+    <a class="btn" href="/images?{{ f.query_string() }}">{{ icon('image', 'sm') }}Gallery</a>
+  </div>
 </div>
 {% set base = '/overview/table' %}
 {% include "partials/filter_summary.html" %}
 {% macro sort_link(col, title) %}
   {% set is_cur = order == col %}
-  <a href="?{{ f.query_string() }}&order={{ col }}&desc={{ 0 if is_cur and desc else 1 }}">{{ title }}{% if is_cur %} {{ '▼' if desc else '▲' }}{% endif %}</a>
+  <a href="?{{ f.query_string() }}&order={{ col }}&desc={{ 0 if is_cur and desc else 1 }}">{{ title }}{% if is_cur %} {{ '▾' if desc else '▴' }}{% endif %}</a>
 {% endmacro %}
-<section class="card">
+<section class="card flush-table">
   <div class="table-wrap"><table>
     <tr>
-      <th></th>
+      <th><span class="sr-only">Thumbnail</span></th>
       <th>{{ sort_link('name', 'File') }}</th>
       <th>{{ sort_link('path', 'Folder') }}</th>
       <th>{{ sort_link('date', 'Recorded') }}</th>
@@ -33,7 +34,7 @@
     </tr>
     {% for img, faces, fst, vst in rows %}
     <tr>
-      <td style="width:56px"><a class="thumb" href="/images/{{ img.id }}" style="width:48px"><img loading="lazy" src="/media/thumb/{{ img.id }}?size=96" alt=""></a></td>
+      <td style="width:56px"><a class="thumb" href="/images/{{ img.id }}" style="width:44px"><img loading="lazy" src="/media/thumb/{{ img.id }}?size=96" alt=""></a></td>
       <td><a href="/images/{{ img.id }}">{{ img.filename }}</a>{% if img.missing %} <span class="badge err">missing</span>{% endif %}</td>
       <td><small>{{ img.folder }}</small></td>
       <td style="white-space:nowrap">{{ img.recorded_at | dt }}</td>
@@ -47,12 +48,12 @@
     </tr>
     {% endfor %}
   </table></div>
-  {% if pages > 1 %}
-  <div class="pager">
-    {% if page > 1 %}<a class="btn" href="?{{ f.query_string() }}&order={{ order }}&desc={{ desc }}&page={{ page-1 }}">← Prev</a>{% endif %}
-    <span class="muted">Page {{ page }} / {{ pages }}</span>
-    {% if page < pages %}<a class="btn" href="?{{ f.query_string() }}&order={{ order }}&desc={{ desc }}&page={{ page+1 }}">Next →</a>{% endif %}
-  </div>
-  {% endif %}
 </section>
+{% if pages > 1 %}
+<nav class="pager" aria-label="Pages">
+  {% if page > 1 %}<a class="btn" href="?{{ f.query_string() }}&order={{ order }}&desc={{ desc }}&page={{ page-1 }}">{{ icon('chevron-left', 'sm') }}Previous</a>{% endif %}
+  <span class="muted">Page {{ page }} of {{ pages }}</span>
+  {% if page < pages %}<a class="btn" href="?{{ f.query_string() }}&order={{ order }}&desc={{ desc }}&page={{ page+1 }}">Next{{ icon('chevron-right', 'sm') }}</a>{% endif %}
+</nav>
+{% endif %}
 {% endblock %}

@@ -10,6 +10,14 @@ def faces_stage_version(settings: Settings) -> str:
     return f"{cfg.model}-det{cfg.det_size}-px{cfg.max_image_px}-v1"
 
 
+def ages_stage_version(settings: Settings) -> str:
+    from ...faces.agenet import MODEL_VERSION
+
+    mode = settings.faces.age_model
+    model = settings.faces.model if mode == "insightface" else f"{mode}:{MODEL_VERSION}"
+    return f"{model}-v1"
+
+
 def vlm_stage_version(settings: Settings, model: str | None = None) -> str:
     from ...vlm.prompt import prompt_version
     from ...vlm.schema import Vocabulary

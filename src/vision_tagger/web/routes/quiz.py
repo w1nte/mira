@@ -130,7 +130,7 @@ async def quiz_name(request: Request) -> Response:
                     s, cluster_id[0], name, references=c.settings.faces.references_per_named_cluster
                 )
                 state.named += 1
-                flash = f"✓ Named “{name}”"
+                flash = f"Named “{name}”."
     return _card(request, state, flash=flash)
 
 
@@ -175,9 +175,9 @@ def _age_line(c, image_id: int, face_id: int, name: str) -> str | None:
     if info is None:
         return None
     if info.calendar_age is not None and info.calendar_age >= 0 and not check.suspicious:
-        return f"🎂 {name} was {info.calendar_age} here ({check.recorded_year})."
+        return f"{name} was {info.calendar_age} here ({check.recorded_year})."
     if info.face_age is not None:
-        return f"🎂 {name} looks about {info.face_age} here."
+        return f"{name} looks about {info.face_age} here."
     return None
 
 
@@ -192,8 +192,8 @@ async def quiz_fix(request: Request) -> Response:
         with c.db.write() as s:
             if form.get("action") == "move" and str(form.get("person") or "").strip():
                 C.move_faces_to_person(s, face_ids, str(form.get("person")))
-                flash = f"✓ Moved the face to {form.get('person')}. Thanks for the fix!"
+                flash = f"Moved the face to {form.get('person')}. Thanks for the fix!"
             else:
                 C.unassign_faces(s, face_ids)
-                flash = "✓ Removed from that person – find it under Faces → Unclustered."
+                flash = "Removed from that person – find it under Faces → Unclustered."
     return _card(request, state, flash=flash)

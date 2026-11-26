@@ -20,11 +20,11 @@ from ..db.models import Cluster, Face, Person
 from .vectors import from_blob, normalize
 
 STREAK_TITLES = [
-    (25, "👑 Face whisperer"),
-    (15, "🦉 Family historian"),
-    (10, "🔥 On fire"),
-    (5, "⭐ Sharp eyes"),
-    (3, "👍 Warming up"),
+    (25, "Face whisperer"),
+    (15, "Family historian"),
+    (10, "On fire"),
+    (5, "Sharp eyes"),
+    (3, "Warming up"),
 ]
 
 

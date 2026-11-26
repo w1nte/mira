@@ -3,24 +3,24 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <h1>✨ Generations</h1>
+    <h1>Generations</h1>
     <small>Watch the people in your photos grow up, and compare family members at the same age.
       Faces are aligned on the eyes and ordered by age (birth year + photo date, or the face's estimated age when a date looks wrong).</small>
   </div>
 </div>
 {% if not cards %}
-  <div class="card empty">Nothing to show yet. Name some people (Faces or 🎲 Quiz) – the more photos from different years, the better.
+  <div class="card empty">Nothing to show yet. Name some people (Faces or Quiz) – the more photos from different years, the better.
     Setting a birth year on a person page makes the ages exact.</div>
 {% else %}
 <div class="gen-grid">
   {% for c in cards %}
-  <a class="card gen-card" href="/generations/{{ c.person.id }}">
+  <a class="gen-card" href="/generations/{{ c.person.id }}">
     <div class="gen-pair">
       <img loading="lazy" src="/media/aligned/{{ c.first.face_id }}?size=256" alt="">
-      <span class="arrow">→</span>
+      <span class="arrow">{{ icon('arrow-right', 'sm') }}</span>
       <img loading="lazy" src="/media/aligned/{{ c.last.face_id }}?size=256" alt="">
     </div>
-    <div class="row spread" style="margin-top:.5rem">
+    <div class="meta">
       <b>{{ c.person.name }}</b>
       <small class="muted">{{ c.frames }} ages{% if c.span %} · {{ c.span[0] }}–{{ c.span[1] }}{% endif %}</small>
     </div>

@@ -58,13 +58,24 @@ start and control it from a local web UI. Originals are never moved or modified.
   - **Deep search** lets the LLM double-check the best ~40 results and explain why each fits.
   - Without an LLM, a keyword fallback (English and German) still works.
 - **Ages and doubtful dates.** Give a person a birth year, or let vision-tagger estimate one
-  from photo dates and InsightFace's face ages: a weighted median that trusts EXIF dates more
-  than file times and drops outliers.
+  from photo dates and face ages.
+  - **Face ages from two models.** InsightFace's age model turns babies and children into young
+    adults (a 12-year-old easily comes out as 40). vision-tagger adds AgeNet, a small network
+    from [face-api](https://github.com/vladmandic/face-api) (MIT license) trained on many
+    children and old people, and combines both. AgeNet is used alone for children and teenagers,
+    and both count equally from about 35 years on.
+  - **Your birth years make it better.** Every birth year you set also shows how far off the
+    face model is on *your* photos. vision-tagger learns a correction per age range from those
+    faces and applies it to everyone else.
+  - **Robust estimate.** The birth year is a weighted median of "photo year − face age". It
+    trusts EXIF dates more than file times, faces of children more than those of adults (their
+    age is easier to see), and sharp faces more than tiny ones, and it drops outliers.
   - Every face shows the person's age in that photo, and each person gets a "through the years"
     timeline.
   - Photos where the date can't be right (camera clock reset to 2000, scans that only carry the
-    file date, "taken" before birth) are flagged with a suggested year and a one-click fix.
-    Fixed dates survive re-scans.
+    file date, "taken" before birth) are flagged with a suggested year and a one-click fix. A
+    date is only doubted when the faces disagree far beyond the model's typical error at that
+    age; dates you set by hand are never doubted. Fixed dates survive re-scans.
 - **"Who's that?" quiz** 🎲. Name unnamed clusters as a game, or test yourself on the people you
   already named.
   - After each answer you see how sure the face recognition was.
@@ -182,11 +193,18 @@ uv run vision-tagger growup "Anna" anna-growing-up.webp  # grow-up animation
 | **Persons** | Named persons. Rename (renaming to an existing name merges), merge, delete, manage references. Images with *all* / *any* of the selected persons. Per person: birth year (set or estimated), age today, a "through the years" face timeline, and photos with a doubtful date with suggested fixes. |
 | **Properties** | Every extracted property grouped by topic, with counts. Tick values and show images with **all** / **any** of them. Per property: sample images per value, **merge / rename / delete** values (remembered for future results). |
 | **Images** | Gallery with infinite scroll and a filter builder: persons (AND/OR, NOT), properties (AND/OR, NOT), date range, folder, camera, faces, text search, sort. Facets refine the current result. **Export** the result. Filters are part of the URL, so they can be bookmarked. |
-| **Image** | Full image with face boxes and names, all properties with source and confidence, metadata, duplicates, raw VLM JSON, per-stage status and re-run buttons. |
+| **Image** | Full image with face boxes and names, all properties with source and confidence, metadata, duplicates, raw VLM JSON, per-stage status and re-run buttons. `←` / `→` open the previous / next photo of the current filter. |
 | **Quiz** | "Who's that?": name the largest unnamed clusters with one click (suggestions from references and look-alikes), or play the face quiz with score, streaks and "you vs. the AI"; wrong answers can fix misfiled faces. Keys 1–4 and Enter. |
 | **Generations** | Every person with photos from different ages. Per person: a grow-up timelapse (play, scrub, download as animated WebP), "looks most like…" ranking, and a same-age comparison with any other person. |
-| **Search** | Search box in the top bar on every page. Shows how the request was understood (persons, required / preferred / excluded properties, dates, keywords), ranks the results and, with **Deep search**, gives the LLM's reason for each. "Open in filter builder" turns the strict part into a gallery filter; results can be exported. |
+| **Search** | Search box in the top bar on every page (`/` focuses it). Shows how the request was understood (persons, required / preferred / excluded properties, dates, keywords), ranks the results and, with **Deep search**, gives the LLM's reason for each. "Open in filter builder" turns the strict part into a gallery filter; results can be exported. |
 | **Overview** | Timeline (year → month → day), breakdowns by folder, camera, file type, date reliability, work/personal, orientation, and a sortable metadata table. |
+
+The sidebar groups the pages into *Library*, *People* and *Organize* and shows what the pipeline
+is doing right now. On small screens it folds away behind the menu button.
+
+**Light and dark mode.** The switch at the bottom of the sidebar picks the theme: *System*
+(follows your operating system), *Light* or *Dark*. The choice is kept in a cookie (`vt_theme`),
+so every page is rendered in the right theme from the start, without flashing.
 
 ## How the property extraction stays stable
 
@@ -293,3 +311,10 @@ name to `web.allowed_hosts`. There is no login, so only do that on a trusted net
   copying.
 - InsightFace's pretrained `buffalo_l` models are licensed for **non-commercial research
   purposes** only.
+- Face ages: the first faces run downloads AgeNet (430 KB, MIT license) from GitHub into
+  `~/.insightface/models/agegender_faceapi`. The download is checked against a SHA-256 checksum
+  and turned into an ONNX model locally. The **ages** stage re-estimates faces that were found
+  before (no new face detection). It is added automatically whenever **faces** runs. Set
+  `faces.age_model = "insightface"` to keep the old behaviour.
+- Face ages are estimates. Expect about ±2 years for children and ±5–10 years for adults. Set
+  the birth years of a few people for exact ages; vision-tagger then also corrects the others.

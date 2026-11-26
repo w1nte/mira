@@ -90,6 +90,32 @@ def status_partial(request: Request) -> Response:
     return render(request, "partials/status.html", **status_context(request))
 
 
+@router.get("/partials/activity")
+def activity_partial(request: Request) -> Response:
+    """The small "what is running" indicator in the sidebar. Polled on every page, so cheap."""
+    c = ctx(request)
+    ctrl = control.get_control(c.db)
+    alive = c.runner.running or control.is_runner_alive(c.db)
+    stage = ctrl.active_stage if alive else None
+    if not alive:
+        state = "idle"
+    elif ctrl.desired_state == control.PAUSED:
+        state = "paused"
+    elif ctrl.desired_state == control.STOPPED:
+        state = "stopping"
+    else:
+        state = "running"
+    percent = None
+    if stage:
+        cnt = control.stage_counts(c.db).get(stage, {})
+        total = cnt.get("total", 0)
+        percent = round(100 * cnt.get("done", 0) / total) if total else None
+    job = c.jobs.current if c.jobs.busy else None
+    return render(
+        request, "partials/activity.html", state=state, stage=stage, percent=percent, job=job
+    )
+
+
 @router.get("/partials/health")
 def health_partial(request: Request) -> Response:
     c = ctx(request)

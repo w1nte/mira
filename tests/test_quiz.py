@@ -51,7 +51,7 @@ def test_quiz_question_and_judging(db, settings):
         answer = s.get(Cluster, q.cluster_id).person
         right = judge(s, q.face_id, answer.id, streak=2)
         assert right.correct and right.ai_answer > 0.5
-        assert right.title == streak_title(3) == "👍 Warming up"
+        assert right.title == streak_title(3) == "Warming up"
         assert "agrees" in ai_comment(right)
         other = next(o for o in q.options if o.person_id != answer.id)
         wrong = judge(s, q.face_id, other.person_id)
