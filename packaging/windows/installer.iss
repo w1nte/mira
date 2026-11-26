@@ -23,6 +23,20 @@
 #define AppName "Mira"
 #define AppExe "Mira.exe"
 #define CliExe "vision-tagger-cli.exe"
+#define OutputName AppName + "-setup-" + AppVersion + "-" + Flavor
+#ifdef ReleaseTag
+  #define ReleasePage "https://github.com/w1nte/vision-tagger/releases/tag/" + ReleaseTag
+  #define ReleaseUrl "https://github.com/w1nte/vision-tagger/releases/download/" + ReleaseTag
+#endif
+#ifdef Spanning
+  #ifndef Slices
+    #define Slices 1
+  #endif
+#endif
+; Spanning (only when the compressed files exceed Inno's single-file limit of about 2 GB; the
+; workflow then compiles with /DSpanning /DSlices=<n> /DReleaseTag=<tag>): the files go into
+; <OutputName>-1.bin, -2.bin ... next to the .exe. A setup started without them downloads the
+; missing ones from that GitHub release first (see PrepareToInstall).
 
 [Setup]
 AppId={{BDA0ECA7-54BD-4B4D-82BE-1592C783603F}
@@ -40,7 +54,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
 OutputDir=..\..\dist\installer
-OutputBaseFilename={#AppName}-setup-{#AppVersion}-{#Flavor}
+OutputBaseFilename={#OutputName}
 SetupIconFile=..\build\vision-tagger.ico
 UninstallDisplayIcon={app}\{#AppExe}
 UninstallDisplayName={#AppName}
@@ -50,8 +64,8 @@ SolidCompression=yes
 LZMAUseSeparateProcess=yes
 ; the fallback when a running Mira does not quit on request (see PrepareToInstall)
 CloseApplications=yes
-#if Flavor == "gpu"
-; the CUDA and cuDNN libraries make the GPU build too big for a single setup file
+; one file, also for the gpu flavour: CUDA and cuDNN compress to about 285 MB
+#ifdef Spanning
 DiskSpanning=yes
 DiskSliceSize=max
 #endif
@@ -82,6 +96,8 @@ en.ClosingApp=Closing Mira...
 en.MigratingLibrary=Updating the library's database...
 en.MigrationFailed=The library's database could not be updated (error %1). Mira tries again when it starts.%n%nDetails: logs\migrate.log in the library's data folder (by default %2).
 en.DatabaseTooNew=The library's database is from a newer version of Mira, which this version cannot open. Install the newer version again, or restore a backup copy of the database.
+en.DownloadingSlices=Downloading the rest of the setup ({#AppName} needs %1 more file(s) from GitHub)...
+en.SliceDownloadFailed=The rest of the setup could not be downloaded: %1%n%nDownload the .bin file(s) of this release from %2 and put them next to the setup program, then start it again.
 
 de.UpdateCaption=Mira aktualisieren: %1 → %2
 de.UpdateTitle=Mira aktualisieren
@@ -93,6 +109,8 @@ de.ClosingApp=Mira wird beendet...
 de.MigratingLibrary=Die Datenbank der Bibliothek wird aktualisiert...
 de.MigrationFailed=Die Datenbank der Bibliothek konnte nicht aktualisiert werden (Fehler %1). Mira versucht es beim nächsten Start erneut.%n%nDetails: logs\migrate.log im Datenordner der Bibliothek (standardmäßig %2).
 de.DatabaseTooNew=Die Datenbank der Bibliothek stammt von einer neueren Version von Mira, die diese Version nicht öffnen kann. Installieren Sie die neuere Version erneut, oder stellen Sie eine Sicherungskopie der Datenbank wieder her.
+de.DownloadingSlices=Der Rest des Setups wird heruntergeladen ({#AppName} braucht noch %1 Datei(en) von GitHub)...
+de.SliceDownloadFailed=Der Rest des Setups konnte nicht heruntergeladen werden: %1%n%nLaden Sie die .bin-Datei(en) dieser Version von %2 herunter, legen Sie sie neben das Setup-Programm und starten Sie es erneut.
 
 fr.UpdateCaption=Mise à jour de Mira : %1 → %2
 fr.UpdateTitle=Mettre à jour Mira
@@ -104,6 +122,8 @@ fr.ClosingApp=Fermeture de Mira...
 fr.MigratingLibrary=Mise à jour de la base de données de la bibliothèque...
 fr.MigrationFailed=La base de données de la bibliothèque n'a pas pu être mise à jour (erreur %1). Mira réessaiera au prochain démarrage.%n%nDétails : logs\migrate.log dans le dossier de données de la bibliothèque (par défaut %2).
 fr.DatabaseTooNew=La base de données de la bibliothèque provient d'une version plus récente de Mira, que cette version ne peut pas ouvrir. Réinstallez la version plus récente ou restaurez une copie de sauvegarde de la base de données.
+fr.DownloadingSlices=Téléchargement du reste de l'installation ({#AppName} a besoin de %1 fichier(s) de plus depuis GitHub)...
+fr.SliceDownloadFailed=Le reste de l'installation n'a pas pu être téléchargé : %1%n%nTéléchargez le ou les fichiers .bin de cette version depuis %2, placez-les à côté du programme d'installation, puis relancez-le.
 
 es.UpdateCaption=Actualizar Mira: %1 → %2
 es.UpdateTitle=Actualizar Mira
@@ -115,6 +135,8 @@ es.ClosingApp=Cerrando Mira...
 es.MigratingLibrary=Actualizando la base de datos de la biblioteca...
 es.MigrationFailed=No se pudo actualizar la base de datos de la biblioteca (error %1). Mira lo intentará de nuevo al iniciarse.%n%nDetalles: logs\migrate.log en la carpeta de datos de la biblioteca (por defecto %2).
 es.DatabaseTooNew=La base de datos de la biblioteca es de una versión más reciente de Mira, que esta versión no puede abrir. Vuelva a instalar la versión más reciente o restaure una copia de seguridad de la base de datos.
+es.DownloadingSlices=Descargando el resto de la instalación ({#AppName} necesita %1 archivo(s) más de GitHub)...
+es.SliceDownloadFailed=No se pudo descargar el resto de la instalación: %1%n%nDescargue el o los archivos .bin de esta versión desde %2, colóquelos junto al programa de instalación y vuelva a iniciarlo.
 
 it.UpdateCaption=Aggiornamento di Mira: %1 → %2
 it.UpdateTitle=Aggiorna Mira
@@ -126,6 +148,8 @@ it.ClosingApp=Chiusura di Mira...
 it.MigratingLibrary=Aggiornamento del database della libreria...
 it.MigrationFailed=Impossibile aggiornare il database della libreria (errore %1). Mira riproverà al prossimo avvio.%n%nDettagli: logs\migrate.log nella cartella dati della libreria (predefinita: %2).
 it.DatabaseTooNew=Il database della libreria proviene da una versione più recente di Mira, che questa versione non può aprire. Reinstalla la versione più recente oppure ripristina una copia di backup del database.
+it.DownloadingSlices=Download del resto dell'installazione in corso ({#AppName} ha bisogno di altri %1 file da GitHub)...
+it.SliceDownloadFailed=Non è stato possibile scaricare il resto dell'installazione: %1%n%nScarica i file .bin di questa versione da %2, mettili accanto al programma di installazione e avvialo di nuovo.
 
 pt.UpdateCaption=Atualizar o Mira: %1 → %2
 pt.UpdateTitle=Atualizar o Mira
@@ -137,6 +161,8 @@ pt.ClosingApp=A fechar o Mira...
 pt.MigratingLibrary=A atualizar a base de dados da biblioteca...
 pt.MigrationFailed=Não foi possível atualizar a base de dados da biblioteca (erro %1). O Mira tenta novamente no próximo arranque.%n%nDetalhes: logs\migrate.log na pasta de dados da biblioteca (por predefinição %2).
 pt.DatabaseTooNew=A base de dados da biblioteca é de uma versão mais recente do Mira, que esta versão não consegue abrir. Volte a instalar a versão mais recente ou restaure uma cópia de segurança da base de dados.
+pt.DownloadingSlices=A transferir o resto da instalação ({#AppName} precisa de mais %1 ficheiro(s) do GitHub)...
+pt.SliceDownloadFailed=Não foi possível transferir o resto da instalação: %1%n%nTransfira o(s) ficheiro(s) .bin desta versão de %2, coloque-os junto ao programa de instalação e inicie-o novamente.
 
 ptbr.UpdateCaption=Atualizar o Mira: %1 → %2
 ptbr.UpdateTitle=Atualizar o Mira
@@ -148,6 +174,8 @@ ptbr.ClosingApp=Fechando o Mira...
 ptbr.MigratingLibrary=Atualizando o banco de dados da biblioteca...
 ptbr.MigrationFailed=Não foi possível atualizar o banco de dados da biblioteca (erro %1). O Mira tentará novamente ao iniciar.%n%nDetalhes: logs\migrate.log na pasta de dados da biblioteca (por padrão %2).
 ptbr.DatabaseTooNew=O banco de dados da biblioteca é de uma versão mais recente do Mira, que esta versão não consegue abrir. Instale a versão mais recente novamente ou restaure uma cópia de segurança do banco de dados.
+ptbr.DownloadingSlices=Baixando o restante da instalação ({#AppName} precisa de mais %1 arquivo(s) do GitHub)...
+ptbr.SliceDownloadFailed=Não foi possível baixar o restante da instalação: %1%n%nBaixe o(s) arquivo(s) .bin desta versão em %2, coloque-os ao lado do programa de instalação e inicie-o novamente.
 
 nl.UpdateCaption=Mira bijwerken: %1 → %2
 nl.UpdateTitle=Mira bijwerken
@@ -159,6 +187,8 @@ nl.ClosingApp=Mira wordt afgesloten...
 nl.MigratingLibrary=De database van de bibliotheek wordt bijgewerkt...
 nl.MigrationFailed=De database van de bibliotheek kon niet worden bijgewerkt (fout %1). Mira probeert het opnieuw bij de volgende start.%n%nDetails: logs\migrate.log in de gegevensmap van de bibliotheek (standaard %2).
 nl.DatabaseTooNew=De database van de bibliotheek komt van een nieuwere versie van Mira, die deze versie niet kan openen. Installeer de nieuwere versie opnieuw of zet een reservekopie van de database terug.
+nl.DownloadingSlices=De rest van de installatie wordt gedownload ({#AppName} heeft nog %1 bestand(en) van GitHub nodig)...
+nl.SliceDownloadFailed=De rest van de installatie kon niet worden gedownload: %1%n%nDownload de .bin-bestand(en) van deze versie via %2, zet ze naast het installatieprogramma en start het opnieuw.
 
 pl.UpdateCaption=Aktualizacja Mira: %1 → %2
 pl.UpdateTitle=Aktualizacja Mira
@@ -170,6 +200,8 @@ pl.ClosingApp=Zamykanie Mira...
 pl.MigratingLibrary=Aktualizowanie bazy danych biblioteki...
 pl.MigrationFailed=Nie udało się zaktualizować bazy danych biblioteki (błąd %1). Mira spróbuje ponownie przy następnym uruchomieniu.%n%nSzczegóły: logs\migrate.log w folderze danych biblioteki (domyślnie %2).
 pl.DatabaseTooNew=Baza danych biblioteki pochodzi z nowszej wersji Mira, której ta wersja nie potrafi otworzyć. Zainstaluj ponownie nowszą wersję lub przywróć kopię zapasową bazy danych.
+pl.DownloadingSlices=Pobieranie reszty instalatora ({#AppName} potrzebuje jeszcze %1 plik(ów) z GitHuba)...
+pl.SliceDownloadFailed=Nie udało się pobrać reszty instalatora: %1%n%nPobierz plik(i) .bin tej wersji z %2, umieść je obok programu instalacyjnego i uruchom go ponownie.
 
 ru.UpdateCaption=Обновление Mira: %1 → %2
 ru.UpdateTitle=Обновление Mira
@@ -181,6 +213,8 @@ ru.ClosingApp=Закрытие Mira...
 ru.MigratingLibrary=Обновление базы данных библиотеки...
 ru.MigrationFailed=Не удалось обновить базу данных библиотеки (ошибка %1). Mira попробует снова при следующем запуске.%n%nПодробности: logs\migrate.log в папке данных библиотеки (по умолчанию %2).
 ru.DatabaseTooNew=База данных библиотеки создана более новой версией Mira, которую эта версия не может открыть. Установите более новую версию снова или восстановите резервную копию базы данных.
+ru.DownloadingSlices=Загрузка остальной части установщика ({#AppName} нужно ещё файлов с GitHub: %1)...
+ru.SliceDownloadFailed=Не удалось загрузить остальную часть установщика: %1%n%nЗагрузите файл(ы) .bin этой версии со страницы %2, положите их рядом с программой установки и запустите её снова.
 
 ja.UpdateCaption=Mira の更新: %1 → %2
 ja.UpdateTitle=Mira の更新
@@ -192,6 +226,8 @@ ja.ClosingApp=Mira を終了しています...
 ja.MigratingLibrary=ライブラリのデータベースを更新しています...
 ja.MigrationFailed=ライブラリのデータベースを更新できませんでした (エラー %1)。Mira は次回の起動時に再試行します。%n%n詳細: ライブラリのデータ フォルダー内の logs\migrate.log (既定: %2)
 ja.DatabaseTooNew=ライブラリのデータベースは新しいバージョンの Mira で作成されたため、このバージョンでは開けません。新しいバージョンを再インストールするか、データベースのバックアップを復元してください。
+ja.DownloadingSlices=セットアップの残りをダウンロードしています ({#AppName} には GitHub からあと %1 個のファイルが必要です)...
+ja.SliceDownloadFailed=セットアップの残りをダウンロードできませんでした: %1%n%nこのリリースの .bin ファイルを %2 からダウンロードし、セットアップ プログラムと同じフォルダーに置いてから、もう一度起動してください。
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -294,12 +330,77 @@ end;
   pipeline is paused, not killed). The command line of the installed version is used: a newer
   setup's files are not there yet. Versions without quit-app (exit code 2) and apps that do not
   quit leave it to the Restart Manager (CloseApplications). }
+#ifdef Spanning
+{ A split setup needs its .bin files next to the .exe. When only the .exe was downloaded, the
+  missing ones are fetched from the release first: into the temporary folder, then moved next
+  to the .exe, where Setup reads them during the installation. Returns an error message or
+  an empty string. (Pascal comments in braces don't nest: no braces inside them.) }
+function SliceName(Index: Integer): String;
+begin
+  Result := '{#OutputName}-' + IntToStr(Index) + '.bin';
+end;
+
+function SliceProgress(const Url, FileName: String; const Progress, ProgressMax: Int64): Boolean;
+begin
+  Result := True;  { keep going; the page shows the progress }
+end;
+
+function FetchMissingSlices(): String;
+#ifdef ReleaseTag
+var
+  Page: TDownloadWizardPage;
+  I, Missing: Integer;
+  Source, Target: String;
+begin
+  Result := '';
+  Page := CreateDownloadPage(SetupMessage(msgWizardPreparing), '', @SliceProgress);
+  Missing := 0;
+  for I := 1 to {#Slices} do
+    if not FileExists(ExpandConstant('{src}\') + SliceName(I)) then begin
+      Page.Add('{#ReleaseUrl}/' + SliceName(I), SliceName(I), '');
+      Missing := Missing + 1;
+    end;
+  if Missing = 0 then
+    Exit;
+  Page.SetText(FmtMessage(CustomMessage('DownloadingSlices'), [IntToStr(Missing)]), '');
+  Page.Show;
+  try
+    try
+      Page.Download;
+      for I := 1 to {#Slices} do begin
+        Source := ExpandConstant('{tmp}\') + SliceName(I);
+        Target := ExpandConstant('{src}\') + SliceName(I);
+        if FileExists(Source) and not FileExists(Target) then
+          if not RenameFile(Source, Target) then
+            if not FileCopy(Source, Target, False) then
+              RaiseException(SysErrorMessage(DLLGetLastError) + ' (' + Target + ')');
+      end;
+    except
+      Result := FmtMessage(CustomMessage('SliceDownloadFailed'), [GetExceptionMessage,
+        '{#ReleasePage}']);
+    end;
+  finally
+    Page.Hide;
+  end;
+end;
+#else
+begin
+  Result := '';  { not a release build: Setup asks for the files itself }
+end;
+#endif
+#endif
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   Progress: TOutputProgressWizardPage;
   Code: Integer;
 begin
   Result := '';
+#ifdef Spanning
+  Result := FetchMissingSlices();
+  if Result <> '' then
+    Exit;
+#endif
   if not FileExists(ExpandConstant('{app}\{#CliExe}')) then
     Exit;
   Progress := CreateOutputProgressPage(SetupMessage(msgWizardPreparing), CustomMessage('ClosingApp'));

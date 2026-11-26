@@ -214,6 +214,63 @@ def test_inno_setup_messages_exist_in_every_language():
     assert "quit-app" in text and "migrate --desktop" in text
 
 
+def test_windows_setup_is_one_file_and_a_split_one_downloads_its_parts():
+    """The gpu setup is one .exe (about 285 MB). Only above Inno's single-file limit does the
+    workflow split it (/DSpanning); such a setup downloads .bin files that are missing."""
+    text = (PACKAGING / "windows/installer.iss").read_bytes().decode("utf-8-sig")
+    setup = text.split("[Setup]", 1)[1].split("\n[", 1)[0]
+    spanning = re.search(r"#ifdef Spanning\s+DiskSpanning=yes", setup)
+    assert spanning and "#if Flavor" not in setup  # never split unless asked for
+    code = text.split("\n[Code]", 1)[1]
+    assert "FetchMissingSlices" in code and "CreateDownloadPage" in code
+    assert "{#ReleaseUrl}" in code and "releases/download/" in text
+    prepare = code.split("function PrepareToInstall", 1)[1]
+    assert prepare.index("FetchMissingSlices") < prepare.index("quit-app")  # before installing
+    workflow = (ROOT / ".github/workflows/desktop.yml").read_text(encoding="utf-8")
+    assert "/DReleaseTag=$env:TAG" in workflow
+    assert "Disk spanning must be enabled" in workflow and "/DSlices=$slices" in workflow
+    assert "/DSpanning /DSlices=1 /DReleaseTag=check" in workflow  # the split variant compiles
+
+
+def _pascal_code_only(text: str) -> str:
+    """The Pascal code without strings and comments, read the way the compiler reads it.
+
+    ``{#...}`` is the preprocessor's (already replaced when Pascal sees it). A ``{`` inside a
+    ``{ ... }`` comment is an error here: Pascal comments don't nest, so the comment would end
+    at the first ``}`` and the rest would be read as code.
+    """
+    out, i = [], 0
+    while i < len(text):
+        ch = text[i]
+        if text.startswith("{#", i):  # preprocessor inline: keep a placeholder
+            i = text.index("}", i) + 1
+            out.append("0")
+        elif ch == "{":
+            end = text.index("}", i)
+            inner = text[i + 1 : end]
+            assert "{" not in inner, f"brace inside a comment: {text[i : end + 1]!r}"
+            i = end + 1
+        elif text.startswith("(*", i):
+            i = text.index("*)", i) + 2
+        elif text.startswith("//", i):
+            i = text.find("\n", i) if "\n" in text[i:] else len(text)
+        elif ch == "'":
+            end = text.index("'", i + 1)
+            assert "\n" not in text[i:end], f"string runs over a line end at {text[i : i + 40]!r}"
+            i = end + 1
+            out.append("''")
+        else:
+            out.append(ch)
+            i += 1
+    return "".join(out)
+
+
+def test_pascal_reader_catches_nested_comment_braces():
+    assert _pascal_code_only("x := 'a (';  { the library's file } y(1);") == "x := '';   y(1);"
+    with pytest.raises(AssertionError, match="brace inside a comment"):
+        _pascal_code_only("{ moved (into {tmp}, then here) }")
+
+
 def test_inno_setup_code_has_no_lines_the_compiler_misreads():
     """Inno Setup reads every line that starts with "[" as a section header, also indented
     inside [Code] ("Invalid section tag" broke the 1.2 release build), and every line that
@@ -225,9 +282,22 @@ def test_inno_setup_code_has_no_lines_the_compiler_misreads():
     for number, line in enumerate(code, start=1):
         stripped = line.strip()
         assert not stripped.startswith("["), f"[Code] line {number}: {line!r}"
-        assert not stripped.startswith("#"), f"[Code] line {number}: {line!r}"
-    # Pascal: begin/end and parentheses balance (outside strings and comments)
-    body = re.sub(r"'[^']*'|\{[^}]*\}|//[^\n]*", "", "\n".join(code))
+        if stripped.startswith("#"):  # only deliberate preprocessor directives
+            assert re.match(r"#(ifdef|ifndef|if|else|elif|endif|define)\b", stripped), (
+                f"[Code] line {number}: {line!r}"
+            )
+    # Pascal: begin/end and parentheses balance (outside strings, comments and the
+    # preprocessor's #else branches, which replace their #if branch)
+    lines, skip = [], False
+    for line in code:
+        stripped = line.strip()
+        if stripped.startswith("#else"):
+            skip = True
+        elif stripped.startswith("#endif"):
+            skip = False
+        elif not skip and not stripped.startswith("#"):
+            lines.append(line)
+    body = _pascal_code_only("\n".join(lines))
     assert body.count("(") == body.count(")")
     opened = re.findall(r"\b(begin|try)\b", body, re.IGNORECASE)
     assert len(opened) == len(re.findall(r"\bend\b", body, re.IGNORECASE))

@@ -138,9 +138,10 @@ runs opens another window. Install **Ollama** as well (step 4 below) for propert
 Mira then downloads the models it needs by itself.
 
 **Windows.** Run the setup program; it installs into `%LOCALAPPDATA%\Programs\Mira` and adds
-Mira to the Start menu. The gpu setup comes as a `.exe` plus `.bin` files: keep them in one
-folder and start the `.exe`. The setup is not signed, so SmartScreen may warn about an
-"unrecognized app": click **More info → Run anyway**.
+Mira to the Start menu. Each setup is a single `.exe`; only the gpu setup of 1.2.1 also needs
+its `.bin` file in the same folder. (Should a future setup ever be split into `.bin` files, it
+downloads missing ones from the release by itself.) The setup is not signed, so SmartScreen may
+warn about an "unrecognized app": click **More info → Run anyway**.
 
 **macOS.** Open the `.pkg`; it installs `Mira.app` into the Applications folder (macOS asks for
 an administrator password). The package is not signed by Apple, so macOS first refuses to open
