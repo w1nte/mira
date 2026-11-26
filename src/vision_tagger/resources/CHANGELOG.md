@@ -6,7 +6,7 @@ Mira shows them on its "What's new" page, and each GitHub release uses its secti
 ## Unreleased
 
 ### New
-- NSFW photos show as black tiles until you click them; a local check finds them, and you can mark photos yourself (photo page, gallery → Select).
+- NSFW photos show as black tiles until you open them; a local check finds them, and you can mark photos yourself (photo page, gallery → Select).
 
 ## 1.5 - 2026-11-26
 

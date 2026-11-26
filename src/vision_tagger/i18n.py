@@ -228,7 +228,6 @@ JS_KEYS = [
     "Photos in this folder: %(n)s",
     "File no longer available",
     "%(n)s selected",
-    "Not safe for work – click to show",
 ]
 
 
@@ -243,6 +242,7 @@ MAP_JS_KEYS = [
     "Named by you",
     "Could not load the map data.",
     "Map tiles could not be loaded – showing photos without a background map.",
+    "Not safe for work – open the photo to see it",
 ]
 
 

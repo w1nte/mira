@@ -661,12 +661,10 @@ td > input.pick:checked { border-color: var(--accent); background-color: var(--a
 .tile:has(input.pick:checked) .thumb img { transform: scale(.92); }
 .selecting .tile .thumb { cursor: pointer; }
 
-/* NSFW covers (web/nsfw.py): a black tile until clicked; the photo itself is not loaded */
-img[data-nsfw-src] { object-fit: contain !important; background: #000; cursor: pointer; transform: none !important; }
-.viewer img[data-nsfw-src] { width: min(960px, 100%); height: auto; aspect-ratio: var(--ar, 4 / 3); }
-.viewer:has(img[data-nsfw-src]) .facebox, .viewer-wrap:has(img[data-nsfw-src]) .viewer-foot { display: none; }
-.nsfw-hint { display: none; align-items: center; gap: 6px; margin: 0; color: var(--text-2); font-size: .9rem; }
-.viewer-wrap:has(img[data-nsfw-src]) .nsfw-hint { display: flex; }
+/* NSFW covers (web/nsfw.py): a black tile in lists; its link opens the photo page */
+img[data-nsfw] { object-fit: contain !important; background: #000; transform: none !important; }
+.nsfw-link { display: contents; } /* a cover's own link: the picture keeps its place in the layout */
+.nsfw-note { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--text-2); font-size: .9rem; }
 .nsfw-show { white-space: normal; margin-top: 10px; }
 .nsfw-filter small { display: block; margin-top: 4px; }
 .nsfw-panel p { display: flex; gap: 6px; align-items: baseline; margin: 0 0 10px; }

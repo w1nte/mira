@@ -5,7 +5,7 @@
   <div>
     <nav class="crumbs" aria-label="{{ _('Breadcrumb') }}"><a href="/animals">{{ _('Animals') }}</a></nav>
     <div class="title-row">
-      {% if pet.cover_animal_id %}{{ animal_img(pet.cover_animal_id, cls='avatar lg', lazy=false) }}{% endif %}
+      {% if pet.cover_animal_id %}{{ animal_img(pet.cover_animal_id, cls='avatar lg', lazy=false, link=true) }}{% endif %}
       <div>
         <h1>{{ pet_label(pet) }}{% if pet.name %} <small>#{{ pet.id }}</small>{% endif %}</h1>
         <small>{{ ngettext('%(num)d photo', '%(num)d photos', n_photos) }} · {{ pet.species | pretty('animal') }}{% if pet.locked %} · <span class="nowrap">{{ icon('lock', 'sm') }} {{ _('kept when grouping again') }}</span>{% endif %}</small>

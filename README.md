@@ -41,7 +41,7 @@ are never moved or modified.
     re-queued.
 - **Not safe for work.** A small local classifier checks every photo first (fast, long before
   the vision model got there), and the vision model also answers it. NSFW photos show as a black
-  "NSFW" tile until you click them; mark photos yourself, and your choice always wins. See
+  "NSFW" tile until you open them; mark photos yourself, and your choice always wins. See
   [Not safe for work (NSFW)](#not-safe-for-work-nsfw).
 - **Stage 1: faces.** InsightFace (`buffalo_l`) detection plus 512-d embeddings. Clustering uses
   DBSCAN (cosine distance) and **keeps your manual work**:
@@ -627,12 +627,14 @@ yourself stays as it is, so add `"animals"` there if you want it.
 ## Not safe for work (NSFW)
 
 Photos with nudity, sexual content, graphic violence or gore get the property `nsfw = yes`.
-Wherever such a photo appears (gallery, search results, Home, collections, map popups, the
-person, cluster, pet, quiz and generations pages, the photo page itself) it is a **black tile
-with "NSFW"** until you click it. The first click only reveals it (it doesn't open the photo);
-revealed photos stay visible until the browser tab is closed. Face and animal pictures cut from
-an NSFW photo are covered the same way. The photo is not even loaded before the click, so a
-slow connection or a screenshot never shows it.
+Wherever such a photo appears in a list (gallery, search results, Home, collections, map popups,
+the person, cluster, faces, pet, quiz and generations pages, property examples, the table) it is
+a **black tile with "NSFW"**, and so are face and animal pictures cut from it. A click on the
+tile opens the photo page, and that page shows the photo, with an *NSFW* note next to it: you
+chose to open it (← / → then go to the neighbouring photos, which show as well). Back in the
+list, the tiles are black again. The pictures behind the tiles are never loaded into a list, so
+a slow connection or a screenshot never shows them. In the face and animal grids, a click selects
+a tile as before; its *Open photo* button leads to the photo.
 
 - **Where the verdict comes from.**
   - **The NSFW check** (stage `nsfw`, the first stage of the pipeline): the

@@ -5,7 +5,7 @@
   <div>
     <nav class="crumbs" aria-label="{{ _('Breadcrumb') }}"><a href="/persons">{{ _('Persons') }}</a></nav>
     <div class="title-row">
-      {% if clusters and clusters[0].cover_face_id %}{{ face_img(clusters[0].cover_face_id, cls='avatar lg', lazy=false) }}{% endif %}
+      {% if clusters and clusters[0].cover_face_id %}{{ face_img(clusters[0].cover_face_id, cls='avatar lg', lazy=false, link=true) }}{% endif %}
       <div>
         <h1>{{ person.name }}</h1>
         <small>{{ ngettext('%(num)d cluster', '%(num)d clusters', clusters | length) }} · {{ ngettext('%(num)d reference face', '%(num)d reference faces', refs | length) }}</small>
@@ -139,7 +139,7 @@
 <div class="faces">
   {% for r in refs %}
   <div class="face static">
-    {% if r.face_id %}{{ face_img(r.face_id, src='/media/reference/' ~ r.id, title=r.source_path or _('face #%(id)s', id=r.face_id)) }}{% else %}<img loading="lazy" src="/media/reference/{{ r.id }}" alt="" title="{{ r.source_path }}">{% endif %}
+    {% if r.face_id %}{{ face_img(r.face_id, src='/media/reference/' ~ r.id, title=r.source_path or _('face #%(id)s', id=r.face_id), link=true) }}{% else %}<img loading="lazy" src="/media/reference/{{ r.id }}" alt="" title="{{ r.source_path }}">{% endif %}
     <form method="post" action="/references/{{ r.id }}/delete" class="del"><button class="small danger" title="{{ _('Remove reference') }}" aria-label="{{ _('Remove reference') }}">{{ icon('x', 'sm') }}</button></form>
   </div>
   {% endfor %}

@@ -1,10 +1,12 @@
 """Covers for NSFW photos in the web UI (template helpers).
 
-Wherever a thumbnail, photo or face crop of an NSFW photo appears, the page gets a black "NSFW"
-tile (``/static/nsfw.svg``) instead: the ``<img>`` has no URL of the photo in ``src``, the real
-one waits in ``data-nsfw-src`` and ``data-nsfw`` names the photo. A click on the cover reveals
-that photo (``static/app.js``; only then does the browser ask for it, so a slow connection or a
-screenshot never shows it), and it stays revealed for the browser session.
+Wherever a thumbnail or a face or animal picture of an NSFW photo appears in a list (gallery,
+search, Home, collections, map popups, people and pet pages, …), the page gets a black "NSFW"
+tile (``/static/nsfw.svg``) instead; ``data-nsfw`` names the photo. The URL of the real picture
+is not in the page at all, so the browser never asks for it: a slow connection or a screenshot
+never shows it. A click on a cover is a click on the link around it, which leads to the photo
+page; a cover that is in no link links there itself (``link=True``). The photo page shows the
+photo: you chose to open it.
 
 "Show NSFW photos without asking" is a cookie of the browser (:data:`COOKIE`), like the theme:
 it depends on where the library is opened (at home, at work, on a phone), not on the library.
@@ -21,11 +23,14 @@ from jinja2 import pass_context
 from markupsafe import Markup, escape
 
 from .. import i18n
+from ..i18n import N_
 from ..nsfw import verdict
 
 #: ``show``: this browser shows NSFW photos without a cover
 COOKIE = "vt_nsfw"
 PLACEHOLDER = "/static/nsfw.svg"
+#: the title of a cover (also used by ``static/map.js``)
+COVER_TITLE = N_("Not safe for work – open the photo to see it")
 
 
 def shown(request: Any) -> bool:
@@ -71,9 +76,17 @@ def cover_for(request: Any, *, image: int | None = None, face=None, animal=None)
 
 
 def img_tag(
-    src: str, cover: int | None, *, cls: str = "", alt: str = "", lazy: bool = True, title=""
+    src: str,
+    cover: int | None,
+    *,
+    cls: str = "",
+    alt: str = "",
+    lazy: bool = True,
+    title="",
+    link: bool = False,
 ) -> Markup:
-    """An ``<img>``; with a cover, the placeholder and the real URL in ``data-nsfw-src``."""
+    """An ``<img>``; with a cover, the placeholder (and with ``link``, a link to the photo page
+    around it, for covers that are in no link of their own)."""
     attrs: list[tuple[str, object]] = []
     if cls:
         attrs.append(("class", cls))
@@ -84,24 +97,16 @@ def img_tag(
         if title:
             attrs.append(("title", title))
     else:
-        attrs += [
-            ("src", PLACEHOLDER),
-            ("data-nsfw", cover),
-            ("data-nsfw-src", src),
-            ("alt", "NSFW"),
-            ("title", i18n.gettext("Not safe for work – click to show")),
-        ]
-    return Markup("<img " + " ".join(f'{k}="{escape(v)}"' for k, v in attrs) + ">")
+        title = i18n.gettext(COVER_TITLE)
+        attrs += [("src", PLACEHOLDER), ("data-nsfw", cover), ("alt", "NSFW"), ("title", title)]
+    tag = Markup("<img " + " ".join(f'{k}="{escape(v)}"' for k, v in attrs) + ">")
+    if cover is not None and link:
+        return Markup('<a class="nsfw-link" href="/images/{}">{}</a>').format(int(cover), tag)
+    return tag
 
 
 def _request(context) -> Any:
     return context.get("request")
-
-
-@pass_context
-def is_covered(context, image_id: int) -> bool:
-    """Template test: does this photo get a cover on this page?"""
-    return cover_for(_request(context), image=image_id) is not None
 
 
 @pass_context
@@ -110,26 +115,39 @@ def nsfw_shown(context) -> bool:
 
 
 @pass_context
-def thumb(context, image_id: int, size: int | None = None, *, cls="", alt="", lazy=True):
+def thumb(
+    context, image_id: int, size: int | None = None, *, cls="", alt="", lazy=True, link=False
+):
     """The thumbnail of a photo (``/media/thumb``), covered if it is NSFW."""
     src = f"/media/thumb/{int(image_id)}" + (f"?size={int(size)}" if size else "")
     cover = cover_for(_request(context), image=image_id)
-    return img_tag(src, cover, cls=cls, alt=alt, lazy=lazy)
+    return img_tag(src, cover, cls=cls, alt=alt, lazy=lazy, link=link)
 
 
 @pass_context
-def face_img(context, face_id: int, *, cls="", alt="", lazy=True, src: str | None = None, title=""):
+def face_img(
+    context,
+    face_id: int,
+    *,
+    cls="",
+    alt="",
+    lazy=True,
+    src: str | None = None,
+    title="",
+    link=False,
+):
     """A face crop (``/media/face``, or ``src`` for another picture of the face)."""
     url = src or f"/media/face/{int(face_id)}"
     cover = cover_for(_request(context), face=face_id)
-    return img_tag(url, cover, cls=cls, alt=alt, lazy=lazy, title=title)
+    return img_tag(url, cover, cls=cls, alt=alt, lazy=lazy, title=title, link=link)
 
 
 @pass_context
-def animal_img(context, animal_id: int, *, cls="", alt="", lazy=True):
+def animal_img(context, animal_id: int, *, cls="", alt="", lazy=True, link=False):
     """The picture of an animal (``/media/animal``)."""
     cover = cover_for(_request(context), animal=animal_id)
-    return img_tag(f"/media/animal/{int(animal_id)}", cover, cls=cls, alt=alt, lazy=lazy)
+    url = f"/media/animal/{int(animal_id)}"
+    return img_tag(url, cover, cls=cls, alt=alt, lazy=lazy, link=link)
 
 
 @pass_context
@@ -140,11 +158,9 @@ def safe_first(context, image_ids) -> list[int]:
 
 
 GLOBALS = {
-    "is_covered": is_covered,
     "nsfw_shown": nsfw_shown,
     "thumb": thumb,
     "face_img": face_img,
     "animal_img": animal_img,
     "safe_first": safe_first,
-    "nsfw_placeholder": PLACEHOLDER,
 }

@@ -7,6 +7,7 @@ import re
 import threading
 import time
 from datetime import date, datetime
+from html.parser import HTMLParser
 
 import httpx
 import numpy as np
@@ -447,46 +448,96 @@ def _urls(client) -> list[str]:
 MEDIA_SRC = re.compile(r'(?<![\w-])src="/media/(thumb|image|face|animal|aligned|reference)/')
 
 
-def test_every_picture_of_an_nsfw_photo_is_covered(all_nsfw):
+class Covers(HTMLParser):
+    """Each cover on a page (``<img data-nsfw>``) with its src and the link or label around it."""
+
+    def __init__(self, page: str) -> None:
+        super().__init__()
+        self.stack: list[tuple[str, str | None]] = []  # open <a> / <label>
+        self.covers: list[dict] = []
+        self.feed(page)
+
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        if tag in ("a", "label"):
+            self.stack.append((tag, a.get("href")))
+        elif tag == "img" and "data-nsfw" in a:
+            around = self.stack[-1] if self.stack else (None, None)
+            self.covers.append({"id": a["data-nsfw"], "src": a.get("src"), "around": around})
+
+    def handle_endtag(self, tag):
+        if tag in ("a", "label") and self.stack:
+            self.stack.pop()
+
+
+def covers_of(page: str) -> list[dict]:
+    covers = Covers(page).covers
+    for c in covers:  # never the real picture; always in a link (or a selectable grid tile)
+        assert c["src"] == "/static/nsfw.svg", c
+        assert c["around"][0] == "label" or c["around"][1], c
+    return covers
+
+
+def test_every_picture_of_an_nsfw_photo_is_covered_in_lists(all_nsfw):
     client = all_nsfw
-    covers = 0
+    photo_page = _urls(client)[5]
+    total = 0
     for url in _urls(client):
+        if url == photo_page:
+            continue
         for headers in ({}, DE):
             page = ok(client.get(url, headers=headers)).text
             assert not MEDIA_SRC.search(page), (url, MEDIA_SRC.search(page).group(0))
-            covers += page.count('data-nsfw-src="/media/')
-    assert covers > 100
+            assert "/media/thumb/" not in page and "/media/face/" not in page, url  # not at all
+            total += len(covers_of(page))
+    assert total > 100
+    # a click on a cover in a list follows its link: to the photo page
+    for url in ("/images?sort=name", "/search/results?q=trees", "/"):
+        covers = covers_of(ok(client.get(url)).text)
+        to_photo = [c for c in covers if (c["around"][1] or "").startswith("/images/")]
+        assert to_photo, url
+        assert all(c["around"][1].split("?")[0] == f"/images/{c['id']}" for c in to_photo), url
     home = ok(client.get("/")).text
-    assert 'src="/static/nsfw.svg"' in home and 'data-nsfw-src="/media/thumb/' in home
     assert "memory" in home and "coll-card" in home  # On this day, collections, recent
+    # covers that are in no link of their own link to the photo page themselves
+    with client.ctx.db.session() as s:
+        anna = s.scalar(select(Person.id).where(Person.name == "Anna"))
+    person = ok(client.get(f"/persons/{anna}")).text
+    assert re.search(r'<a class="nsfw-link" href="/images/\d+"><img class="avatar lg"', person)
+    quiz = ok(client.get("/quiz?mode=quiz")).text
+    assert '<a class="nsfw-link" href="/images/' in quiz
     page = ok(client.get("/images", headers=DE)).text
-    assert 'title="Nicht jugendfrei (NSFW) \u2013 zum Anzeigen klicken"' in page
+    assert 'title="Nicht jugendfrei (NSFW) \u2013 öffne das Foto, um es zu sehen"' in page
     assert "NSFW-Fotos ausblenden" in page and "NSFW-Fotos ohne Nachfrage zeigen" in page
-    image = ok(client.get("/images/1")).text
-    assert 'data-nsfw-src="/media/image/1"' in image and "--ar: 320 / 240" in image
-    assert (
-        "Click the photo to show it." in image and "found by the NSFW check (score 99 %)" in image
-    )
     # the map popups: the photos come with the ids to cover
     places = ok(client.get("/api/geo/places")).json()["places"]
     detail = ok(client.get(f"/api/geo/places/{places[0]['id']}")).json()
     assert detail["images"] and detail["nsfw"] == detail["images"]
     assert ok(client.get(f"/api/geo/places/{places[0]['id']}", headers=SHOW)).json()["nsfw"] == []
     # the grow-up viewer leaves faces of NSFW photos out
-    assert (
-        "/media/aligned/"
-        not in ok(client.get(f"/generations/{_urls(client)[-2].split('/')[-1]}")).text
-    )
+    assert "/media/aligned/" not in ok(client.get(f"/generations/{anna}")).text
+
+
+def test_the_photo_page_shows_the_photo(all_nsfw):
+    client = all_nsfw
+    for headers, note in (({}, "Not safe for work (NSFW)"), (DE, "Nicht jugendfrei (NSFW)")):
+        page = ok(client.get("/images/1?sort=name", headers=headers)).text
+        assert '<img src="/media/image/1" alt=' in page and "data-nsfw=" not in page
+        assert 'class="nsfw-note"' in page and note in page
+        assert 'class="facebox' in page  # face boxes as usual
+        assert 'data-hotkey="ArrowRight"' in page  # the next photo page shows its photo too
+    page = ok(client.get("/images/1")).text
+    assert "found by the NSFW check (score 99 %)" in page and 'id="nsfw"' in page
 
 
 def test_show_without_asking_is_a_cookie(all_nsfw):
     client = all_nsfw
     page = ok(client.get("/images", headers=SHOW)).text
-    assert ' src="/media/thumb/' in page and "data-nsfw-src" not in page
+    assert ' src="/media/thumb/' in page and "data-nsfw=" not in page
     assert re.search(r"data-nsfw-show\s+checked", page)
-    assert ok(client.get("/images/1", headers=SHOW)).text.count(' src="/media/image/1"') == 1
+    assert "data-nsfw=" not in ok(client.get("/persons/1", headers=SHOW)).text
     client.cookies.clear()
-    assert "data-nsfw-src" in ok(client.get("/images")).text
+    assert "data-nsfw=" in ok(client.get("/images")).text
 
 
 def test_only_nsfw_photos_are_covered(mixed):
@@ -496,31 +547,31 @@ def test_only_nsfw_photos_are_covered(mixed):
         safe = sorted(set(s.scalars(select(Image.id))) - set(nsfw))
     assert len(nsfw) == 3 and len(safe) == 3
     page = ok(client.get("/images")).text
+    assert sorted(int(c["id"]) for c in covers_of(page)) == nsfw
     for i in nsfw:
-        assert (
-            f'data-nsfw-src="/media/thumb/{i}"' in page and f' src="/media/thumb/{i}"' not in page
-        )
+        assert f"/media/thumb/{i}" not in page and f'data-nsfw="{i}"' in page
     for i in safe:
-        assert (
-            f' src="/media/thumb/{i}"' in page and f'data-nsfw-src="/media/thumb/{i}"' not in page
-        )
+        assert f' src="/media/thumb/{i}"' in page and f'data-nsfw="{i}"' not in page
     # the gallery's NSFW section: hide them, only them (with the count)
     assert "/images?xt=nsfw%3Ayes" in page and "/images?t=nsfw%3Ayes" in page
     assert re.search(r"Only NSFW photos <span class=\"n\">3</span>", page)
     hidden = ok(client.get("/images?xt=nsfw%3Ayes")).text
-    assert all(f"/images/{i}?" not in hidden for i in nsfw) and "data-nsfw-src" not in hidden
+    assert all(f"/images/{i}?" not in hidden for i in nsfw) and "data-nsfw=" not in hidden
     assert 'class="chip active" href="/images"' in hidden  # a click shows them again
     only = ok(client.get("/images?t=nsfw%3Ayes")).text
     assert all(f'/media/thumb/{i}"' not in only for i in safe)
     # collections and memories prefer covers without a cover
     home = ok(client.get("/")).text
     coll = re.search(r'<div class="coll-cover n\d">(.*?)</div>', home, re.S).group(1)
-    assert coll.count(' src="/media/thumb/') == 3 and "data-nsfw-src" in coll
-    # face crops of NSFW photos are covered, the others not
+    assert coll.count(' src="/media/thumb/') == 3 and "data-nsfw=" in coll
+    # face crops of NSFW photos are covered, the others not; a click on a tile still selects it
     with client.ctx.db.session() as s:
         cluster = s.scalar(select(Cluster.id))
     faces = ok(client.get(f"/clusters/{cluster}")).text
-    assert faces.count('data-nsfw-src="/media/face/') == 3 and ' src="/media/face/' in faces
+    grid = [c for c in covers_of(faces) if c["around"][0] == "label"]
+    assert len(grid) == 3 and ' src="/media/face/' in faces
+    # the photo page of a safe photo has no NSFW note
+    assert 'class="nsfw-note"' not in ok(client.get(f"/images/{safe[0]}")).text
 
 
 def test_marking_from_the_ui(mixed):
@@ -543,7 +594,7 @@ def test_marking_from_the_ui(mixed):
     assert r.status_code == 200 and "3 photos marked as not NSFW." in r.text
     rows = nsfw_rows(client.ctx.db)
     assert all(rows[i][:2] == ("no", "manual") for i in nsfw)
-    assert "data-nsfw-src" in ok(client.get("/images")).text  # safe[0] is covered now
+    assert f'data-nsfw="{safe[0]}"' in ok(client.get("/images")).text  # covered now
     r = client.post("/images/nsfw", data={"value": "auto", "image_ids": [str(i) for i in nsfw]})
     assert "3 photos are checked automatically again." in r.text
     assert all(nsfw_rows(client.ctx.db)[i][:2] == ("yes", "classifier") for i in nsfw)
@@ -579,4 +630,9 @@ def test_static_cover_and_service_worker(mixed):
     sw = ok(client.get("/sw.js")).text
     assert '"/static/nsfw.svg"' in sw
     js = ok(client.get("/static/app.js")).text
-    assert "data-nsfw-src" in js and "sessionStorage" in js and "vt_nsfw=show" in js
+    assert "vt_nsfw=show" in js  # the setting
+    # no reveal in place any more: no revealing script, no list of revealed photos
+    for gone in ("data-nsfw-src", "dataset.nsfw", "img[data-nsfw", "vtNsfw", "sessionStorage"):
+        assert gone not in js, gone
+    css = ok(client.get("/static/app.css")).text
+    assert "data-nsfw-src" not in css and "nsfw-hint" not in css

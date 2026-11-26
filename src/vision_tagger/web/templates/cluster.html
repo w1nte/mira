@@ -5,7 +5,7 @@
   <div>
     <nav class="crumbs" aria-label="{{ _('Breadcrumb') }}"><a href="/faces">{{ _('Faces') }}</a>{% if cl.person %}<a href="/persons/{{ cl.person_id }}">{{ cl.person.name }}</a>{% endif %}</nav>
     <div class="title-row">
-      {% if cl.cover_face_id %}{{ face_img(cl.cover_face_id, cls='avatar lg', lazy=false) }}{% endif %}
+      {% if cl.cover_face_id %}{{ face_img(cl.cover_face_id, cls='avatar lg', lazy=false, link=true) }}{% endif %}
       <div>
         <h1>{{ cl.person.name if cl.person else _('Unnamed cluster') }} <small>#{{ cl.id }}</small></h1>
         <small>{{ _('%(faces)s in %(images)s', faces=ngettext('%(num)d face', '%(num)d faces', cl.face_count), images=ngettext('%(num)d image', '%(num)d images', n_images)) }}{% if cl.locked %} · <span class="nowrap">{{ icon('lock', 'sm') }} {{ _('kept on re-cluster') }}</span>{% endif %}</small>

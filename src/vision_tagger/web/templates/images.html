@@ -97,7 +97,7 @@
         <a class="chip {{ 'active' if nsfw.only }}" href="/images{{ '?' ~ nsfw.only_qs if nsfw.only_qs }}"{% if nsfw.only %} title="{{ _('Remove filter') }}"{% endif %}>{{ _('Only NSFW photos') }} <span class="n">{{ nsfw.count }}</span></a>
       </div>
       <label class="toggle nsfw-show"><input type="checkbox" data-nsfw-show{{ ' checked' if nsfw_shown() }}> {{ _('Show NSFW photos without asking') }}</label>
-      <small class="muted">{{ _('Only in this browser. Otherwise they are black until you click them.') }}</small>
+      <small class="muted">{{ _('Only in this browser. Otherwise they stay black; open a photo to see it.') }}</small>
     </section>
     {% endif %}
 
