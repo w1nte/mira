@@ -203,7 +203,7 @@ def download_zip(request: Request) -> Response:
     return StreamingResponse(
         stream_zip(c.db, ids),
         media_type="application/zip",
-        headers={"Content-Disposition": 'attachment; filename="vision-tagger-photos.zip"'},
+        headers={"Content-Disposition": 'attachment; filename="mira-photos.zip"'},
     )
 
 

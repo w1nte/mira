@@ -4,7 +4,8 @@ Guidance for Claude Code (and humans) working on this repository.
 
 ## Project
 
-vision-tagger is a local photo pipeline:
+Mira (the package, CLI and repository are still called vision-tagger) is a local photo
+pipeline:
 
 1. index (pHash/dHash dedup, EXIF dates),
 2. faces (InsightFace + clustering),
@@ -96,6 +97,10 @@ migration makes the app refuse to start, or corrupts existing data.
   Existing outdated databases are refused with a message to run `vision-tagger migrate`.
 
 ## Code conventions
+
+- Names: users see "Mira" (`vision_tagger.APP_NAME`, `app_name` in templates). Technical names
+  stay `vision-tagger`: package, command, `VT_` settings, cookies, data folder, XMP keyword root
+  and export file names, so existing data, scripts and exports keep working.
 
 - Windows first:
   - use `pathlib`; uniqueness keys use `os.path.normcase`;

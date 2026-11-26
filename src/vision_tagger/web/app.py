@@ -14,7 +14,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from .. import i18n
+from .. import APP_NAME, i18n
 from ..config import Settings, load_settings
 from ..db.models import Face, Image, PersonReference
 from ..imaging import (
@@ -69,7 +69,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         context.shutdown_pipeline()  # paused, not stopped: the next start continues it
         context.close()
 
-    app = FastAPI(title="vision-tagger", lifespan=lifespan, docs_url="/api/docs")
+    app = FastAPI(title=APP_NAME, lifespan=lifespan, docs_url="/api/docs")
     settings.ensure_dirs()
     auth = Auth(settings.web.password, load_secret(settings.data_dir))
     app.state.auth = auth
