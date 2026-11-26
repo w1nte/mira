@@ -131,3 +131,12 @@ def test_keyword_value_matching_equals_sql_ilike(db, settings):
                 )
             )
             assert engine._images_with_value(s, word) == expected, word
+
+
+def test_connections_use_read_pragmas(db):
+    from vision_tagger.db.session import CACHE_KIB
+
+    with db.engine.connect() as conn:
+        assert conn.exec_driver_sql("PRAGMA cache_size").scalar() == -CACHE_KIB
+        assert conn.exec_driver_sql("PRAGMA temp_store").scalar() == 2  # memory
+        assert conn.exec_driver_sql("PRAGMA mmap_size").scalar() > 0

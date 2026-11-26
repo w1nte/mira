@@ -21,6 +21,11 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from .models import Control
 
+#: page cache per connection (KiB)
+CACHE_KIB = 32 * 1024
+#: upper limit for memory-mapped reads (address space only, pages stay in the OS cache)
+MMAP_BYTES = 1024 * 1024 * 1024
+
 
 class Database:
     def __init__(self, url_or_path: str | Path, *, echo: bool = False) -> None:
@@ -118,6 +123,12 @@ def _install_sqlite_hooks(engine: Engine) -> None:
         cur.execute("PRAGMA synchronous=NORMAL")
         cur.execute("PRAGMA foreign_keys=ON")
         cur.execute("PRAGMA busy_timeout=60000")
+        # Read performance for large libraries (a 100k-image database is > 1 GB): a 32 MiB
+        # page cache per connection instead of 2 MiB, reads straight from the OS file cache
+        # through a memory map, and sorting / grouping in memory instead of temp files.
+        cur.execute(f"PRAGMA cache_size=-{CACHE_KIB}")
+        cur.execute(f"PRAGMA mmap_size={MMAP_BYTES}")
+        cur.execute("PRAGMA temp_store=MEMORY")
         cur.close()
 
     @event.listens_for(engine, "begin")
