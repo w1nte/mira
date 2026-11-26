@@ -53,6 +53,11 @@
       {{ navlink('/database', 'database', _('Database'), path.startswith('/database')) }}
     </nav>
     <div class="sidebar-foot">
+      {%- set update = update_offer(request) %}
+      {% if update %}
+      <a class="update-note" href="{{ update.download_url or update.url }}" target="_blank" rel="noopener"
+         title="{{ _('Download Mira %(version)s for this computer', version=update.version) if update.download_url else _('Open the release page of Mira %(version)s', version=update.version) }}">{{ icon('arrow-up', 'sm') }}<span>{{ _('Update available: Mira %(version)s', version=update.version) }}</span></a>
+      {% endif %}
       <div id="activity" hx-get="/partials/activity" hx-trigger="load, every 5s [document.visibilityState === 'visible']"></div>
       <button type="button" class="install-btn ghost small" data-install hidden>{{ icon('smartphone', 'sm') }}{{ _('Install app') }}</button>
       <label class="lang-switch" title="{{ _('Language') }}">{{ icon('globe', 'sm') }}

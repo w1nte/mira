@@ -262,6 +262,17 @@ class WebConfig(BaseModel):
     password: str = ""
 
 
+class UpdatesConfig(BaseModel):
+    """Looking for new releases on GitHub (see ``updates``). Nothing is downloaded by itself."""
+
+    # "auto": only the installed desktop app looks (once a day); "on": also a source checkout,
+    # the server or Docker; "off": never
+    check: Literal["auto", "on", "off"] = "auto"
+    prereleases: bool = False  # also tell about release candidates and betas
+    # internal: where the GitHub API is (tests and trial runs point it at a fake server)
+    api_url: str = "https://api.github.com"
+
+
 _config_file: Path | None = None
 #: what loading the config file last did (shown by `vision-tagger migrate`)
 last_config_migration: ConfigMigration | None = None
@@ -308,6 +319,7 @@ class Settings(BaseSettings):
     export: ExportConfig = Field(default_factory=ExportConfig)
     web: WebConfig = Field(default_factory=WebConfig)
     geo: GeoConfig = Field(default_factory=GeoConfig)
+    updates: UpdatesConfig = Field(default_factory=UpdatesConfig)
 
     @classmethod
     def settings_customise_sources(

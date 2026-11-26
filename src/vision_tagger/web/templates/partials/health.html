@@ -1,6 +1,7 @@
 <div class="row spread"><h2 class="flush">{{ _('Environment') }}</h2>
   <button class="small" hx-get="/partials/health" hx-target="#health" hx-swap="innerHTML">{{ icon('refresh', 'sm') }}{{ _('Check again') }}</button></div>
 <dl class="kv" style="margin-top:14px">
+  <dt>{{ _('Version') }}</dt><dd>{% include "partials/update_status.html" %}</dd>
   <dt>{{ _('Face model') }}</dt><dd>{{ settings.faces.model }} · {{ _('det %(size)spx', size=settings.faces.det_size) }}</dd>
   <dt>{{ _('ONNX providers') }}</dt>
   <dd>

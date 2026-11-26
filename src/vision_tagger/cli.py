@@ -235,6 +235,67 @@ def quit_app(
     raise typer.Exit(quit_desktop_app(timeout, echo=typer.echo))
 
 
+#: exit codes of `update-check`
+UPDATE_CURRENT, UPDATE_AVAILABLE, UPDATE_UNKNOWN = 0, 1, 2
+
+
+@app.command("update-check")
+def update_check(
+    prereleases: Annotated[
+        bool | None,
+        typer.Option(
+            "--prereleases/--no-prereleases",
+            help="Also consider release candidates and betas (default: updates.prereleases).",
+        ),
+    ] = None,
+) -> None:
+    """Look for a newer Mira release on GitHub (one request to api.github.com).
+
+    Prints the running and the newest version and the download for this computer. Nothing is
+    downloaded or installed. Exit codes: 0 up to date, 1 an update is available, 2 unknown (no
+    connection, rate limit, unexpected answer). Works whatever updates.check says.
+    """
+    from . import APP_NAME, __version__, updates
+
+    settings = _settings()
+    include = settings.updates.prereleases if prereleases is None else prereleases
+    client = updates.make_client()
+    try:
+        result = updates.check(
+            __version__,
+            client=client,
+            include_prereleases=include,
+            api_url=settings.updates.api_url,
+        )
+    finally:
+        client.close()
+    typer.echo(f"current:  {APP_NAME} {result.current}")
+    if result.status == updates.UNKNOWN:
+        reason = {
+            updates.NETWORK: "could not reach GitHub",
+            updates.RATE_LIMITED: "GitHub turned the request down for now (rate limit)",
+        }.get(result.error or "", "unexpected answer from GitHub")
+        if not result.error:
+            reason = f"the running version {result.current!r} cannot be compared"
+        typer.echo(f"latest:   unknown ({reason})")
+        raise typer.Exit(UPDATE_UNKNOWN)
+    if result.latest is None:
+        typer.echo("latest:   no release published yet")
+        raise typer.Exit(UPDATE_CURRENT)
+    published = f" (released {result.published})" if result.published else ""
+    typer.echo(f"latest:   {APP_NAME} {result.latest_version}{published}")
+    typer.echo(f"release:  {result.release_url}")
+    if result.status == updates.AVAILABLE:
+        if result.download_url:
+            typer.echo(f"download: {result.download_url}")
+        else:
+            typer.echo("download: see the release page for the files for this computer")
+        typer.echo("An update is available: run the new setup (your library is kept and migrated).")
+        raise typer.Exit(UPDATE_AVAILABLE)
+    typer.echo("Up to date.")
+    raise typer.Exit(UPDATE_CURRENT)
+
+
 db_app = typer.Typer(
     help="Export or import the whole library database (backup, another computer).",
     no_args_is_help=True,

@@ -25,6 +25,7 @@ dependencies = [
     "opencv-python-headless>=4.9",
     "alembic>=1.13",
     "tomlkit>=0.13",
+    "packaging>=23",
 ]
 
 [project.optional-dependencies]

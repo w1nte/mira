@@ -319,6 +319,14 @@ def test_macos_package_files():
         assert "sudo -u" in text and text.rstrip().endswith("exit 0")
 
 
+def test_the_built_app_knows_its_flavour():
+    """The update check offers the cpu or gpu installer by the installed ONNX Runtime, which it
+    finds by its package metadata: the app must bundle that metadata."""
+    spec = (PACKAGING / "vision-tagger.spec").read_text(encoding="utf-8")
+    assert 'for onnx_dist in ("onnxruntime-gpu", "onnxruntime"):' in spec
+    assert "datas += copy_metadata(onnx_dist)" in spec
+
+
 SCRIPTS = [
     "linux/install.sh",
     "linux/build_tarball.sh",
