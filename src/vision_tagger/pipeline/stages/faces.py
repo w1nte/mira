@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import gc
 import logging
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from typing import ClassVar
 
+from PIL.Image import Image as PILImage
 from sqlalchemy import func, select
 
 from ...db.models import Cluster, Face, Image
@@ -14,10 +17,12 @@ from ...faces.clustering import recluster_db, replace_faces
 from ...faces.references import match_clusters
 from ...faces.vectors import to_blob
 from ...imaging import ensure_face_crop, load_image, remove_face_crops
-from .base import Stage
+from .base import Stage, decode_workers
 from .versions import faces_stage_version
 
 log = logging.getLogger(__name__)
+
+Box = tuple[float, float, float, float]
 
 
 class FacesStage(Stage):
@@ -26,6 +31,11 @@ class FacesStage(Stage):
     def __init__(self, db, settings, analyzer: FaceAnalyzer | None = None) -> None:
         super().__init__(db, settings)
         self.analyzer = analyzer or FaceAnalyzer(settings.faces)
+        # decoding a 12 MP photo takes longer on the CPU than detection on the GPU
+        self.prefetch = decode_workers()
+        # face crops are written by a background thread during a run (see setup)
+        self._crops: ThreadPoolExecutor | None = None
+        self._crop_slots = threading.Semaphore(8)  # bounds the decoded images held for it
 
     @property
     def version(self) -> str:
@@ -33,22 +43,47 @@ class FacesStage(Stage):
 
     def setup(self) -> None:
         self.analyzer.load()
+        self._crops = ThreadPoolExecutor(max_workers=1, thread_name_prefix="vision-tagger-crops")
 
     def teardown(self) -> None:
+        if self._crops is not None:
+            self._crops.shutdown(wait=True)  # every crop of this run is on disk afterwards
+            self._crops = None
         self.analyzer.unload()
         gc.collect()
+
+    def _save_crops(self, im: PILImage, created: list[tuple[int, Box]]) -> None:
+        for face_id, bbox in created:
+            ensure_face_crop(
+                self.settings.face_crops_dir, face_id, im, bbox, size=self.settings.faces.crop_size
+            )
+
+    def _save_crops_later(self, im: PILImage, created: list[tuple[int, Box]]) -> None:
+        try:
+            self._save_crops(im, created)
+        except Exception as exc:  # a cache: the web UI recreates missing crops on demand
+            log.warning("cannot write face crops %s: %s", [f for f, _ in created], exc)
+        finally:
+            self._crop_slots.release()
 
     def info(self) -> dict[str, object]:
         return {"providers": self.analyzer.providers, "gpu": self.analyzer.using_gpu}
 
-    def process(self, image_id: int) -> None:
-        cfg = self.settings.faces
+    def prepare(self, image_id: int) -> tuple[PILImage, int | None]:
+        """Decode the image (in a worker thread while the GPU works on the previous one)."""
         with self.db.session() as s:
             img = s.get(Image, image_id)
             if img is None:
                 raise LookupError(f"image {image_id} not found")
             path, full_w = img.path, img.width
-        im = load_image(path, max_px=cfg.max_image_px)
+        return load_image(path, max_px=self.settings.faces.max_image_px), full_w
+
+    def process(self, image_id: int) -> None:
+        self.process_prepared(image_id, self.prepare(image_id))
+
+    def process_prepared(self, image_id: int, prepared: tuple[PILImage, int | None]) -> None:
+        cfg = self.settings.faces
+        im, full_w = prepared
         scale = (full_w / im.width) if full_w else 1.0
         # small, tightly cropped portraits are retried with a border (detector needs context)
         detected = self.analyzer.detect(im, pad_if_empty=max(im.size) < 640)
@@ -82,8 +117,11 @@ class FacesStage(Stage):
             created = [(face.id, bbox) for face, bbox in zip(new_faces, boxes, strict=True)]
 
         remove_face_crops(self.settings.face_crops_dir, removed)
-        for face_id, bbox in created:
-            ensure_face_crop(self.settings.face_crops_dir, face_id, im, bbox, size=cfg.crop_size)
+        if self._crops is None:
+            self._save_crops(im, created)
+        elif created:  # while the next image is on the GPU
+            self._crop_slots.acquire()
+            self._crops.submit(self._save_crops_later, im, created)
 
     def after_stage(self, processed: int) -> str | None:
         if processed <= 0:

@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import random
 import sqlite3
+import threading
 from datetime import datetime
 
 import numpy as np
+import pytest
 from sqlalchemy import func, select
 
 from vision_tagger.db.cache import VersionedCache
@@ -14,14 +16,22 @@ from vision_tagger.db.models import (
     Cluster,
     Face,
     Image,
+    ImageEmbedding,
     ImageProperty,
     Person,
+    StageStatus,
+    Status,
 )
 from vision_tagger.db.session import Database
 from vision_tagger.faces import generations as G
 from vision_tagger.faces.ages import analyse_person
+from vision_tagger.pipeline import control
+from vision_tagger.pipeline.runner import PipelineRunner
+from vision_tagger.pipeline.stages.base import Stage, StageAbort
+from vision_tagger.pipeline.stages.embed import EmbedStage
 from vision_tagger.query import ImageFilter, property_counts, property_keys
-from vision_tagger.vlm.backend import FakeBackend
+from vision_tagger.search.document import build_document, doc_hash
+from vision_tagger.vlm.backend import FakeBackend, VlmError
 from vision_tagger.vlm.schema import Vocabulary
 
 from .helpers import add_face, add_image, noisy, person_centers
@@ -93,6 +103,187 @@ def test_property_keys_and_counts_match_plain_queries(db):
         s.get(Image, 6).missing = False
     with db.session() as s:
         assert property_counts(s) == naive(s, missing_ok=True)  # no missing image left
+
+
+# --------------------------------------------------------------------------- runner
+@pytest.fixture
+def images(db):
+    with db.write() as s:
+        for n in range(10):
+            add_image(s, n)
+    return db
+
+
+def statuses(db, stage="faces"):
+    with db.session() as s:
+        return {
+            r.image_id: r.status
+            for r in s.scalars(select(StageStatus).where(StageStatus.stage == stage))
+        }
+
+
+class PrefetchStage(Stage):
+    name = "faces"
+
+    def __init__(self, db, settings, *, fail_prepare=(), abort_at=None):
+        super().__init__(db, settings)
+        self.prefetch = 2
+        self.fail_prepare = set(fail_prepare)
+        self.abort_at = abort_at
+        self.prepared: list[int] = []
+        self.processed: list[tuple[int, str]] = []
+        self.lock = threading.Lock()
+
+    def prepare(self, image_id):
+        with self.lock:
+            self.prepared.append(image_id)
+        if image_id == self.abort_at:
+            raise StageAbort("server gone")
+        if image_id in self.fail_prepare:
+            raise OSError(f"cannot read {image_id}")
+        return f"decoded {image_id}"
+
+    def process(self, image_id):
+        self.process_prepared(image_id, self.prepare(image_id))
+
+    def process_prepared(self, image_id, prepared):
+        self.processed.append((image_id, prepared))
+
+
+def test_prefetch_prepares_ahead_and_keeps_results_and_errors(images, settings):
+    stage = PrefetchStage(images, settings, fail_prepare={4})
+    summary = PipelineRunner(images, settings, lambda _n: stage).run(["faces"], batch_size=3)
+    assert summary.processed["faces"] == 10 and summary.failed["faces"] == 1
+    assert stage.processed == [(i, f"decoded {i}") for i in range(1, 11) if i != 4]
+    assert sorted(stage.prepared) == list(range(1, 11))  # each image decoded exactly once
+    st = statuses(images)
+    assert st[4] == Status.ERROR and sum(v == Status.DONE for v in st.values()) == 9
+    with images.session() as s:
+        assert "cannot read 4" in s.get(StageStatus, (4, "faces")).last_error
+
+
+def test_prefetch_respects_limit_and_abort(images, settings):
+    stage = PrefetchStage(images, settings)
+    PipelineRunner(images, settings, lambda _n: stage).run(["faces"], batch_size=3, limit=4)
+    assert [i for i, _ in stage.processed] == [1, 2, 3, 4]
+    assert max(stage.prepared) <= 4  # nothing beyond the limit is decoded
+
+    stage = PrefetchStage(images, settings, abort_at=7)
+    summary = PipelineRunner(images, settings, lambda _n: stage).run(["faces"], batch_size=3)
+    assert summary.status == "failed" and "server gone" in summary.messages[0]
+    st = statuses(images)
+    assert st[7] == Status.PENDING and Status.RUNNING not in st.values()
+
+
+class BatchStage(Stage):
+    name = "faces"
+    batch = 3
+
+    def __init__(self, db, settings, *, fail=(), stop_after=None):
+        super().__init__(db, settings)
+        self.fail = set(fail)
+        self.stop_after = stop_after
+        self.calls: list[list[int]] = []
+
+    def process(self, image_id):  # pragma: no cover - the runner uses process_batch
+        raise AssertionError("not used")
+
+    def process_batch(self, image_ids):
+        self.calls.append(list(image_ids))
+        if self.stop_after and len(self.calls) == self.stop_after:
+            control.request_state(self.db, control.STOPPED)
+        return {i: RuntimeError(f"bad {i}") for i in image_ids if i in self.fail}
+
+
+def test_batch_stage_marks_each_image_and_stops_between_batches(images, settings):
+    stage = BatchStage(images, settings, fail={5})
+    summary = PipelineRunner(images, settings, lambda _n: stage).run(["faces"], batch_size=4)
+    assert stage.calls == [[1, 2, 3], [4], [5, 6, 7], [8], [9, 10]]
+    assert summary.processed["faces"] == 10 and summary.failed["faces"] == 1
+    st = statuses(images)
+    assert st[5] == Status.ERROR and sum(v == Status.DONE for v in st.values()) == 9
+
+    control.requeue(images, "faces")
+    stage = BatchStage(images, settings, stop_after=1)
+    summary = PipelineRunner(images, settings, lambda _n: stage).run(["faces"], batch_size=6)
+    assert summary.status == "stopped" and stage.calls == [[1, 2, 3]]
+    st = statuses(images)
+    assert {i for i, v in st.items() if v == Status.DONE} == {1, 2, 3}
+    assert Status.RUNNING not in st.values()
+
+
+def test_claim_takes_pending_before_retryable_errors_in_image_order(images, settings):
+    with images.write() as s:
+        for image_id, status in [(1, Status.ERROR), (2, Status.DONE), (3, Status.ERROR)]:
+            s.get(StageStatus, (image_id, "faces")).status = status
+    runner = PipelineRunner(images, settings, lambda _n: None)
+    assert runner._upcoming("faces", 99, 20) == [4, 5, 6, 7, 8, 9, 10, 1, 3]
+    assert runner._upcoming("faces", 99, 3) == [4, 5, 6]
+    with images.write() as s:  # failed in this run: not retried by the same run
+        s.get(StageStatus, (1, "faces")).run_id = 99
+    assert runner._upcoming("faces", 99, 20)[-1] == 3
+
+
+# --------------------------------------------------------------------------- embed stage
+def _library(db, n=7):
+    with db.write() as s:
+        for i in range(n):
+            img = add_image(s, i, folder=f"trip/{i}")
+            img.stages.append(StageStatus(stage="embed", status=Status.PENDING))
+            for k, v in [("objects", "boat"), ("location_type", f"place{i % 3}"), ("tags", "z")]:
+                s.add(ImageProperty(image_id=img.id, key=k, value=v, source="vlm"))
+            s.add(ImageProperty(image_id=img.id, key="objects", value="anchor", source="vlm"))
+
+
+class CountingBackend(FakeBackend):
+    def __init__(self, vocab, fail_word=None):
+        super().__init__(vocab)
+        self.embed_calls: list[int] = []
+        self.fail_word = fail_word
+
+    def embed(self, texts, model):
+        self.embed_calls.append(len(texts))
+        if self.fail_word and any(self.fail_word in t for t in texts):
+            raise VlmError("model choked")
+        return super().embed(texts, model)
+
+
+def test_embed_stage_batches_requests_with_identical_documents(db, settings):
+    _library(db)
+    settings.search.embed_batch = 3
+    backend = CountingBackend(Vocabulary.load())
+    stage = EmbedStage(db, settings, backend=backend)
+    summary = PipelineRunner(db, settings, lambda _n: stage).run(["embed"], batch_size=5)
+    assert summary.processed["embed"] == 7 and summary.failed["embed"] == 0
+    assert backend.embed_calls == [3, 2, 2]  # batches of the runner's claims (5 + 2)
+    prefix = settings.search.document_prefix
+    with db.session() as s:
+        for img in s.scalars(select(Image)):
+            props = list(s.scalars(select(ImageProperty).where(ImageProperty.image_id == img.id)))
+            document = build_document(img, props, None)
+            row = s.get(ImageEmbedding, img.id)
+            assert row.doc_hash == doc_hash(document)
+            expected = FakeBackend(Vocabulary.load()).embed([prefix + document], stage.model)[0]
+            assert np.array_equal(row.vector, expected.astype(np.float16).tobytes())
+    # unchanged documents are skipped without a request
+    backend.embed_calls.clear()
+    assert stage.process_batch([1, 2, 3]) == {}
+    assert backend.embed_calls == []
+
+
+def test_embed_stage_isolates_a_failing_document(db, settings):
+    _library(db, n=4)
+    with db.write() as s:
+        s.add(ImageProperty(image_id=2, key="tags", value="poison", source="vlm"))
+    backend = CountingBackend(Vocabulary.load(), fail_word="poison")
+    stage = EmbedStage(db, settings, backend=backend)
+    errors = stage.process_batch([1, 2, 3, 4, 99])
+    assert set(errors) == {2, 99}
+    assert isinstance(errors[99], LookupError) and isinstance(errors[2], VlmError)
+    with db.session() as s:
+        assert sorted(s.scalars(select(ImageEmbedding.image_id))) == [1, 3, 4]
+    with pytest.raises(LookupError):
+        stage.process(99)
 
 
 # --------------------------------------------------------------------------- generations

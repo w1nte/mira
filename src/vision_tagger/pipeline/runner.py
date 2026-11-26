@@ -16,9 +16,10 @@ import threading
 import time
 import traceback
 from collections.abc import Callable, Iterable
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import timedelta
+from typing import Any
 
 from sqlalchemy import or_, select, update
 
@@ -193,24 +194,37 @@ class PipelineRunner:
                 run.status = status
 
     # ------------------------------------------------------------------ stage loop
-    def _claim(self, stage: str, run_id: int, n: int) -> list[int]:
-        max_attempts = self.settings.pipeline.max_attempts
-        with self.db.write() as s:
-            eligible = or_(
-                StageStatus.status == Status.PENDING,
-                (StageStatus.status == Status.ERROR)
-                & (StageStatus.attempts < max_attempts)
-                & (or_(StageStatus.run_id.is_(None), StageStatus.run_id != run_id)),
-            )
-            ids = list(
+    def _eligible(self, s: Any, stage: str, run_id: int, n: int) -> list[int]:
+        """The next ``n`` images to claim: pending ones first, then retryable failures.
+
+        Two index range scans in image order; one ORDER BY over both statuses would sort the
+        whole stage on every claim (while holding the write lock).
+        """
+
+        def ids(*where: Any, limit: int) -> list[int]:
+            return list(
                 s.scalars(
                     select(StageStatus.image_id)
                     .join(Image, Image.id == StageStatus.image_id)
-                    .where(StageStatus.stage == stage, eligible, Image.missing.is_(False))
-                    .order_by(StageStatus.status.desc(), StageStatus.image_id)  # pending first
-                    .limit(n)
+                    .where(StageStatus.stage == stage, *where, Image.missing.is_(False))
+                    .order_by(StageStatus.image_id)
+                    .limit(limit)
                 )
             )
+
+        out = ids(StageStatus.status == Status.PENDING, limit=n)
+        if len(out) < n:
+            out += ids(
+                StageStatus.status == Status.ERROR,
+                StageStatus.attempts < self.settings.pipeline.max_attempts,
+                or_(StageStatus.run_id.is_(None), StageStatus.run_id != run_id),
+                limit=n - len(out),
+            )
+        return out
+
+    def _claim(self, stage: str, run_id: int, n: int) -> list[int]:
+        with self.db.write() as s:
+            ids = self._eligible(s, stage, run_id, n)
             if ids:
                 s.execute(
                     update(StageStatus)
@@ -218,6 +232,11 @@ class PipelineRunner:
                     .values(status=Status.RUNNING, run_id=run_id, started_at=utcnow())
                 )
             return ids
+
+    def _upcoming(self, stage: str, run_id: int, n: int) -> list[int]:
+        """What the next claim will most likely return (read-only, for prefetching)."""
+        with self.db.session() as s:
+            return self._eligible(s, stage, run_id, n)
 
     def _release(self, stage: str, image_ids: list[int]) -> None:
         if not image_ids:
@@ -234,37 +253,54 @@ class PipelineRunner:
             )
 
     def _mark(self, stage: Stage, image_id: int, run_id: int, error: BaseException | None) -> None:
-        """Record the result, but only if the row is still claimed by this run.
+        self._mark_many(stage, run_id, [(image_id, error)])
+
+    def _mark_many(
+        self, stage: Stage, run_id: int, results: list[tuple[int, BaseException | None]]
+    ) -> None:
+        """Record results, but only for rows still claimed by this run (one transaction).
 
         A requeue, skip or content-change reset that happened meanwhile wins.
         """
-        guard = update(StageStatus).where(
-            StageStatus.image_id == image_id,
-            StageStatus.stage == stage.name,
-            StageStatus.status == Status.RUNNING,
-            StageStatus.run_id == run_id,
-        )
-        if error is None:
-            stmt = guard.values(
-                status=Status.DONE,
-                stage_version=stage.version,
-                last_error=None,
-                finished_at=utcnow(),
+        stmts = []
+        for image_id, error in results:
+            guard = update(StageStatus).where(
+                StageStatus.image_id == image_id,
+                StageStatus.stage == stage.name,
+                StageStatus.status == Status.RUNNING,
+                StageStatus.run_id == run_id,
             )
-        else:
-            tb = "".join(traceback.format_exception_only(type(error), error)).strip()
-            stmt = guard.values(
-                status=Status.ERROR,
-                attempts=StageStatus.attempts + 1,
-                last_error=tb[-2000:],
-                finished_at=utcnow(),
-            )
+            if error is None:
+                stmts.append(
+                    guard.values(
+                        status=Status.DONE,
+                        stage_version=stage.version,
+                        last_error=None,
+                        finished_at=utcnow(),
+                    )
+                )
+            else:
+                tb = "".join(traceback.format_exception_only(type(error), error)).strip()
+                stmts.append(
+                    guard.values(
+                        status=Status.ERROR,
+                        attempts=StageStatus.attempts + 1,
+                        last_error=tb[-2000:],
+                        finished_at=utcnow(),
+                    )
+                )
         with self.db.write() as s:
-            s.execute(stmt)
+            for stmt in stmts:
+                s.execute(stmt)
 
-    def _process_one(self, stage: Stage, image_id: int, run_id: int) -> bool:
+    def _process_one(
+        self, stage: Stage, image_id: int, run_id: int, prefetch: _Prefetcher | None = None
+    ) -> bool:
         try:
-            stage.process(image_id)
+            if prefetch is not None:
+                stage.process_prepared(image_id, prefetch.take(image_id))
+            else:
+                stage.process(image_id)
         except StageAbort:
             raise  # row stays claimed and is released by _finish_run (no attempt counted)
         except Exception as exc:
@@ -274,6 +310,45 @@ class PipelineRunner:
             return False
         self._mark(stage, image_id, run_id, None)
         return True
+
+    def _process_batch(self, stage: Stage, image_ids: list[int], run_id: int) -> int:
+        """Process images with one ``process_batch`` call; returns the number of failures."""
+        try:
+            errors = stage.process_batch(image_ids)
+        except StageAbort:
+            raise
+        except Exception as exc:
+            log.debug("traceback", exc_info=True)
+            errors = dict.fromkeys(image_ids, exc)
+        for image_id, exc in errors.items():
+            log.warning("%s failed for image %s: %s", stage.name, image_id, exc)
+        self._mark_many(stage, run_id, [(i, errors.get(i)) for i in image_ids])
+        return sum(1 for i in image_ids if i in errors)
+
+    def _prefetch_window(
+        self,
+        prefetch: _Prefetcher,
+        ids: list[int],
+        pos: int,
+        upcoming: list[int] | None,
+        name: str,
+        run_id: int,
+        room: int | None,
+    ) -> list[int] | None:
+        """Start preparing the images after ``ids[pos]``, into the next batch if needed.
+
+        ``room``: how many more images the run may claim after this batch (``None`` = no
+        limit). Returns the (cached) guess of the next batch.
+        """
+        k = prefetch.stage.prefetch
+        window = ids[pos : pos + 1 + k]
+        more = 1 + k - len(window)
+        if more > 0 and (room is None or room > 0):
+            if upcoming is None:
+                upcoming = self._upcoming(name, run_id, k if room is None else min(k, room))
+            window = window + upcoming[:more]
+        prefetch.ahead(window)
+        return upcoming
 
     def _run_stage(
         self, name: str, run_id: int, batch_size: int, limit: int | None, summary: RunSummary
@@ -289,6 +364,7 @@ class PipelineRunner:
         set_up = False
         stopped = False
         done = 0
+        prefetch = _Prefetcher(stage) if stage.prefetch > 0 and stage.concurrency <= 1 else None
         try:
             while limit is None or done < limit:
                 n = batch_size if limit is None else min(batch_size, limit - done)
@@ -311,12 +387,32 @@ class PipelineRunner:
                         summary.processed[name] += 1
                         summary.failed[name] += 0 if ok else 1
                     done += len(ids)
-                else:
-                    for image_id in ids:
+                elif stage.batch > 1:
+                    while remaining:
                         if self._wait_if_paused(run_id, name) == STOPPED:
                             stopped = True
                             break
-                        ok = self._process_one(stage, image_id, run_id)
+                        chunk = remaining[: stage.batch]
+                        failed = self._process_batch(stage, chunk, run_id)
+                        del remaining[: len(chunk)]
+                        summary.processed[name] += len(chunk)
+                        summary.failed[name] += failed
+                        done += len(chunk)
+                    if stopped:
+                        self._release(name, remaining)
+                        break
+                else:
+                    room = None if limit is None else limit - done - len(ids)
+                    upcoming: list[int] | None = None
+                    for pos, image_id in enumerate(ids):
+                        if self._wait_if_paused(run_id, name) == STOPPED:
+                            stopped = True
+                            break
+                        if prefetch is not None:
+                            upcoming = self._prefetch_window(
+                                prefetch, ids, pos, upcoming, name, run_id, room
+                            )
+                        ok = self._process_one(stage, image_id, run_id, prefetch)
                         remaining.remove(image_id)
                         summary.processed[name] += 1
                         if not ok:
@@ -331,6 +427,8 @@ class PipelineRunner:
                 if msg:
                     summary.messages.append(f"{name}: {msg}")
         finally:
+            if prefetch is not None:
+                prefetch.close()
             if set_up:
                 log.info("tearing down stage %s", name)
                 stage.teardown()
@@ -338,6 +436,39 @@ class PipelineRunner:
             summary.status = STOPPED
             return False
         return True
+
+
+class _Prefetcher:
+    """Runs ``stage.prepare`` for the next images in worker threads.
+
+    The main thread keeps the GPU (or the VLM server) busy while the workers decode the
+    following images. Each result is used at most once; leftovers are discarded.
+    """
+
+    def __init__(self, stage: Stage) -> None:
+        self.stage = stage
+        self.pool = ThreadPoolExecutor(
+            max_workers=stage.prefetch, thread_name_prefix=f"vision-tagger-{stage.name}-prepare"
+        )
+        self.futures: dict[int, Future[Any]] = {}
+
+    def ahead(self, image_ids: Iterable[int]) -> None:
+        for image_id in image_ids:
+            if image_id not in self.futures:
+                self.futures[image_id] = self.pool.submit(self.stage.prepare, image_id)
+
+    def take(self, image_id: int) -> Any:
+        """The prepared inputs of an image (raises what ``prepare`` raised)."""
+        future = self.futures.pop(image_id, None)
+        if future is None:
+            return self.stage.prepare(image_id)
+        return future.result()
+
+    def close(self) -> None:
+        for future in self.futures.values():
+            future.cancel()
+        self.futures.clear()
+        self.pool.shutdown(wait=True)
 
 
 class BackgroundRunner:

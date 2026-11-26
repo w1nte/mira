@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import os
 from abc import ABC, abstractmethod
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from ...config import Settings
 from ...db.session import Database
@@ -27,6 +28,11 @@ class Stage(ABC):
     name: ClassVar[str]
     #: Parallel ``process`` calls inside a batch (e.g. concurrent HTTP requests to Ollama).
     concurrency: int = 1
+    #: Images whose :meth:`prepare` runs ahead in worker threads while the current image is
+    #: processed, so the GPU or the VLM server does not wait for decoding (0 = off).
+    prefetch: int = 0
+    #: Images handed to :meth:`process_batch` at once (1 = one :meth:`process` call each).
+    batch: int = 1
 
     def __init__(self, db: Database, settings: Settings) -> None:
         self.db = db
@@ -44,6 +50,30 @@ class Stage(ABC):
     def process(self, image_id: int) -> None:
         """Process one image and persist the results."""
 
+    def prepare(self, image_id: int) -> Any:
+        """Read and decode an image's inputs (stages with ``prefetch``).
+
+        Runs in a worker thread, ahead of :meth:`process_prepared`: thread-safe, no database
+        writes. Exceptions are raised again when the image is processed.
+        """
+        raise NotImplementedError
+
+    def process_prepared(self, image_id: int, prepared: Any) -> None:
+        """Process one image with the result of :meth:`prepare`."""
+        self.process(image_id)
+
+    def process_batch(self, image_ids: list[int]) -> dict[int, Exception]:
+        """Process several images (stages with ``batch``); returns the errors by image id."""
+        errors: dict[int, Exception] = {}
+        for image_id in image_ids:
+            try:
+                self.process(image_id)
+            except StageAbort:
+                raise
+            except Exception as exc:
+                errors[image_id] = exc
+        return errors
+
     def teardown(self) -> None:  # noqa: B027 - optional hook
         """Free models / VRAM. Called after the stage finished (or was stopped)."""
 
@@ -57,3 +87,8 @@ class Stage(ABC):
     def info(self) -> dict[str, object]:
         """Extra diagnostics shown on the dashboard."""
         return {}
+
+
+def decode_workers(limit: int = 6) -> int:
+    """Threads for decoding images ahead of the GPU: leave a core for the main thread."""
+    return max(1, min(limit, (os.cpu_count() or 2) - 1))
