@@ -16,7 +16,7 @@ dhash_max_distance = 5              # duplicate = same pHash AND dHash differing
 [pipeline]
 batch_size = 16                     # images claimed per batch
 max_attempts = 3                    # automatic retries per image and stage
-stages = ["faces", "vlm", "embed"]
+stages = ["faces", "ages", "vlm", "embed"]   # "ages" is added automatically with "faces"
 
 [faces]
 model = "buffalo_l"                 # InsightFace model pack (non-commercial license)
@@ -32,6 +32,8 @@ assign_threshold = 0.5              # cosine similarity to join an existing clus
 reference_threshold = 0.45          # similarity to *suggest* a person from the reference DB
 auto_accept_threshold = 0.6         # similarity to *assign* a person automatically
 references_per_named_cluster = 10   # faces added as references when you name a cluster
+age_model = "blend"                 # "blend" (AgeNet for children/teens + InsightFace for adults),
+                                    # "agenet" or "insightface"
 
 [vlm]
 backend = "ollama"                  # "ollama" or "fake" (no model, for trying the UI)

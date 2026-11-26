@@ -30,7 +30,7 @@
   {% set total = cnt.get('total', 0) %}
   <section class="card">
     <div class="row spread">
-      <h3 style="margin:0">{{ {'faces': 'Stage 1 · Faces', 'vlm': 'Stage 2 · Properties (VLM)', 'embed': 'Stage 3 · Search index'}.get(st, st) }}</h3>
+      <h3 style="margin:0">{{ {'faces': 'Stage 1 · Faces', 'ages': 'Stage 1b · Face ages', 'vlm': 'Stage 2 · Properties (VLM)', 'embed': 'Stage 3 · Search index'}.get(st, st) }}</h3>
       <small>{{ cnt.get('done', 0) }} / {{ total }} done ({{ pct(cnt.get('done', 0), total) }} %)</small>
     </div>
     <div class="progress" style="margin-top:.5rem">

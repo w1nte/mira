@@ -14,7 +14,7 @@ import os
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -60,8 +60,17 @@ class IndexConfig(BaseModel):
 class PipelineConfig(BaseModel):
     batch_size: int = 16
     max_attempts: int = 3
-    stages: list[str] = Field(default_factory=lambda: ["faces", "vlm", "embed"])
+    stages: list[str] = Field(default_factory=lambda: ["faces", "ages", "vlm", "embed"])
     heartbeat_seconds: float = 5.0
+
+    @field_validator("stages")
+    @classmethod
+    def _ages_with_faces(cls, stages: list[str]) -> list[str]:
+        # "ages" re-estimates face ages of faces found before; it belongs to the faces stage
+        if "faces" in stages and "ages" not in stages:
+            stages = list(stages)
+            stages.insert(stages.index("faces") + 1, "ages")
+        return stages
 
 
 class FacesConfig(BaseModel):
@@ -75,6 +84,9 @@ class FacesConfig(BaseModel):
     min_det_score: float = 0.6
     min_face_px: int = 40
     crop_size: int = 160
+    # face ages: "blend" = AgeNet (children, teens) combined with InsightFace (adults, old age)
+    age_model: Literal["blend", "agenet", "insightface"] = "blend"
+    age_model_dir: Path | None = None  # defaults to <model_root>/models/agegender_faceapi
     # clustering (cosine distance = 1 - cosine similarity)
     cluster_eps: float = 0.5
     cluster_min_samples: int = 3
