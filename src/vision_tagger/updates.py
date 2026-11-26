@@ -227,7 +227,8 @@ def check(
     base = f"{api_url.rstrip('/')}/repos/{REPOSITORY}/releases"
     url = f"{base}?per_page=30" if include_prereleases else f"{base}/latest"
     try:
-        response = client.get(url, headers=headers(current), timeout=TIMEOUT)
+        # a renamed repository answers with a redirect (301) to its new address
+        response = client.get(url, headers=headers(current), timeout=TIMEOUT, follow_redirects=True)
     except httpx.HTTPError as exc:
         log.debug("update check: %s: %s", url, exc)
         return CheckResult(current, error=NETWORK)

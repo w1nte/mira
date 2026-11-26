@@ -174,6 +174,22 @@ def test_latest_release_with_the_download_for_this_computer():
     assert "authorization" not in request.headers and "cookie" not in request.headers
 
 
+def test_a_renamed_repository_is_followed():
+    """GitHub answers the old name of a renamed repository with a 301 to its new address."""
+    moved = "https://api.github.com/repositories/42/releases/latest"
+    requests = []
+
+    def handler(request):
+        requests.append(str(request.url))
+        if request.url.path.startswith("/repos/w1nte/vision-tagger/"):
+            return httpx.Response(301, headers={"Location": moved})
+        return httpx.Response(200, json=release("1.3", assets=all_assets("1.3")))
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        result = updates.check("1.2", client=client, platform="win32", flavour="cpu")
+    assert result.status == updates.AVAILABLE and requests[-1] == moved
+
+
 def test_same_or_older_release_is_up_to_date():
     fake = FakeGitHub(latest=release("1.2", assets=all_assets("1.2")))
     assert run_check(fake, current="1.2").status == updates.UP_TO_DATE
