@@ -343,3 +343,69 @@ def test_0005_backfills_gps_columns_and_downgrades(tmp_path):
     assert con.execute("SELECT count(*) FROM images").fetchone()[0] == before["images"]
     assert con.execute("PRAGMA foreign_key_check").fetchall() == []
     con.close()
+
+
+ANIMAL_ROW = (
+    "INSERT INTO animals (id, image_id, x1, y1, x2, y2, species, score, embedding, box_px,"
+    " pet_id, assignment, ignored, groupable)"
+    " VALUES (?, 1, 0, 0, 10, 10, 'dog', 0.9, x'00', 10, ?, 'auto', 0, 1)"
+)
+
+
+def test_0007_animals_and_pets_with_data(tmp_path):
+    """0007 adds the animal tables without touching existing rows; animals go with their image,
+    a deleted pet leaves its detections; the downgrade removes what older versions can't use."""
+    from vision_tagger.db.migrate import downgrade
+
+    path = tmp_path / "v6.sqlite3"
+    build_at(path, "0006")
+    fill_first_version(path)
+    before = counts(path)
+    upgrade(url_of(path), backup=False)
+    assert counts(path) == before
+    con = sqlite3.connect(path)
+    con.execute("PRAGMA foreign_keys=ON")
+    con.execute(
+        "INSERT INTO pets (id, name, species, locked, animal_count, created_at)"
+        " VALUES (1, 'Bello', 'dog', 1, 1, '2024-01-01 00:00:00')"
+    )
+    con.execute(  # server defaults for locked and animal_count
+        "INSERT INTO pets (id, species, created_at) VALUES (2, 'cat', '2024-01-01 00:00:00')"
+    )
+    con.execute(ANIMAL_ROW, (1, 1))
+    con.execute(ANIMAL_ROW, (2, 2))
+    con.execute(
+        "INSERT INTO image_properties (image_id, key, value, source)"
+        " VALUES (1, 'pet', 'Bello', 'animal')"
+    )
+    con.execute(
+        "INSERT INTO stage_status (image_id, stage, status, attempts)"
+        " VALUES (1, 'animals', 'done', 0)"
+    )
+    con.commit()
+    assert con.execute("SELECT locked, animal_count FROM pets WHERE id = 2").fetchone() == (0, 0)
+    con.execute("DELETE FROM pets WHERE id = 2")  # ON DELETE SET NULL
+    assert con.execute("SELECT pet_id FROM animals WHERE id = 2").fetchone() == (None,)
+    con.commit()
+    indexes = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='index'")}
+    assert {"ix_animals_image_ignored_pet", "ix_animals_pet_ignored_image"} <= indexes
+    con.close()
+
+    downgrade(url_of(path), "0006", backup=False)
+    con = sqlite3.connect(path)
+    tables = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    assert not {"animals", "pets"} & tables
+    left = con.execute("SELECT count(*) FROM image_properties WHERE source = 'animal'")
+    assert left.fetchone() == (0,)
+    stages = con.execute("SELECT count(*) FROM stage_status WHERE stage = 'animals'")
+    assert stages.fetchone() == (0,)  # the stage runs again after an upgrade
+    con.close()
+    assert counts(path) == before
+
+    upgrade(url_of(path), backup=False)
+    con = sqlite3.connect(path)
+    con.execute("PRAGMA foreign_keys=ON")
+    con.execute(ANIMAL_ROW, (5, None))
+    con.execute("DELETE FROM images WHERE id = 1")  # ON DELETE CASCADE
+    assert con.execute("SELECT count(*) FROM animals").fetchone() == (0,)
+    con.close()

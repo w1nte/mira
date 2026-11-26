@@ -16,7 +16,7 @@ from markupsafe import Markup
 from sqlalchemy.orm import Session
 
 from .. import APP_NAME, i18n
-from ..i18n import N_
+from ..i18n import N_, _
 from ..query import ImageFilter, property_counts
 from .context import AppContext
 
@@ -133,9 +133,14 @@ def fmt_duration(seconds: float | None) -> str:
     return f"{s}s"
 
 
+# keys whose display name is not just the key: the detector's "animal" next to the vision
+# model's free-text "animals" would read as the same thing twice
+KEY_LABELS = {"animal": "Species"}
+
+
 def label_text(key: str) -> str:
     """English display name of a property key (``location_type`` -> ``Location type``)."""
-    return key.replace("_", " ").capitalize()
+    return KEY_LABELS.get(key) or key.replace("_", " ").capitalize()
 
 
 def pretty_text(value: object) -> str:
@@ -172,6 +177,7 @@ def pretty(value: object, key: str | None = None) -> str:
 STAGE_TITLES = {
     "faces": N_("Faces"),
     "ages": N_("Face ages"),
+    "animals": N_("Animals"),
     "vlm": N_("Properties"),
     "embed": N_("Search index"),
 }
@@ -190,6 +196,7 @@ STATUS_TITLES = {
 JOB_TITLES = {
     "index": N_("Index"),
     "recluster": N_("Recluster"),
+    "regroup": N_("Regroup animals"),
     "references": N_("References"),
     "export": N_("Export"),
     "sidecars": N_("Sidecars"),
@@ -212,6 +219,16 @@ def status_title(name: str | None) -> str:
 
 def job_title(name: str | None) -> str:
     return _title(JOB_TITLES, name)
+
+
+def pet_label(pet: Any) -> str:
+    """A pet's name; unnamed groups are called by species and number ("Dog #12")."""
+    if pet is None:
+        return ""
+    if pet.name:
+        return pet.name
+    species = pretty(pet.species, "animal")
+    return _("%(species)s #%(id)s", species=species[:1].upper() + species[1:], id=pet.id)
 
 
 def pct(part: int | float, total: int | float) -> float:
@@ -243,4 +260,5 @@ templates.env.globals.update(
     stage_title=stage_title,
     status_title=status_title,
     job_title=job_title,
+    pet_label=pet_label,
 )

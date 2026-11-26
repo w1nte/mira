@@ -7,7 +7,7 @@ from fastapi.responses import Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
-from ...db.models import Cluster, Face, Image, ImageProperty, Person, Place, VlmResult
+from ...db.models import Animal, Cluster, Face, Image, ImageProperty, Person, Pet, Place, VlmResult
 from ...export import METADATA, ExportStats, export_images, write_sidecars_in_place
 from ...faces.ages import age_label, check_image_date, correct_image_date
 from ...i18n import Lazy, LazyJoin, _
@@ -20,9 +20,10 @@ from ...query import (
     neighbours,
     page_images,
     person_counts,
+    pet_counts,
     property_keys,
 )
-from ..common import back, cached_property_counts, ctx, redirect, render
+from ..common import back, cached_property_counts, ctx, pet_label, redirect, render
 from ..context import Job
 
 router = APIRouter()
@@ -35,6 +36,7 @@ FACET_KEYS = [
     "event_type",
     "composition",
     "people",
+    "animal",
     "objects",
     "tags",
     "year",
@@ -59,7 +61,18 @@ def _chips(s, f: ImageFilter) -> dict[str, object]:
     place_name = None
     if f.place is not None:
         place_name = s.scalar(select(Place.name).where(Place.id == f.place))
-    return {"person_names": names, "cluster_names": cluster_names, "place_name": place_name}
+    pet_ids = set(f.pets) | set(f.exclude_pets)
+    pet_names = (
+        {p.id: pet_label(p) for p in s.scalars(select(Pet).where(Pet.id.in_(pet_ids)))}
+        if pet_ids
+        else {}
+    )
+    return {
+        "person_names": names,
+        "cluster_names": cluster_names,
+        "place_name": place_name,
+        "pet_names": pet_names,
+    }
 
 
 MAX_TIMELINE_MONTHS = 1200  # 100 years; older dates are almost always wrong camera clocks
@@ -120,6 +133,8 @@ def gallery(request: Request) -> Response:
         facets = {k: facets_all[k][:12] for k in FACET_KEYS if k in facets_all}
         people = person_counts(s, f)[:30]
         all_persons = list(s.scalars(select(Person).order_by(Person.name)))
+        pets = pet_counts(s, f)[:30]
+        all_pets = list(s.scalars(select(Pet).where(Pet.name.is_not(None)).order_by(Pet.name)))
         keys = property_keys(s)
         cameras = [
             cam
@@ -144,6 +159,8 @@ def gallery(request: Request) -> Response:
         facets=facets,
         people=people,
         all_persons=all_persons,
+        pets=pets,
+        all_pets=all_pets,
         keys=keys,
         cameras=cameras,
         export_mode=c.settings.export.mode,
@@ -183,6 +200,13 @@ def add_filter(request: Request) -> Response:
             f.exclude_persons.append(pid)
         elif pid not in f.persons:
             f.persons.append(pid)
+    if params.get("pet", "").isdigit():
+        pet_id = int(params["pet"])
+        if exclude:
+            if pet_id not in f.exclude_pets:
+                f.exclude_pets.append(pet_id)
+        elif pet_id not in f.pets:
+            f.pets.append(pet_id)
     key, value = params.get("key", "").strip(), params.get("value", "").strip()
     if key and value:
         (f.exclude_props if exclude else f.props).append((key, value))
@@ -218,6 +242,7 @@ def image_detail(request: Request, image_id: int) -> Response:
                 selectinload(Image.duplicates),
                 selectinload(Image.properties),
                 selectinload(Image.faces).selectinload(Face.cluster).selectinload(Cluster.person),
+                selectinload(Image.animals).selectinload(Animal.pet),
             )
             .where(Image.id == image_id)
         )
@@ -232,6 +257,7 @@ def image_detail(request: Request, image_id: int) -> Response:
         prev_id, next_id = neighbours(s, f, image_id)
         date_check = check_image_date(s, image_id)
         place = s.get(Place, img.place_id) if img.place_id is not None else None
+        animals = [a for a in img.animals if not a.ignored]
     face_ages = {}
     if date_check is not None:
         face_ages = {
@@ -249,6 +275,7 @@ def image_detail(request: Request, image_id: int) -> Response:
         date_check=date_check,
         face_ages=face_ages,
         place=place,
+        animals=animals,
     )
 
 

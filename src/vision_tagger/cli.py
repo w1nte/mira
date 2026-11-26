@@ -176,7 +176,8 @@ def index(
 @app.command()
 def run(
     stage: Annotated[
-        list[str] | None, typer.Option("--stage", "-s", help="faces / vlm (repeatable)")
+        list[str] | None,
+        typer.Option("--stage", "-s", help="faces / ages / animals / vlm / embed (repeatable)"),
     ] = None,
     batch_size: Annotated[int | None, typer.Option("--batch-size", "-b")] = None,
     limit: Annotated[
@@ -264,6 +265,18 @@ def cluster(
     from .pipeline.stages.faces import cluster_and_match
 
     typer.echo(cluster_and_match(_db(), _settings(), full=full))
+
+
+@app.command()
+def pets(
+    full: Annotated[
+        bool, typer.Option(help="Dissolve the automatic groups first (named pets stay).")
+    ] = False,
+) -> None:
+    """(Re-)group the detected animals into pets and update their properties."""
+    from .pipeline.stages.animals import group_animals
+
+    typer.echo(group_animals(_db(), _settings(), full=full))
 
 
 @app.command()

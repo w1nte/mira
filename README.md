@@ -11,13 +11,13 @@ are never moved or modified.
 
 ```
             ┌──────────────┐   ┌─────────────────────────────┐   ┌──────────────────────────┐
- folders ──▶│ 0 · Index    │──▶│ 1 · Faces (InsightFace)     │──▶│ 2 · Properties (Qwen-VL) │
+ folders ──▶│ 0 · Index    │──▶│ 1 · Faces & animals         │──▶│ 2 · Properties (Qwen-VL) │
             │ path, date,  │   │ detect → embed → cluster →  │   │ closed vocabularies,     │
-            │ EXIF, pHash  │   │ name via reference DB       │   │ assumptions, work images │
+            │ EXIF, pHash  │   │ name people and pets        │   │ assumptions, work images │
             └──────┬───────┘   └──────────────┬──────────────┘   └────────────┬─────────────┘
                    └──────────── SQLite (state per image & stage) ────────────┘
                                               │
-               Web UI: home · import · faces · persons · properties · images · pipeline
+        Web UI: home · import · faces · persons · animals · properties · images · pipeline
 ```
 
 ## Features
@@ -46,6 +46,10 @@ are never moved or modified.
     moves and removed faces over to the new detections.
   - A **reference DB** (`references/<Person Name>/*.jpg`) names clusters automatically or
     suggests a name.
+- **Stage 1c: animals and pets.** YOLOX-s finds animals (dogs, cats, birds, horses, …),
+  DINOv2-small tells them apart, and photos of the same animal are grouped like faces. Name a
+  group ("Bello") and search for it: "Bello at the beach", "Anna with Bello". Names, merges and
+  moves survive re-grouping. See [Animals and pets](#animals-and-pets).
 - **Stage 2: properties.** Qwen2.5-VL (or any Ollama vision model) answers a fixed JSON schema
   built from [`vocabulary.yaml`](src/vision_tagger/resources/vocabulary.yaml).
   - Closed vocabularies, temperature 0, a fixed seed and normalisation (singular forms,
@@ -107,7 +111,8 @@ are never moved or modified.
   - Gallery with a filter builder (persons AND/OR, properties AND/OR, NOT, date, folder,
     camera, …) and export (copy / hardlink / symlink) **with the metadata for other apps**
     (see [Using the results in other applications](#using-the-results-in-other-applications)).
-  - Image detail with face boxes.
+  - Animals page: pet groups with inline naming, merge, move and remove.
+  - Image detail with face and animal boxes.
   - Timeline / data overview and a metadata table.
 
 ## Installation
@@ -194,15 +199,16 @@ uv run vision-tagger serve --open          # or: .\start.ps1
 
 1. Open **Import** (sidebar, *System*). Add your photo folders with **Add a folder…** (a folder
    browser; you can also paste a path) and click **Scan now**. With *Analyse new photos right
-   away* ticked, the pipeline runs afterwards: faces, ages, properties and the search index.
+   away* ticked, the pipeline runs afterwards: faces, ages, animals, properties and the search
+   index.
 2. Optionally put reference portraits into `references\<Person Name>\` and click
    **Import references** on the **Pipeline** page.
 3. **Pipeline** shows the progress per stage, throughput, ETA and errors. There you can also
    choose the stages, a batch size and an optional limit, and **Pause**, **Resume** or **Stop**
    at any time.
 
-Then name and clean up clusters under **Faces**, explore **Properties**, and filter or export in
-**Images**. **Home** shows what is in your library and your collections.
+Then name and clean up clusters under **Faces**, name your pets under **Animals**, explore
+**Properties**, and filter or export in **Images**. **Home** shows what is in your library and your collections.
 
 **Closing the app pauses a running pipeline** after the current image. The next start continues
 it where it stopped, with the same stages and settings. Turn this off with
@@ -217,6 +223,7 @@ uv run vision-tagger status
 uv run vision-tagger pause | resume | stop       # from a second terminal
 uv run vision-tagger refs                        # import reference DB + name clusters
 uv run vision-tagger cluster [--full]
+uv run vision-tagger pets [--full]               # group the detected animals again
 uv run vision-tagger retry-errors --stage vlm
 uv run vision-tagger requeue-outdated --stage vlm
 uv run vision-tagger migrate [--check]           # database schema upgrade (with backup)
@@ -232,19 +239,20 @@ uv run vision-tagger growup "Anna" anna-growing-up.webp  # grow-up animation
 
 | Page | What you can do |
 |---|---|
-| **Home** | Your library at a glance: number of photos, people, places and years, *On this day* memories, recently added photos, and collections. Nudges you when face groups still need a name. |
+| **Home** | Your library at a glance: number of photos, people, places and years, *On this day* memories, recently added photos, and collections. Nudges you when face or animal groups still need a name. |
 | **Collections** | A collection is a saved filter: it stays up to date as new photos arrive. Suggested ones (people, places, events, this year) appear by themselves; **Save as collection** in *Images* adds your own. Rename, reorder and delete them here. |
 | **Import** | Local mode: your photo folders, with a folder browser, and **Scan now**. Remote mode: upload photos, folders or ZIP files (see [Remote mode](#remote-mode-and-docker)). Shows what is being indexed and analysed right now. |
 | **Pipeline** | The technical part: start/pause/resume/stop runs (stages, batch size, limit), per-stage progress, ETA, errors (retry/skip), outdated results, jobs, recent runs, environment check (CUDA, Ollama, model). |
 | **Faces** | All clusters with cover face and size. Name inline (autocomplete), accept reference suggestions, select several to **merge**. Views for unclustered and ignored faces. |
 | **Cluster** | All faces of a cluster. Select faces to **split** into a new cluster, **assign to a person**, **move** to another cluster, or **remove**. **Auto-split** mixed clusters. Similar clusters with one-click merge. |
+| **Animals** | Pet groups with picture and number of photos, by species. Name a group inline (typing another group's name merges the two), tick several to **merge**. Per group: all its photos to **move** to a pet (by name) or a new group, **take out** ("Not this one") or **remove**, similar groups with one-click merge, and the species (correct it when the detector took a dog for a bear). Views for ungrouped and removed animals. |
 | **Persons** | Named persons. Rename (renaming to an existing name merges), merge, delete, manage references. Images with *all* / *any* of the selected persons. Per person: birth year (set or estimated), age today, a "through the years" face timeline, and photos with a doubtful date with suggested fixes. |
 | **Properties** | Every extracted property grouped by topic, with counts. Tick values and show images with **all** / **any** of them. Per property: sample images per value, **merge / rename / delete** values (remembered for future results). |
-| **Images** | **Timeline slider** above the gallery: photos per month; click the first month, then the last, drag the band or its edges, or sweep across the bars (arrow keys move the handles). Gallery with infinite scroll and a filter builder: persons (AND/OR, NOT), properties (AND/OR, NOT), date range, folder, camera, faces, text search, sort. Facets refine the current result. **Export** the result, with XMP metadata for other apps. Filters are part of the URL, so they can be bookmarked. |
-| **Image** | Full image with face boxes and names, all properties with source and confidence, metadata, duplicates, raw VLM JSON, per-stage status and re-run buttons. `←` / `→` open the previous / next photo of the current filter. |
+| **Images** | **Timeline slider** above the gallery: photos per month; click the first month, then the last, drag the band or its edges, or sweep across the bars (arrow keys move the handles). Gallery with infinite scroll and a filter builder: persons and pets (AND/OR, NOT), properties (AND/OR, NOT), date range, folder, camera, faces, text search, sort. Facets refine the current result. **Export** the result, with XMP metadata for other apps. Filters are part of the URL, so they can be bookmarked. |
+| **Image** | Full image with face and animal boxes and names, all properties with source and confidence, metadata, duplicates, raw VLM JSON, per-stage status and re-run buttons. `←` / `→` open the previous / next photo of the current filter. |
 | **Quiz** | "Who's that?": name the largest unnamed clusters with one click (suggestions from references and look-alikes), or play the face quiz with score, streaks and "you vs. the AI"; wrong answers can fix misfiled faces. Keys 1–4 and Enter. |
 | **Generations** | Every person with photos from different ages. Per person: a grow-up timelapse (play, scrub, download as animated WebP), "looks most like…" ranking, and a same-age comparison with any other person. |
-| **Search** | Search box in the top bar on every page (`/` focuses it). Shows how the request was understood (persons, required / preferred / excluded properties, dates, keywords), ranks the results and, with **Deep search**, gives the LLM's reason for each. "Open in filter builder" turns the strict part into a gallery filter; results can be exported. |
+| **Search** | Search box in the top bar on every page (`/` focuses it). Shows how the request was understood (persons, pets, required / preferred / excluded properties, dates, keywords), ranks the results and, with **Deep search**, gives the LLM's reason for each. "Open in filter builder" turns the strict part into a gallery filter; results can be exported. |
 | **Map** | Heatmap of the geotagged photos of the current filter (e.g. one person's photos), the places with their photo counts (click one for thumbnails, *Show photos* and renaming), **Photos in this area** (the map bounds as a gallery filter) and *Find places*. The view is kept in the URL (`#zoom/lat/lon`). |
 | **Overview** | Timeline (year → month → day), breakdowns by folder, camera, file type, date reliability, work/personal, orientation, and a sortable metadata table. |
 
@@ -336,7 +344,7 @@ size in the proxy (`client_max_body_size 0;` in nginx); each request is at most 
 
 ## Places and map
 
-Phones and many cameras store where a photo was taken (EXIF GPS). vision-tagger keeps that
+Phones and many cameras store where a photo was taken (EXIF GPS). Mira keeps that
 position in `images.lat` / `images.lon` and groups the photos into **places**:
 
 - Photos closer than `geo.cluster_km` (750 m) to each other form a place (DBSCAN with
@@ -362,7 +370,7 @@ position in `images.lat` / `images.lon` and groups the photos into **places**:
 big towns reach farther, so a photo in a suburb gets the city's name and a photo in a village
 the village's name. The towns come from [GeoNames](https://www.geonames.org/) ("cities with a
 population of at least 1000", 130,000 towns, CC BY 4.0). The first time places are named,
-vision-tagger downloads a copy of that data (3 MB) from the npm registry (the
+Mira downloads a copy of that data (3 MB) from the npm registry (the
 [`all-the-cities`](https://www.npmjs.com/package/all-the-cities) package, version 3.1.0, MIT),
 checks its size and SHA-256 and converts it into `data/models/geo`. GeoNames' own server
 publishes a new dump every day, which can't be checked against a fixed checksum. To use an
@@ -374,7 +382,7 @@ coordinates, e.g. `52.516° N, 13.378° E`).
 **OpenStreetMap names (optional).** With `geo.nominatim = true`, places are named from
 OpenStreetMap through [Nominatim](https://nominatim.org/) reverse geocoding, down to the district
 ("Prenzlauer Berg, Berlin"), in `geo.language`. This **sends the position of every new place to
-the Nominatim server** (rounded to about 100 m), so it is off by default. vision-tagger follows
+the Nominatim server** (rounded to about 100 m), so it is off by default. Mira follows
 the [usage policy](https://operations.osmfoundation.org/policies/nominatim/) of the public
 server: at most one request per second, an identifying User-Agent without personal data, every
 answer cached in the database (`geocode_cache`) and never asked again, and no further requests
@@ -394,6 +402,63 @@ Earth, public domain. Vendored libraries (in `web/static/vendor`, with their lic
 [Leaflet](https://leafletjs.com/) 1.9.4 and [Leaflet.heat](https://github.com/Leaflet/Leaflet.heat)
 0.2.0 (both BSD 2-Clause).
 
+## Animals and pets
+
+The **animals** stage (1c, after the faces) finds the animals in every photo, groups the photos
+of the same animal, and lets you name them. A named pet works like a person: a filter
+(`/images?pet=5`, chips and a facet in the gallery, AND/OR together with persons), a collection
+on the home page, and the search: "Bello am Strand", "photos of Minka in winter", "Anna with
+Bello".
+
+- **Detection: [YOLOX-s](https://github.com/Megvii-BaseDetection/YOLOX)** (Megvii, Apache-2.0),
+  trained on COCO. It finds birds, cats, dogs, horses, sheep, cows, elephants, bears, zebras and
+  giraffes, each with a box, the species and a score. Detections below `animals.min_score`
+  (0.5) or smaller than `animals.min_box_px` (32 px) are dropped; uncertain or small ones (below
+  `group_min_score` 0.6 or `group_min_px` 64 px) are kept but not grouped automatically.
+- **Telling animals apart: [DINOv2-small](https://github.com/facebookresearch/dinov2)** (Meta,
+  Apache-2.0, as ONNX from `onnx-community/dinov2-small`). Each animal is cut out with a small
+  margin, padded to a square (never stretched) and described by DINOv2's class token, averaged
+  with the mirrored crop.
+- **Grouping** works like face clustering: DBSCAN with the cosine distance `animals.cluster_eps`
+  (0.3) and at least `cluster_min_samples` (2) photos; new photos join a pet when they are at
+  least `animals.assign_threshold` (0.7) similar to its average. Animals are grouped per
+  species, but the species the detector mixes up on pets (a chow chow detected as a bear, a
+  poodle as a sheep) count as one (`animals.species_pools`: cat, dog, bear, sheep). A pet's
+  species is what most of its photos show; you can correct it on its page.
+- **Naming** happens on the **Animals** page (sidebar, *People*): type a name under a group.
+  Typing the name of another group merges the two. Open a group to move photos to another pet
+  (by name) or into a new group, to take them out ("Not this one") or to remove them (not an
+  animal). Like locked face clusters, **named and edited groups, your moves and removals are
+  kept** when the animals are grouped again (*Group all again* on the Pipeline page,
+  `vision-tagger pets --full`) and when photos are analysed again. A named pet stays even
+  without photos, so its animal finds its way back.
+- **Properties.** Every photo gets `animal = <species>` and, for each named pet in it,
+  `pet = <name>` (source `animal`), so the facets, filters, the properties page (group *Pets*),
+  XMP keywords and the search work as for places. The vision model's own free-text **Animals**
+  property stays as it is (it also names animals the detector doesn't know, like ducks or
+  fish); the detector's property is shown as **Species** to tell them apart. The species is part
+  of the search document; pet names are not (like person names, they filter strictly), so
+  renaming a pet needs no re-indexing.
+- **How the thresholds were chosen.** On 107 real photos: the 9 dogs and cats of the
+  [DreamBooth dataset](https://github.com/google/dreambooth) (5–6 photos of each animal,
+  Unsplash license) and, as other animals, 60 photos of 10 breeds from the Oxford-IIIT Pet test
+  set (CC BY-SA 4.0). Every photo had an animal at a score of 0.5 or more, and 27 photos without
+  animals had none; the species was wrong for 9 of the 107 photos (mostly fluffy dogs as bears
+  or sheep, hence the pools). Photos of the same animal had a cosine similarity of 0.80 on
+  average (10th percentile 0.70), other animals of the same species 0.14 (99th percentile 0.49).
+  With the defaults the 9 animals form 9 groups (pairwise precision 1.00, recall 0.95: one photo
+  stays ungrouped). Animals of one breed and colour are hard to tell apart: the grey cat was
+  joined by Russian Blues, and different pugs or black cats form one group. Split them with
+  *New group*.
+- **Privacy and downloads.** Both models (125 MB) are downloaded once into
+  `<faces.model_root>/models/animals` (default `~/.insightface/models/animals`; or
+  `animals.model_dir`) from GitHub and Hugging Face, pinned to fixed files and checked against
+  their SHA-256 checksums. Without internet, the error message names the URL and the place for
+  the file. Everything else runs locally on onnxruntime (CUDA or CPU, `faces.providers`), about
+  0.25 s per photo on a 4-core CPU. No photo leaves the computer.
+
+If your `config.toml` lists `pipeline.stages`, add `"animals"` to it.
+
 ## Using the results in other applications
 
 Exports carry what Mira found as **XMP**, the metadata standard photo applications
@@ -401,7 +466,7 @@ share. The originals are never modified.
 
 | What | Where it ends up |
 |---|---|
-| Keywords: objects, place, event, season, … and the people's names | `dc:subject` |
+| Keywords: objects, place, event, season, …, pets and their species, and the people's names | `dc:subject` |
 | Every property as a hierarchical keyword (`vision-tagger\|Location type\|beach`, `People\|Anna`) | `lr:hierarchicalSubject` |
 | Caption of the vision model | `dc:description` |
 | People, with the area of each face | `Iptc4xmpExt:PersonInImage`, MWG face regions (`mwg-rs:Regions`) |
@@ -449,10 +514,10 @@ To customise the fields, copy `vocabulary.yaml` and set `vlm.vocabulary_file` in
 ## How search works
 
 1. **Interpretation.** The request goes to the LLM (`search.model`, by default the VLM model)
-   together with the vocabulary, the most frequent free-text values, the person names and the
-   date range. The JSON answer is checked against the database: unknown persons or values
+   together with the vocabulary, the most frequent free-text values, the person and pet names
+   and the date range. The JSON answer is checked against the database: unknown persons or values
    become free-text keywords instead of failing.
-2. **Candidates.** Persons, required and excluded properties, and dates filter strictly. If
+2. **Candidates.** Persons, pets, required and excluded properties, and dates filter strictly. If
    nothing is left, required properties are relaxed into preferences.
 3. **Ranking** combines three signals:
    - semantic similarity of an English rewrite of the request to each image's document
@@ -460,8 +525,8 @@ To customise the fields, copy `vocabulary.yaml` and set `vlm.vocabulary_file` in
    - matches with the preferred properties, weighted by the LLM and by confidence;
    - keyword hits in captions, visible text, values and paths.
 
-   Person names are not part of the embedded documents, so renaming people never requires
-   re-indexing.
+   Person and pet names are not part of the embedded documents, so renaming people or pets
+   never requires re-indexing.
 4. **Deep search.** The LLM scores the top results from short descriptions (including person
    names) and gives a one-line reason in the language of your request.
 
@@ -483,6 +548,8 @@ Important knobs:
 - `faces.cluster_eps` / `cluster_min_samples`: how strict face clustering is.
 - `faces.reference_threshold` / `auto_accept_threshold`: when reference matches are suggested
   or assigned.
+- `animals.cluster_eps` / `assign_threshold` / `min_score`: how strict pet grouping and animal
+  detection are (see [Animals and pets](#animals-and-pets)).
 - `vlm.model`, `vlm.concurrency`: set `concurrency` to match `OLLAMA_NUM_PARALLEL` for
   parallel requests.
 - `derived.work_path_keywords`: folder or file-name hints for work images.
@@ -493,8 +560,9 @@ Important knobs:
 
 Everything lives in `data/`:
 
-- `vision_tagger.sqlite3`: index, job state, faces, clusters, persons, properties.
-- `cache/thumbs`, `cache/faces`: thumbnails and face crops. These can be deleted at any time.
+- `vision_tagger.sqlite3`: index, job state, faces, clusters, persons, animals, pets,
+  properties.
+- `cache/thumbs`, `cache/faces`, `cache/animals`: thumbnails, face and animal crops. These can be deleted at any time.
   - Gallery thumbnails are written while indexing, from the image that is decoded for duplicate
     detection anyway (about 5 % extra indexing time).
   - **Scan & index** (or `vision-tagger index`) also creates the thumbnails that are missing,
@@ -509,7 +577,7 @@ Everything lives in `data/`:
 
 Main tables: `images` (+ `metadata` JSON), `duplicate_files`, `stage_status`, `runs`, `faces`,
 `clusters`, `persons`, `person_references`, `image_properties`, `property_aliases`,
-`vlm_results`, `collections`, `places`, `geocode_cache`.
+`vlm_results`, `collections`, `places`, `geocode_cache`, `animals`, `pets`.
 
 ## Development
 
@@ -564,7 +632,7 @@ signed with a key stored in the data folder.
 - Symlink export needs Developer Mode on Windows. Otherwise Mira falls back to
   copying.
 - InsightFace's pretrained `buffalo_l` models are licensed for **non-commercial research
-  purposes** only.
+  purposes** only. The animal models (YOLOX-s, DINOv2-small) are Apache-2.0.
 - Face ages: the first faces run downloads AgeNet (430 KB, MIT license) from GitHub into
   `~/.insightface/models/agegender_faceapi`. The download is checked against a SHA-256 checksum
   and turned into an ONNX model locally. The **ages** stage re-estimates faces that were found

@@ -42,6 +42,9 @@ GROUPS: list[tuple[str, list[str]]] = [
         ],
     ),
     (N_("People"), ["people", "composition", "main_activity", "event_type"]),
+    # the animal detector's pets and species; the vision model's free-text "animals" stays
+    # with the other things seen in a photo (Content)
+    (N_("Pets"), ["pet", "animal"]),
     (
         N_("Content"),
         [

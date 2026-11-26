@@ -738,6 +738,11 @@ details.more > summary { font-weight: 500; }
 @media (max-width: 700px) { .stage-photo { min-height: 0; padding: 8px; } }
 .facebox.unnamed { border-color: rgb(255 255 255 / .85); border-style: dashed; }
 .facebox.unnamed span { background: rgb(255 255 255 / .9); }
+/* animals: green boxes, so they never read as faces */
+.facebox.animalbox { border-color: #30d158; }
+.facebox.animalbox span { background: #30d158; color: #06240f; }
+.facebox.animalbox.unnamed { border-color: rgb(48 209 88 / .9); border-style: dashed; }
+.facebox.animalbox.unnamed span { background: rgb(48 209 88 / .88); }
 .viewer.hide-boxes .facebox { display: none; }
 .caption { color: var(--text-2); font-size: 1.05rem; }
 .viewer-foot { flex-wrap: nowrap; align-items: flex-start; gap: 16px; }

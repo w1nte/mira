@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <nav class="crumbs" aria-label="{{ _('Breadcrumb') }}"><a href="/animals">{{ _('Animals') }}</a></nav>
+    <h1>{{ title }} <small>{{ total }}</small></h1>
+    <small>
+      {% if mode == 'ungrouped' %}{{ _('These animals fit no group (seen only once, small or uncertain, or taken out of a group). Move them to a pet or start a new group.') }}
+      {% else %}{{ _('Removed animals are left out of groups, filters and search.') }}{% endif %}
+    </small>
+  </div>
+</div>
+{% if animals %}
+  {% include "partials/animal_grid.html" %}
+{% else %}
+  <div class="card empty">{{ _('Nothing here.') }}</div>
+{% endif %}
+{% if pages > 1 %}
+<nav class="pager" aria-label="{{ _('Pages') }}">
+  {% if page > 1 %}<a class="btn" href="?page={{ page-1 }}">{{ icon('chevron-left', 'sm') }}{{ _('Previous') }}</a>{% endif %}
+  <span class="muted">{{ _('Page %(page)s of %(pages)s', page=page, pages=pages) }}</span>
+  {% if page < pages %}<a class="btn" href="?page={{ page+1 }}">{{ _('Next') }}{{ icon('chevron-right', 'sm') }}</a>{% endif %}
+</nav>
+{% endif %}
+{% endblock %}

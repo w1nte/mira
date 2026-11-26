@@ -1,18 +1,22 @@
-{# Active filter chips. Expects f, optionally person_names / cluster_names, base (url path) #}
+{# Active filter chips. Expects f, optionally person_names / cluster_names / pet_names, base (url path) #}
 {% set base = base | default('/images') %}
 {% macro x(href) %}<a class="x" href="{{ base }}?{{ href }}" aria-label="{{ _('Remove filter') }}" title="{{ _('Remove filter') }}">{{ icon('x') }}</a>{% endmacro %}
 {% if not f.is_empty %}
 <div class="chips filter-summary">
   {% for pid in f.persons %}<span class="chip active">{{ icon('user') }}{{ (person_names or {}).get(pid, _('Person #%(id)s', id=pid)) }}{{ x(f.without_person(pid)) }}</span>{% endfor %}
   {% for cid in f.clusters %}<span class="chip active">{{ icon('users') }}{{ (cluster_names or {}).get(cid, _('Cluster #%(id)s', id=cid)) }}{{ x(f.without_cluster(cid)) }}</span>{% endfor %}
-  {% if (f.persons | length) + (f.clusters | length) > 1 %}
-    <a class="chip" href="{{ base }}?{{ f.query_string(persons_mode='any' if f.persons_mode == 'all' else 'all') }}" title="{{ _('Toggle AND / OR') }}">{{ _('all of these people') if f.persons_mode == 'all' else _('any of these people') }} ⇄</a>
+  {% for pid in f.pets %}<span class="chip active">{{ icon('paw') }}{{ (pet_names or {}).get(pid, _('Pet #%(id)s', id=pid)) }}{{ x(f.without_pet(pid)) }}</span>{% endfor %}
+  {% if f.who_count > 1 %}
+    {% if f.pets %}{% set both = _('all together') if f.persons_mode == 'all' else _('any of them') %}
+    {% else %}{% set both = _('all of these people') if f.persons_mode == 'all' else _('any of these people') %}{% endif %}
+    <a class="chip" href="{{ base }}?{{ f.query_string(persons_mode='any' if f.persons_mode == 'all' else 'all') }}" title="{{ _('Toggle AND / OR') }}">{{ both }} ⇄</a>
   {% endif %}
   {% for k, v in f.props %}<span class="chip active">{{ k | label }}: {{ v | pretty(k) }}{{ x(f.without_prop(k, v)) }}</span>{% endfor %}
   {% if f.props | length > 1 %}
     <a class="chip" href="{{ base }}?{{ f.query_string(props_mode='any' if f.props_mode == 'all' else 'all') }}" title="{{ _('Toggle AND / OR') }}">{{ _('all properties') if f.props_mode == 'all' else _('any property') }} ⇄</a>
   {% endif %}
   {% for pid in f.exclude_persons %}<span class="chip neg">{{ icon('user') }}{{ _('not %(name)s', name=(person_names or {}).get(pid, _('Person #%(id)s', id=pid))) }}{{ x(f.without_exclude_person(pid)) }}</span>{% endfor %}
+  {% for pid in f.exclude_pets %}<span class="chip neg">{{ icon('paw') }}{{ _('not %(name)s', name=(pet_names or {}).get(pid, _('Pet #%(id)s', id=pid))) }}{{ x(f.without_exclude_pet(pid)) }}</span>{% endfor %}
   {% for k, v in f.exclude_props %}<span class="chip neg">{{ _('not %(name)s', name=(k | label) ~ ': ' ~ v | pretty(k)) }}{{ x(f.without_exclude_prop(k, v)) }}</span>{% endfor %}
   {% if f.date_from or f.date_to %}<span class="chip active">{{ icon('calendar') }}{{ f.date_from or '…' }} – {{ f.date_to or '…' }}{{ x(f.query_string(date_from=None, date_to=None)) }}</span>{% endif %}
   {% if f.folder %}<span class="chip active">{{ icon('folder') }}{{ f.folder }}{{ x(f.query_string(folder=None)) }}</span>{% endif %}

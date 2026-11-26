@@ -65,8 +65,8 @@ NOTES: dict[str, str] = {
     "Sidecars": "Name of the job that writes XMP sidecar files.",
     "folder picker|Start": "Folder picker: label of the top level (home folder and drives).",
     "sidebar|People": (
-        "Sidebar heading above Faces, Persons, Generations and Quiz; use a word that differs "
-        "from the 'Persons' page name below it."
+        "Sidebar heading above Faces, Persons, Animals, Generations and Quiz; use a word that "
+        "differs from the 'Persons' page name below it."
     ),
     "Up": "Folder picker: go to the parent folder.",
     "Open": "Folder picker: open the typed path.",
@@ -96,6 +96,18 @@ NOTES: dict[str, str] = {
         "Search example that shows that any language works: use a language other than the "
         "UI's, e.g. English 'Christmas with the family'."
     ),
+    "Pet": "Property name: the name of a pet (an animal) in the photo.",
+    "Pets": "Named animals (heading in the gallery filters and on the properties page).",
+    "Species": "Property name: the species of an animal in the photo (dog, cat, bird, …).",
+    "bear": "Animal species (property value).",
+    "%(species)s #%(id)s": "Name of an animal group that has no name yet, e.g. 'Dog #12'.",
+    "Ungrouped": "Button on the Animals page: animals that are in no group, with a count.",
+    "Removed": "Button on the Animals page: animals the user removed, with a count.",
+    "Move to": "Button: move the selected animal photos to the group with the typed name.",
+    "New group": "Button: move the selected animal photos into a new group.",
+    "Not this one": "Button: take the selected photos out of this animal's group.",
+    "Change": "Button: change the species of an animal group.",
+    "Boxes": "Checkbox under a photo: show the boxes around faces and animals.",
     "orientation|landscape": "Property value: picture orientation, wider than high.",
     "orientation|portrait": "Property value: picture orientation, higher than wide.",
     "orientation|square": "Property value: picture orientation.",
@@ -187,6 +199,7 @@ def python_messages() -> Iterator[tuple[str, str | None, str]]:
 
 def vocabulary_messages() -> Iterator[str]:
     """Display texts of the property keys and fixed values (vocabulary, derived, file)."""
+    from .animals import SPECIES
     from .derived import VALUES as DERIVED
     from .geo.places import PLACE_KEYS
     from .vlm.schema import Vocabulary
@@ -206,6 +219,8 @@ def vocabulary_messages() -> Iterator[str]:
         keys.setdefault(key, []).extend(v for v in values if v not in keys.get(key, []))
     for key in PLACE_KEYS:  # place names themselves are not translated
         keys.setdefault(key, [])
+    keys.setdefault("pet", [])  # pet names are not translated, the species are
+    keys.setdefault("animal", []).extend(v for v in SPECIES if v not in keys.get("animal", []))
     for key, values in keys.items():
         yield label_text(key)
         for value in values:

@@ -9,12 +9,13 @@ from ...db.session import Database
 from .base import Stage
 from .versions import (
     ages_stage_version,
+    animals_stage_version,
     embed_stage_version,
     faces_stage_version,
     vlm_stage_version,
 )
 
-STAGE_NAMES = ("faces", "ages", "vlm", "embed")
+STAGE_NAMES = ("faces", "ages", "animals", "vlm", "embed")
 
 
 def default_stage_factory(db: Database, settings: Settings) -> Callable[[str], Stage]:
@@ -29,6 +30,10 @@ def default_stage_factory(db: Database, settings: Settings) -> Callable[[str], S
             from .ages import AgesStage
 
             return AgesStage(db, settings)
+        if name == "animals":
+            from .animals import AnimalsStage
+
+            return AnimalsStage(db, settings)
         if name == "vlm":
             from .vlm import VlmStage
 
@@ -47,6 +52,7 @@ def stage_versions(settings: Settings) -> dict[str, str]:
     return {
         "faces": faces_stage_version(settings),
         "ages": ages_stage_version(settings),
+        "animals": animals_stage_version(settings),
         "vlm": vlm_stage_version(settings),
         "embed": embed_stage_version(settings),
     }
