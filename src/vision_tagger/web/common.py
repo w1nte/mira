@@ -202,6 +202,8 @@ JOB_TITLES = {
     "export": N_("Export"),
     "sidecars": N_("Sidecars"),
     "models": N_("Downloading AI models"),
+    "import": N_("Database import"),
+    "locations": N_("Location check"),
 }
 
 

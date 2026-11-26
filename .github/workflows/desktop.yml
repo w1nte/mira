@@ -1,0 +1,207 @@
+name: Desktop apps
+
+# Builds the desktop app with PyInstaller (packaging/vision-tagger.spec), checks it with its
+# self-test and packs it:
+#
+#   Windows  Mira-setup-<version>-<flavor>.exe (gpu: plus .bin files)   Inno Setup
+#   Linux    Mira-<version>-linux-x86_64-<flavor>.tar.gz (or .partNN)    with install.sh
+#   macOS    Mira-<version>-macos-arm64.pkg (Apple silicon, cpu)          pkgbuild/productbuild
+#
+#   cpu: runs everywhere; gpu: NVIDIA GPU, with CUDA and cuDNN (driver R580 or newer)
+#
+# Publishing a GitHub release (tag v1.2.3, v1.2.3-rc.1, ...; drafts don't count, pre-releases
+# do) builds everything with the tag as the version and attaches the files to the release.
+# Manual runs and the quick checks on pushes to main and on pull requests (cpu builds) keep the
+# files as workflow artifacts. packaging/plan.py decides which builds run.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Platform
+        type: choice
+        options: [all, windows, linux, macos]
+        default: all
+      flavor:
+        description: Flavour (macOS has cpu only)
+        type: choice
+        options: [both, cpu, gpu]
+        default: both
+  push:
+    branches: [main]
+    paths:
+      - packaging/**
+      - src/vision_tagger/desktop.py
+      - src/vision_tagger/cli.py
+      - pyproject.toml
+      - uv.lock
+      - .github/workflows/desktop.yml
+  pull_request:
+    paths:
+      - packaging/**
+      - src/vision_tagger/desktop.py
+      - src/vision_tagger/cli.py
+      - pyproject.toml
+      - uv.lock
+      - .github/workflows/desktop.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'release' }}
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Which builds
+        id: plan
+        shell: bash  # with pipefail: a refused choice fails here
+        env:
+          EVENT: ${{ github.event_name }}
+          PLATFORM: ${{ inputs.platform }}
+          FLAVOR: ${{ inputs.flavor }}
+        run: |
+          python3 packaging/plan.py --event "$EVENT" --platform "${PLATFORM:-all}" \
+            --flavor "${FLAVOR:-both}" | tee -a "$GITHUB_OUTPUT"
+
+  build:
+    name: ${{ matrix.name }}
+    needs: plan
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      TAG: ${{ github.event.release.tag_name }}
+      FLAVOR: ${{ matrix.flavor }}
+      CLI: ${{ matrix.cli }}
+      NAME: ${{ matrix.name }}
+      # macOS: insightface is compiled here; the bundled wheels need macOS 15 anyway
+      MACOSX_DEPLOYMENT_TARGET: "15.0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          # insightface is compiled from source and its wheel lands in uv's cache. The cache key
+          # names the OS family but not its version, so without the suffix a wheel built by
+          # ci.yml on ubuntu-latest (newer libstdc++) was bundled into the ubuntu-22.04 build,
+          # which then failed: GLIBCXX_3.4.32 not found. Releases build without any cache.
+          enable-cache: ${{ github.event_name != 'release' }}
+          cache-suffix: desktop-${{ matrix.runner }}
+          python-version: "3.12"
+
+      - name: The lock file is up to date
+        run: uv lock --check
+
+      - name: Version (the release tag, else pyproject.toml)
+        id: version
+        run: |
+          if [ -n "$TAG" ]; then
+            version=$(uv run --no-project python packaging/version.py "$TAG")
+          else
+            version=$(uv run --no-project python packaging/version.py --current)
+          fi
+          version=${version%$'\r'}  # Windows line end
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "### Mira $version ($NAME)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Free disk space (Linux gpu)
+        # the CUDA libraries are in the venv, the app folder and the archive
+        if: runner.os == 'Linux' && matrix.flavor == 'gpu'
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: Install the app and PyInstaller
+        run: uv sync --frozen --no-dev --no-editable --extra "$FLAVOR" --extra desktop --group packaging
+
+      - name: Build the app
+        run: uv run --no-sync pyinstaller packaging/vision-tagger.spec --noconfirm --clean
+
+      - name: Self-test of the built app
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          "$CLI" self-test | tee self-test.log
+          # the first line names the version (CR: Windows line ends)
+          if ! tr -d '\r' < self-test.log | grep -qx "Mira $VERSION"; then
+            echo "::error::the built app is not version $VERSION"
+            exit 1
+          fi
+          # the commands the installers use; without a library they do nothing
+          "$CLI" quit-app
+          "$CLI" migrate --desktop
+
+      - name: Setup program (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup -y --no-progress
+          }
+          & $iscc /DAppVersion=$env:VERSION /DFlavor=$env:FLAVOR packaging\windows\installer.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Archive with install.sh (Linux)
+        if: runner.os == 'Linux'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: packaging/linux/build_tarball.sh "$VERSION" "$FLAVOR"
+
+      - name: Installer package (macOS)
+        if: runner.os == 'macOS'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: packaging/macos/build_pkg.sh "$VERSION"
+
+      - name: Files
+        working-directory: dist/installer
+        run: |
+          for f in *; do
+            echo "- $f: $(wc -c < "$f") bytes"
+          done | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Mira-${{ steps.version.outputs.version }}-${{ matrix.name }}
+          path: dist/installer/*
+          if-no-files-found: error
+          compression-level: 0
+
+  publish:
+    name: Attach to the release
+    # also after a failed build: attach what was built (re-running the failed job adds the rest)
+    if: github.event_name == 'release' && !cancelled()
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: Mira-*
+          path: files
+          merge-multiple: true
+      - name: Upload the files to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          ls -l files
+          gh release upload "$TAG" files/* --repo "$GITHUB_REPOSITORY" --clobber

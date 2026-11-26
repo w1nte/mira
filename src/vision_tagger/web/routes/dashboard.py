@@ -221,6 +221,8 @@ def start_run(
         return redirect(request, "/pipeline", err=_("Select at least one stage."))
     if control.is_runner_alive(c.db) or c.runner.running:
         return redirect(request, "/pipeline", err=_("A run is already active."))
+    if c.importing:
+        return redirect(request, "/pipeline", err=_("Wait until the database import has finished."))
     lim = int(limit) if limit.strip().isdigit() and int(limit) > 0 else None
     c.forget_models_status()  # the run may download a model (vlm.auto_pull)
     c.runner.start(stages, batch_size=batch_size or None, limit=lim)

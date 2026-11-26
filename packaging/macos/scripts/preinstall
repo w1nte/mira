@@ -1,0 +1,19 @@
+#!/bin/sh
+# Runs as root before the macOS Installer replaces /Applications/Mira.app: asks a running Mira
+# to quit as if its window was closed (a running pipeline is paused and continues on the next
+# start). It runs as the logged-in user, whose library the app uses. Output goes to the
+# installer log; this never stops the installation.
+target=${2:-/Applications}
+cli=$target/Mira.app/Contents/MacOS/vision-tagger-cli
+user=$(stat -f%Su /dev/console 2>/dev/null || true)
+
+if [ ! -x "$cli" ]; then
+  echo "Mira preinstall: not installed yet"
+elif [ -z "$user" ] || [ "$user" = root ] || [ "$user" = loginwindow ]; then
+  echo "Mira preinstall: nobody is logged in, so Mira is not running"
+else
+  echo "Mira preinstall: closing Mira for $user if it is running"
+  cd / && /usr/bin/sudo -u "$user" -H "$cli" quit-app --timeout 120 2>&1
+  echo "Mira preinstall: quit-app exit code $?"
+fi
+exit 0

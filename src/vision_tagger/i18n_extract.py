@@ -63,6 +63,9 @@ NOTES: dict[str, str] = {
     "Index": "Name of the job that scans the photo folders (shown while it runs).",
     "Recluster": "Name of the job that groups the faces again.",
     "Sidecars": "Name of the job that writes XMP sidecar files.",
+    "Database import": "Name of the job that replaces the library with an imported database.",
+    "Location check": "Name of the job that checks whether the photo files are still there.",
+    "Database": "Sidebar link and page title: export and import of the library database.",
     "folder picker|Start": "Folder picker: label of the top level (home folder and drives).",
     "sidebar|People": (
         "Sidebar heading above Faces, Persons, Animals, Generations and Quiz; use a word that "

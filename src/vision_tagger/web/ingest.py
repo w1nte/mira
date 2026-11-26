@@ -66,9 +66,11 @@ class Ingest:
             try:
                 stats = Indexer(c.db, c.settings, should_stop=lambda: j.stop_requested).run()
                 return Lazy(  # made in the job thread: translated when shown
-                    "Uploads: %(new)s new photos, %(dup)s duplicates",
+                    "Uploads: %(new)s new photos, %(dup)s duplicates, %(moved)s missing photos "
+                    "found again",
                     new=stats.new,
                     dup=stats.duplicates,
+                    moved=stats.moved,
                 )
             finally:
                 done.set()

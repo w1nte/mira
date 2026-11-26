@@ -31,6 +31,7 @@ from .context import AppContext
 from .routes import (
     animals,
     dashboard,
+    database,
     faces,
     generations,
     geo,
@@ -84,6 +85,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "photos. Set VT_WEB__PASSWORD."
         )
     # Starlette runs the middleware added last first: language -> host/CSRF guard -> login
+    # -> library cookie (see routes.database)
+    app.middleware("http")(database.library_cookie())
     app.middleware("http")(auth.middleware())
     app.middleware("http")(guard(hosts))
 
@@ -106,6 +109,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         dashboard,
         models,
         importing,
+        database,
         faces,
         persons,
         animals,
@@ -137,8 +141,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     ensure_thumbnail(
                         c.settings.thumbs_dir, image_id, path, size, base_size=base_size
                     )
-            except (OSError, ValueError) as exc:
-                raise HTTPException(404, f"cannot read image: {exc}") from exc
+            except (OSError, ValueError):
+                return _unavailable()  # e.g. a missing file without a cached thumbnail
         return FileResponse(target, media_type="image/webp", headers=_cache_headers())
 
     @app.get("/media/image/{image_id}")
@@ -174,8 +178,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             with _GENERATE:
                 try:
                     im = load_image(path, max_px=c.settings.faces.max_image_px)
-                except OSError as exc:
-                    raise HTTPException(404, str(exc)) from exc
+                except OSError:
+                    return _unavailable()
                 scale = im.width / w if w else 1.0
                 ensure_face_crop(
                     c.settings.face_crops_dir,
@@ -236,3 +240,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
 def _cache_headers() -> dict[str, str]:
     return {"Cache-Control": "private, max-age=86400"}
+
+
+# shown instead of a broken image when the photo cannot be read (missing file, no cached copy)
+_PLACEHOLDER = (  # 4:3 with the icon in the middle: also fits square thumbnails (cropped)
+    '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480" viewBox="0 0 160 120">'
+    '<rect width="160" height="120" fill="#8e8e8e" fill-opacity=".16"/>'
+    '<g fill="none" stroke="#8e8e8e" stroke-width="2.5" stroke-linecap="round" '
+    'stroke-linejoin="round"><rect x="62" y="44" width="36" height="32" rx="4"/>'
+    '<path d="M62 69l10-9 8 7 6-5 12 11"/><path d="M58 40l44 40"/></g></svg>'
+)
+
+
+def _unavailable() -> Response:
+    """A neutral placeholder (status 404, never cached: the file may come back)."""
+    return Response(
+        _PLACEHOLDER,
+        status_code=404,
+        media_type="image/svg+xml",
+        headers={"Cache-Control": "no-store"},
+    )

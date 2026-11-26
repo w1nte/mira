@@ -1,7 +1,7 @@
 """The desktop app (local mode): Mira's web UI in a window of its own.
 
-``vision-tagger desktop``, ``vision-tagger-app`` and the Windows installer start the server on a
-free local port and show the UI in a native window:
+``vision-tagger desktop``, ``vision-tagger-app`` and the installed app (Windows, macOS, Linux)
+start the server on a free local port and show the UI in a native window:
 
 1. pywebview (WebView2 on Windows, WebKit on macOS, GTK/Qt on Linux), from the ``desktop`` extra;
 2. otherwise Edge, Chrome or Chromium in app mode (a window without tabs and address bar);
@@ -9,7 +9,8 @@ free local port and show the UI in a native window:
 
 Closing the window stops the server; a running pipeline is paused and continues on the next
 start. Starting the app again while it runs opens another window of the running app instead of
-a second server.
+a second server. ``Mira --quit`` (or ``vision-tagger-cli quit-app``) closes a running app the
+same way, e.g. before an installer replaces its files.
 
 Without a config file the app keeps its config and data in the user's application-data folder
 (``%LOCALAPPDATA%\\vision-tagger`` on Windows), so it also works from a read-only install folder.
@@ -104,6 +105,22 @@ def load_desktop_settings(config_file: Path | None = None) -> Settings:
     return config.load_settings(config_file)
 
 
+def find_desktop_settings() -> Settings | None:
+    """The settings the desktop app would use, without creating anything.
+
+    None: there is no library yet (the app never ran, so it has not written its config).
+    For installers and the command line (``migrate --desktop``, ``quit-app``).
+    """
+    from . import config
+
+    config_file = config._resolve_config_file()
+    if config_file is None:
+        config_file = user_data_dir() / "config.toml"
+        if not config_file.is_file():
+            return None
+    return config.load_settings(config_file)
+
+
 # --------------------------------------------------------------------------- server
 class _ActivityClock:
     """ASGI wrapper that remembers when the last HTTP request arrived."""
@@ -190,6 +207,7 @@ class WebviewWindow:
             raise WindowUnavailable("pywebview is not installed") from exc
         self.webview: Any = webview
         self.storage = storage
+        self.closing = threading.Event()
 
     def _create(self, url: str) -> None:
         self.webview.create_window(
@@ -206,15 +224,27 @@ class WebviewWindow:
         with contextlib.suppress(Exception):  # exports and animations are downloads
             self.webview.settings["ALLOW_DOWNLOADS"] = True
         self.storage.mkdir(parents=True, exist_ok=True)
+        if self.closing.is_set():
+            return
         self._create(url)
         try:
-            # not private: theme, language and the upload queue survive a restart
+            # not private: theme, language and the upload queue survive a restart. start()
+            # runs the GUI loop in this thread, the main thread, as macOS requires.
             self.webview.start(private_mode=False, storage_path=str(self.storage))
         except Exception as exc:  # e.g. no GUI toolkit on Linux
             raise WindowUnavailable(f"pywebview could not open a window: {exc}") from exc
 
     def another(self, url: str) -> None:
         self._create(url)
+
+    def quit(self) -> None:
+        """Close every window (from any thread); ``show`` then returns."""
+        self.closing.set()
+        for window in list(self.webview.windows):
+            try:
+                window.destroy()
+            except Exception:  # e.g. a window that never appeared
+                log.exception("could not close a window")
 
 
 def find_browser() -> str | None:
@@ -277,10 +307,14 @@ def _child_environment_applied() -> Iterator[None]:
         os.environ.update(saved)
 
 
-def _wait_until_idle(idle_seconds: IdleClock, limit: float, poll: float = 5.0) -> None:
+def _wait_until_idle(
+    idle_seconds: IdleClock, limit: float, stop: threading.Event, poll: float = 5.0
+) -> None:
+    """Until nobody used the app for ``limit`` seconds, Ctrl+C or ``stop`` (a quit request)."""
     with contextlib.suppress(KeyboardInterrupt):
         while idle_seconds() < limit:
-            time.sleep(poll)
+            if stop.wait(poll):
+                return
 
 
 class BrowserAppWindow:
@@ -294,22 +328,30 @@ class BrowserAppWindow:
         self.command = command
         self.profile = profile
         self.idle_limit = idle_limit
+        self.closing = threading.Event()
+        self._lock = threading.Lock()
+        self._procs: list[subprocess.Popen[bytes]] = []
 
-    def _launch(self, url: str) -> subprocess.Popen[bytes]:
-        return subprocess.Popen(
-            [
-                *self.command,
-                f"--app={url}",
-                f"--user-data-dir={self.profile}",
-                "--no-first-run",
-                "--no-default-browser-check",
-                f"--window-size={WINDOW_SIZE[0]},{WINDOW_SIZE[1]}",
-            ],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            env=child_environment(),
-        )
+    def _launch(self, url: str) -> subprocess.Popen[bytes] | None:
+        with self._lock:  # a quit request either sees this process or prevents it
+            if self.closing.is_set():
+                return None
+            proc = subprocess.Popen(
+                [
+                    *self.command,
+                    f"--app={url}",
+                    f"--user-data-dir={self.profile}",
+                    "--no-first-run",
+                    "--no-default-browser-check",
+                    f"--window-size={WINDOW_SIZE[0]},{WINDOW_SIZE[1]}",
+                ],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                env=child_environment(),
+            )
+            self._procs.append(proc)
+            return proc
 
     def show(self, url: str, idle_seconds: IdleClock) -> None:
         self.profile.mkdir(parents=True, exist_ok=True)
@@ -318,16 +360,30 @@ class BrowserAppWindow:
             proc = self._launch(url)
         except OSError as exc:
             raise WindowUnavailable(f"could not start {self.command[0]}: {exc}") from exc
+        if proc is None:
+            return  # asked to quit before the window opened
         with contextlib.suppress(KeyboardInterrupt):
             proc.wait()
+        if self.closing.is_set():
+            return
         if time.monotonic() - started < QUICK_EXIT_SECONDS:
             # the window went to a browser process that was already running (e.g. left over
             # from an earlier start): there is no process to wait for, so wait for idleness
             log.info("the window belongs to another browser process; quitting when idle")
-            _wait_until_idle(idle_seconds, self.idle_limit)
+            _wait_until_idle(idle_seconds, self.idle_limit, self.closing)
 
     def another(self, url: str) -> None:
         self._launch(url)
+
+    def quit(self) -> None:
+        """End the browser processes this app started; ``show`` then returns."""
+        with self._lock:
+            self.closing.set()
+            procs = list(self._procs)
+        for proc in procs:
+            if proc.poll() is None:
+                with contextlib.suppress(OSError):
+                    proc.terminate()
 
 
 class DefaultBrowser:
@@ -337,18 +393,23 @@ class DefaultBrowser:
 
     def __init__(self, idle_limit: float = IDLE_LIMIT_SECONDS) -> None:
         self.idle_limit = idle_limit
+        self.closing = threading.Event()
 
     def show(self, url: str, idle_seconds: IdleClock) -> None:
         with _child_environment_applied():
             opened = webbrowser.open(url)
         if not opened:
             raise WindowUnavailable("no web browser found")
-        print(f"{APP_NAME} runs on {url} - press Ctrl+C to quit")
-        _wait_until_idle(idle_seconds, self.idle_limit)
+        print(f"{APP_NAME} runs on {url} - press Ctrl+C to quit", flush=True)
+        _wait_until_idle(idle_seconds, self.idle_limit, self.closing)
 
     def another(self, url: str) -> None:
         with _child_environment_applied():
             webbrowser.open(url)
+
+    def quit(self) -> None:
+        """Stop waiting; the browser tab stays (it is not the app's to close)."""
+        self.closing.set()
 
 
 class Windows:
@@ -357,12 +418,17 @@ class Windows:
     def __init__(self, backends: list[Callable[[], Any]]) -> None:
         self.backends = backends
         self.active: Any = None
+        self.closing = threading.Event()
 
     def show(self, url: str, idle_seconds: IdleClock) -> None:
         for make in self.backends:
+            if self.closing.is_set():
+                return
             try:
                 backend = make()
                 self.active = backend
+                if self.closing.is_set():  # asked to quit while the backend was set up
+                    self._quit(backend)
                 backend.show(url, idle_seconds)
                 return
             except WindowUnavailable as exc:
@@ -370,8 +436,20 @@ class Windows:
         raise RuntimeError("found no way to show a window")
 
     def another(self, url: str) -> None:
-        if self.active is not None:
+        if self.active is not None and not self.closing.is_set():
             self.active.another(url)
+
+    def quit(self) -> None:
+        """Close the window(s) as if the user did: ``show`` returns and the app shuts down."""
+        self.closing.set()
+        if self.active is not None:
+            self._quit(self.active)
+
+    @staticmethod
+    def _quit(backend: Any) -> None:
+        stop = getattr(backend, "quit", None)
+        if stop is not None:
+            stop()
 
 
 def default_windows(settings: Settings) -> Windows:
@@ -383,17 +461,29 @@ def default_windows(settings: Settings) -> Windows:
             raise WindowUnavailable("no Edge, Chrome or Chromium found")
         return BrowserAppWindow([browser], storage / "browser")
 
-    return Windows([lambda: WebviewWindow(storage), browser_window, DefaultBrowser])
+    backends: list[Callable[[], Any]] = [browser_window, DefaultBrowser]
+    # the frozen Linux app has no GTK or Qt bindings for pywebview (they come with the system's
+    # Python, which it does not use): straight to the browser window, without failed attempts
+    if not (getattr(sys, "frozen", False) and sys.platform.startswith("linux")):
+        backends.insert(0, lambda: WebviewWindow(storage))
+    return Windows(backends)
 
 
 # --------------------------------------------------------------------------- one instance
 class InstanceLock:
-    """A second start opens a window of the running app instead of starting a second server."""
+    """One app per library: a second start opens a window of the running app instead.
+
+    The running app writes ``desktop.json`` (control port, a secret token, its process id) and
+    answers ``<token> open`` and ``<token> quit`` on the control port with ``ok``. After a quit
+    it keeps the connection open until it has shut down, so the asking side can wait for that.
+    Apps from before ``quit`` existed close the connection without an answer.
+    """
 
     def __init__(self, path: Path) -> None:
         self.path = path
         self.token = secrets.token_hex(16)
         self._server: socket.socket | None = None
+        self._waiting: list[socket.socket] = []  # quit requests, closed by finished()
 
     def notify_running(self) -> bool:
         """Ask a running app to open another window. False: no app is running."""
@@ -405,37 +495,65 @@ class InstanceLock:
         except (OSError, ValueError, KeyError, TypeError):
             return False
 
-    def listen(self, url: str, on_open: Callable[[], None]) -> None:
+    def listen(
+        self,
+        url: str,
+        on_open: Callable[[], None],
+        on_quit: Callable[[], None] | None = None,
+    ) -> None:
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server.bind(("127.0.0.1", 0))
         server.listen(4)
         self._server = server
-        info = {"url": url, "control": server.getsockname()[1], "token": self.token}
+        info = {
+            "url": url,
+            "control": server.getsockname()[1],
+            "token": self.token,
+            "pid": os.getpid(),
+        }
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text(json.dumps(info), encoding="utf-8")
         threading.Thread(
-            target=self._serve, args=(server, on_open), name="vt-instance", daemon=True
+            target=self._serve, args=(server, on_open, on_quit), name="vt-instance", daemon=True
         ).start()
 
-    def _serve(self, server: socket.socket, on_open: Callable[[], None]) -> None:
-        expected = f"{self.token} open".encode()
+    def _serve(
+        self,
+        server: socket.socket,
+        on_open: Callable[[], None],
+        on_quit: Callable[[], None] | None,
+    ) -> None:
+        token = self.token.encode()
         while True:
             try:
                 conn, _ = server.accept()
             except OSError:
                 return  # closed by release()
-            with conn:
-                try:
-                    conn.settimeout(3)
-                    if not hmac.compare_digest(conn.recv(256).strip(), expected):
-                        continue
-                    conn.sendall(b"ok\n")
-                except OSError:
-                    continue
+            keep = False
             try:
-                on_open()
+                conn.settimeout(3)
+                given, _, command = conn.recv(256).strip().partition(b" ")
+                if not hmac.compare_digest(given, token):
+                    continue
+                if command == b"open":
+                    action, what = on_open, "open another window"
+                elif command == b"quit" and on_quit is not None:
+                    action, what, keep = on_quit, "quit", True
+                else:
+                    continue  # unknown request: no answer, like an older app
+                conn.sendall(b"ok\n")
+            except OSError:
+                keep = False
+                continue
+            finally:
+                if keep:
+                    self._waiting.append(conn)  # closed once the app has shut down
+                else:
+                    conn.close()
+            try:
+                action()
             except Exception:
-                log.exception("could not open another window")
+                log.exception("could not %s", what)
 
     def release(self) -> None:
         if self._server is not None:
@@ -445,6 +563,100 @@ class InstanceLock:
         with contextlib.suppress(OSError, ValueError):
             if json.loads(self.path.read_text(encoding="utf-8")).get("token") == self.token:
                 self.path.unlink()
+
+    def finished(self) -> None:
+        """The app has shut down: tell whoever asked it to quit."""
+        while self._waiting:
+            with contextlib.suppress(OSError):
+                self._waiting.pop().close()
+
+
+#: results of :func:`quit_running`
+NOT_RUNNING, QUIT, UNSUPPORTED, STILL_RUNNING = "not running", "quit", "unsupported", "running"
+
+
+def quit_running(data_dir: Path, timeout: float = 120.0) -> str:
+    """Ask the app that runs on this library to quit, as if its window was closed.
+
+    A running pipeline is paused (it continues on the next start). Waits until the app has
+    exited, at most ``timeout`` seconds. Returns ``NOT_RUNNING``, ``QUIT``, ``UNSUPPORTED`` (the
+    running app is too old to quit on request) or ``STILL_RUNNING`` (it did not exit in time).
+    """
+    deadline = time.monotonic() + timeout
+    try:
+        info = json.loads((data_dir / "desktop.json").read_text(encoding="utf-8"))
+        port, token, pid = int(info["control"]), str(info["token"]), info.get("pid")
+    except (OSError, ValueError, KeyError, TypeError):
+        return NOT_RUNNING
+    if not isinstance(pid, int) or isinstance(pid, bool) or pid == os.getpid():
+        pid = None  # an older app wrote no pid; in tests the app runs in this process
+    elif _wait_for_exit(pid, 0):
+        return NOT_RUNNING  # desktop.json left behind by an app that crashed
+    try:
+        conn = socket.create_connection(("127.0.0.1", port), timeout=3)
+    except OSError:
+        return NOT_RUNNING  # nobody listens: left behind as well
+    with conn:
+        try:
+            conn.sendall(f"{token} quit\n".encode())
+            answer = conn.recv(16)
+        except OSError:
+            answer = b""
+        if not answer.startswith(b"ok"):
+            return UNSUPPORTED
+        while True:  # the app closes the connection once it is done, or by exiting
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return STILL_RUNNING
+            conn.settimeout(min(remaining, 1.0))
+            try:
+                if not conn.recv(16):
+                    break
+            except TimeoutError:
+                continue
+            except OSError:
+                break
+    if pid is not None and not _wait_for_exit(pid, max(0.0, deadline - time.monotonic())):
+        return STILL_RUNNING
+    return QUIT
+
+
+def _wait_for_exit(pid: int, timeout: float) -> bool:
+    """True once process ``pid`` has exited; False if it still runs after ``timeout``."""
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined]
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+        kernel32.WaitForSingleObject.restype = wintypes.DWORD
+        kernel32.WaitForSingleObject.argtypes = (wintypes.HANDLE, wintypes.DWORD)
+        kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+        handle = kernel32.OpenProcess(0x00100000, False, pid)  # SYNCHRONIZE
+        if not handle:
+            # ERROR_INVALID_PARAMETER: no such process; otherwise it exists but is not ours
+            return ctypes.get_last_error() == 87  # type: ignore[attr-defined]
+        try:
+            return kernel32.WaitForSingleObject(handle, int(timeout * 1000)) == 0
+        finally:
+            kernel32.CloseHandle(handle)
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return True
+        except PermissionError:
+            pass  # it exists, but belongs to another user
+        else:
+            with contextlib.suppress(OSError, IndexError):  # Linux: an unreaped zombie
+                stat = Path(f"/proc/{pid}/stat").read_text()
+                if stat.rpartition(")")[2].split()[0] == "Z":
+                    return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.1)
 
 
 # --------------------------------------------------------------------------- app
@@ -462,13 +674,16 @@ def run(settings: Settings, *, windows: Windows | None = None, port: int | None 
     server = AppServer(settings, port)
     server.start()
     windows = windows or default_windows(settings)
-    lock.listen(server.url, lambda: windows.another(server.url))
+    lock.listen(server.url, lambda: windows.another(server.url), windows.quit)
     try:
         windows.show(server.url, server.clock.idle_seconds)
     finally:
         lock.release()
         log.info("window closed; stopping (a running pipeline is paused)")
-        server.stop()
+        try:
+            server.stop()
+        finally:
+            lock.finished()
     return 0
 
 
@@ -521,6 +736,8 @@ def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
     if "--self-test" in args:
         return self_test()
+    if "--quit" in args:
+        return quit_app()
     try:
         settings = load_desktop_settings()
     except Exception as exc:
@@ -535,19 +752,47 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
 
+#: exit codes of ``Mira --quit`` and ``vision-tagger-cli quit-app``
+QUIT_EXIT_CODES = {NOT_RUNNING: 0, QUIT: 0, STILL_RUNNING: 1, UNSUPPORTED: 3}
+
+
+def quit_app(timeout: float = 120.0, echo: Callable[[str], Any] = print) -> int:
+    """Quit the desktop app running on the user's library (for installers); see QUIT_EXIT_CODES."""
+    try:
+        settings = find_desktop_settings()
+    except Exception as exc:
+        echo(f"could not read the settings: {exc}")
+        return 1
+    result = NOT_RUNNING if settings is None else quit_running(settings.data_dir, timeout)
+    echo(
+        {
+            NOT_RUNNING: f"{APP_NAME} is not running",
+            QUIT: f"{APP_NAME} has quit (a running pipeline is paused until the next start)",
+            STILL_RUNNING: f"{APP_NAME} is still running after {timeout:g} s",
+            UNSUPPORTED: f"the running {APP_NAME} is too old to quit on request: close it",
+        }[result]
+    )
+    return QUIT_EXIT_CODES[result]
+
+
 # --------------------------------------------------------------------------- self-test
 def self_test() -> int:
-    """Check a build (e.g. the frozen Windows app): imports, resources, migrations, pages.
+    """Check a build (e.g. the frozen app): imports, resources, migrations, pages.
 
-    Returns 0 when everything works. The installer workflow runs it before packaging.
+    Returns 0 when everything works. The desktop workflow runs it before packaging; the first
+    line, ``Mira <version>``, shows that the build has the release's version.
     """
     import tempfile
 
     import httpx
     from PIL import Image
 
+    from . import __version__
+
     def step(name: str) -> None:
         print(f"  ok  {name}", flush=True)
+
+    print(f"{APP_NAME} {__version__}", flush=True)
 
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
