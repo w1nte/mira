@@ -232,7 +232,7 @@ The installed desktop app looks for a new release once a day and tells you when 
 
 - **What is checked.** About 15 seconds after the start, and then every 24 hours while it runs,
   Mira asks GitHub for the newest release of this repository
-  (`https://api.github.com/repos/w1nte/vision-tagger/releases/latest`) and compares its version
+  (`https://api.github.com/repos/w1nte/mira/releases/latest`) and compares its version
   with the one you run. The answer is kept in `update-check.json` in the data folder, so
   starting the app often doesn't ask GitHub more than about once a day.
 - **What you see.** When a newer version exists, the sidebar shows *Update available: Mira

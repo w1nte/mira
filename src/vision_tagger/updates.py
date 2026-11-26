@@ -1,7 +1,7 @@
 """Update check: is there a newer Mira release on GitHub?
 
 The installed desktop app asks the GitHub API about once a day for the newest release of
-``w1nte/vision-tagger`` and shows a notice when it is newer than the running version. Nothing
+``w1nte/mira`` and shows a notice when it is newer than the running version. Nothing
 is downloaded or installed by itself: the user runs the new setup, which keeps the library and
 migrates its database.
 
@@ -40,7 +40,7 @@ from .config import Settings
 
 log = logging.getLogger(__name__)
 
-REPOSITORY = "w1nte/vision-tagger"
+REPOSITORY = "w1nte/mira"  # renamed from w1nte/vision-tagger; GitHub redirects the old name
 API_URL = "https://api.github.com"
 STATE_FILE = "update-check.json"
 FIRST_CHECK_DELAY = 15.0  # seconds after the start: the app is busy starting before that
@@ -227,7 +227,8 @@ def check(
     base = f"{api_url.rstrip('/')}/repos/{REPOSITORY}/releases"
     url = f"{base}?per_page=30" if include_prereleases else f"{base}/latest"
     try:
-        response = client.get(url, headers=headers(current), timeout=TIMEOUT)
+        # a renamed repository answers with a redirect (301) to its new address
+        response = client.get(url, headers=headers(current), timeout=TIMEOUT, follow_redirects=True)
     except httpx.HTTPError as exc:
         log.debug("update check: %s: %s", url, exc)
         return CheckResult(current, error=NETWORK)
