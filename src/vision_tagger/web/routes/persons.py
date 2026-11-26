@@ -56,22 +56,22 @@ def persons_overview(request: Request) -> Response:
                 select(PersonReference.person_id, func.count()).group_by(PersonReference.person_id)
             ).all()
         )
-        rows = []
-        for person in persons:
-            own = clusters.get(person.id, [])
-            estimate = None if person.birth_year else _birth_estimate(c, person.id)
-            rows.append(
-                {
-                    "person": person,
-                    "age": (today.year - person.birth_year) if person.birth_year else None,
-                    "estimate": estimate if estimate and estimate.confidence != "low" else None,
-                    "clusters": own,
-                    "faces": sum(cl.face_count for cl in own),
-                    "images": n_images.get(person.id, 0),
-                    "refs": n_refs.get(person.id, 0),
-                    "cover": own[0].cover_face_id if own else None,
-                }
-            )
+    rows = []
+    for person in persons:  # (cached) estimates use their own sessions
+        own = clusters.get(person.id, [])
+        estimate = None if person.birth_year else _birth_estimate(c, person.id)
+        rows.append(
+            {
+                "person": person,
+                "age": (today.year - person.birth_year) if person.birth_year else None,
+                "estimate": estimate if estimate and estimate.confidence != "low" else None,
+                "clusters": own,
+                "faces": sum(cl.face_count for cl in own),
+                "images": n_images.get(person.id, 0),
+                "refs": n_refs.get(person.id, 0),
+                "cover": own[0].cover_face_id if own else None,
+            }
+        )
     return render(request, "persons.html", rows=rows)
 
 

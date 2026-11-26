@@ -328,20 +328,15 @@ def _embeddings(
     return out
 
 
-#: ``person_id -> growup frames``; lets callers pass cached frames (see ``web.context``)
+#: ``person_id -> growup frames``; lets callers pass cached frames (see ``web.routes.generations``)
 FramesOf = Callable[[int], list[Frame]]
 
 
 def compare_at_same_age(
-    s: Session,
-    person_a: int,
-    person_b: int,
-    tolerance: int = 1,
-    frames_of: FramesOf | None = None,
+    s: Session, person_a: int, person_b: int, tolerance: int = 1
 ) -> list[AgePair]:
     """Faces of two persons at (about) the same age, with their similarity."""
-    frames = frames_of or (lambda pid: growup_frames(s, pid))
-    return pair_frames(s, frames(person_a), frames(person_b), tolerance)
+    return pair_frames(s, growup_frames(s, person_a), growup_frames(s, person_b), tolerance)
 
 
 def pair_frames(
