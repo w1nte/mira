@@ -5,6 +5,8 @@ Mira shows them on its "What's new" page, and each GitHub release uses its secti
 
 ## Unreleased
 
+## 1.5 - 2026-11-26
+
 ### New
 - Search understands "or": "Anna or Ben at the beach", "dogs or cats", "photos from 2019 or 2021", in every UI language, also without an LLM.
 - Gallery filters take alternatives: a filter section's "or" switch (or Ctrl+click on a value) gives "beach or mountains"; collections keep them.

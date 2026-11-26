@@ -186,7 +186,8 @@ def test_desktop_workflow():
     sync = next(i for i, s in enumerate(steps) if "uv sync --frozen" in s)
     assert lock_check < set_version < sync  # the version is set after the lock check
     assert "--no-editable" in steps[sync]
-    assert jobs["publish"]["permissions"] == {"contents": "write"}
+    # the upload, and the pull request that files a forgotten changelog section on main
+    assert jobs["publish"]["permissions"] == {"contents": "write", "pull-requests": "write"}
     assert "--clobber" in jobs["publish"]["steps"][-1]["run"]
     # compiled wheels (insightface) must come from the same runner image: the uv cache key
     # doesn't name the OS version, and ci.yml runs on a newer Ubuntu with a newer libstdc++

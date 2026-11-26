@@ -418,10 +418,11 @@ def test_the_page_is_linked_from_the_sidebar_and_the_environment_card(client):
 def test_the_publish_job_takes_its_notes_from_the_changelog():
     workflow = yaml.safe_load((ROOT / ".github/workflows/desktop.yml").read_text(encoding="utf-8"))
     job = workflow["jobs"]["publish"]
-    assert job["permissions"] == {"contents": "write"}  # nothing more than the upload needs
+    # the upload, plus the pull request that files a forgotten release section on main
+    assert job["permissions"] == {"contents": "write", "pull-requests": "write"}
     steps = job["steps"]
     checkout = next(i for i, s in enumerate(steps) if "actions/checkout" in s.get("uses", ""))
-    notes = next(i for i, s in enumerate(steps) if "packaging/changelog.py" in s.get("run", ""))
+    notes = next(i for i, s in enumerate(steps) if "changelog.py notes" in s.get("run", ""))
     upload = next(i for i, s in enumerate(steps) if "gh release upload" in s.get("run", ""))
     assert checkout < notes < upload
     step = steps[notes]
@@ -435,3 +436,112 @@ def test_the_publish_job_takes_its_notes_from_the_changelog():
     body_check = run.index("tr -d '[:space:]'")
     assert body_check < run.index("gh release edit")
     assert "exit 0" in run[body_check : run.index("packaging/changelog.py")]
+
+
+# --------------------------------------------------------------------------- the release step
+RELEASE_SAMPLE = """# Changelog
+
+Notes.
+
+## Unreleased
+
+### New
+- Search understands "or".
+
+### Fixed
+- The sidebar no longer scrolls sideways.
+
+## 1.4 - 2026-11-20
+
+### New
+- Update check.
+"""
+
+
+def test_rendering_a_valid_changelog_gives_it_back_unchanged():
+    """The release step rewrites the file from its parsed releases: that must not reformat."""
+    for text in (BUNDLED.read_text(encoding="utf-8"), RELEASE_SAMPLE):
+        rendered = notes_script.render(notes_script.intro(text), changelog.parse(text))
+        assert rendered == text
+
+
+def test_the_release_step_files_unreleased_under_the_tag():
+    text, message = notes_script.cut_release(RELEASE_SAMPLE, "v1.5", date(2026, 11, 26))
+    assert message == "filed 2 entries under 1.5 - 2026-11-26"
+    assert changelog.validate(text) == []
+    releases = changelog.parse(text)
+    assert [r.version for r in releases] == ["Unreleased", "1.5", "1.4"]  # "v" dropped
+    assert releases[0].items == 0
+    assert releases[1].sections == {
+        "New": ['Search understands "or".'],
+        "Fixed": ["The sidebar no longer scrolls sideways."],
+    }
+    # once is enough: a tag with a section changes nothing
+    again, message = notes_script.cut_release(text, "1.5", date(2026, 11, 27))
+    assert again == text and "already has a section" in message
+
+
+def test_the_release_step_keeps_entries_added_after_the_release():
+    """main may already have new entries: only those of the released commit move."""
+    released = RELEASE_SAMPLE
+    main = RELEASE_SAMPLE.replace(
+        '- Search understands "or".\n', '- Search understands "or".\n- NSFW photos are covered.\n'
+    )
+    text, _ = notes_script.cut_release(main, "1.5", date(2026, 11, 26), entries_from=released)
+    unreleased, release_15 = changelog.parse(text)[:2]
+    assert unreleased.sections == {"New": ["NSFW photos are covered."]}
+    assert release_15.sections["New"] == ['Search understands "or".']
+
+
+def test_the_release_step_with_nothing_unreleased_changes_nothing():
+    empty = (
+        "# Changelog\n\nNotes.\n\n## Unreleased\n\n"
+        "## 1.4 - 2026-11-20\n\n### New\n- Update check.\n"
+    )
+    text, message = notes_script.cut_release(empty, "1.5", date(2026, 11, 26))
+    assert text == empty and "nothing under Unreleased" in message
+
+
+def test_a_patch_of_an_older_line_goes_below_the_newer_releases():
+    newer = RELEASE_SAMPLE.replace(
+        "## 1.4 - 2026-11-20", "## 1.5 - 2026-11-27\n\n### New\n- X.\n\n## 1.4 - 2026-11-20"
+    )
+    text, _ = notes_script.cut_release(newer, "1.4.1", date(2026, 11, 26))
+    assert [r.version for r in changelog.parse(text)] == ["Unreleased", "1.5", "1.4.1", "1.4"]
+    assert changelog.validate(text) == []
+    # dated after the newer 1.5 the format can't hold it: unchanged, with a warning, no crash
+    # (the build goes on; the notes fall back to Unreleased)
+    text, message = notes_script.cut_release(newer, "1.4.1", date(2026, 11, 28))
+    assert text == newer and "left unchanged" in message
+
+
+def test_the_release_command_writes_the_file(tmp_path, capsys):
+    path = tmp_path / "CHANGELOG.md"
+    path.write_text(RELEASE_SAMPLE, encoding="utf-8")
+    argv = ["--file", str(path), "release", "1.5", "--date", "2026-11-26"]
+    assert notes_script.main(argv) == 0
+    assert "## 1.5 - 2026-11-26" in path.read_text(encoding="utf-8")
+    assert "filed 2 entries" in capsys.readouterr().out
+    released = tmp_path / "released.md"
+    released.write_text("not a changelog", encoding="utf-8")
+    argv = ["--file", str(path), "release", "1.6", "--entries-from", str(released)]
+    assert notes_script.main(argv) == 1  # a broken source is refused
+
+
+def test_the_workflow_files_the_release_in_builds_notes_and_main():
+    """Even when the release step was forgotten, the app, the notes and main get the section."""
+    workflow = yaml.safe_load((ROOT / ".github/workflows/desktop.yml").read_text(encoding="utf-8"))
+    build = [s.get("run", "") for s in workflow["jobs"]["build"]["steps"]]
+    cut = next(i for i, run in enumerate(build) if "changelog.py release" in run)
+    install = next(i for i, run in enumerate(build) if "uv sync --frozen" in run)
+    assert cut < install  # the install copies the package, changelog included
+    publish = workflow["jobs"]["publish"]
+    assert publish["permissions"] == {"contents": "write", "pull-requests": "write"}
+    runs = [s.get("run", "") for s in publish["steps"]]
+    cut = next(i for i, run in enumerate(runs) if 'changelog.py release "$TAG"' in run)
+    notes = next(i for i, run in enumerate(runs) if "changelog.py notes" in run)
+    pull = next(i for i, run in enumerate(runs) if "gh pr create" in run)
+    assert cut < notes < pull
+    assert "--entries-from" in runs[pull] and "released-changelog.md" in runs[cut]
+    for step in (cut, pull):  # neither may keep the files from being attached
+        assert publish["steps"][step].get("continue-on-error") is True
