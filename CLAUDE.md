@@ -96,6 +96,29 @@ migration makes the app refuse to start, or corrupts existing data.
 - New databases are created from the models (`create_all`) and stamped with the head revision.
   Existing outdated databases are refused with a message to run `vision-tagger migrate`.
 
+## Config migrations (mandatory)
+
+Users keep their `config.toml` across versions too. `vision-tagger init` and the desktop app
+write it from `resources/config.example.toml`, so whatever the example sets is frozen in their
+files.
+
+- A change that makes existing config files wrong or stale ships with a config migration in the
+  same commit. That covers a renamed, moved or removed key, a changed meaning or unit, or a
+  default users have pinned because the example config set it.
+- Steps live in `src/vision_tagger/config_migrate.py`:
+  1. Write `_vN(doc)`, which edits the tomlkit document in place and returns a note or `None`.
+  2. Register it in `STEPS`.
+  3. Bump `CONFIG_VERSION`.
+  4. Set `config_version = N` in the example config.
+  5. Add a test to `tests/test_config_migrate.py`.
+- Files without `config_version` are version 1. Loading runs the pending steps and rewrites the
+  file atomically after a backup (`config.toml.bak-v<old>-<time>`). A file that can't be written
+  is migrated in memory.
+- Never edit a released step, and don't import settings classes in a step: steps are frozen
+  in time, like database migrations.
+- Prefer leaving settings out of the example config (commented out) when their default may
+  change; then nothing needs migrating.
+
 ## Code conventions
 
 - Names: users see "Mira" (`vision_tagger.APP_NAME`, `app_name` in templates). Technical names

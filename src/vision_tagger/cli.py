@@ -68,6 +68,33 @@ def _db():
     return db
 
 
+def _report_config() -> bool:
+    """Say what loading config.toml did; True if it is outdated and could not be updated."""
+    from . import config as config_mod
+    from .config_migrate import CONFIG_VERSION, load_config
+
+    path = config_mod._resolve_config_file()
+    if path is None:
+        typer.echo("config:   none (defaults and VT_ environment variables)")
+        return False
+    done = config_mod.last_config_migration
+    if done is not None and done.path == path:
+        if not done.written:
+            typer.echo(
+                f"config:   {path}: version {done.before}, could not be updated: {done.error}"
+            )
+            return True
+        typer.echo(f"config:   {path}: version {done.before} -> {done.after}")
+        typer.echo(f"backup:   {done.backup}")
+        for note in done.notes:
+            typer.echo(f"          - {note}")
+        return False
+    _data, now = load_config(path, write=False)
+    state = "up to date" if now.before == CONFIG_VERSION else f"newest: {CONFIG_VERSION}"
+    typer.echo(f"config:   {path}: version {now.before}, {state}")
+    return now.before < CONFIG_VERSION
+
+
 @app.command()
 def migrate(
     check: Annotated[
@@ -81,7 +108,11 @@ def migrate(
         typer.Option("--to", help="Target revision (default: newest). Older = downgrade."),
     ] = None,
 ) -> None:
-    """Upgrade the database schema to this version of vision-tagger."""
+    """Upgrade the database schema (and config.toml) to this version of vision-tagger.
+
+    An outdated config.toml is updated whenever it is loaded, also with --check.
+    """
+    config_outdated = _report_config()
     from .db.migrate import (
         MigrationError,
         downgrade,
@@ -103,7 +134,7 @@ def migrate(
     typer.echo(f"database: {settings.db_path}")
     typer.echo(f"schema:   {current}  ->  newest: {status.head}")
     if check:
-        if status.needs_upgrade:
+        if status.needs_upgrade or config_outdated:
             typer.echo("an upgrade is needed: run `vision-tagger migrate`")
             raise typer.Exit(1)
         typer.echo("up to date" if status.state == "current" else "new database")

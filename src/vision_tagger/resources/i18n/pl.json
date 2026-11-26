@@ -929,6 +929,7 @@
   "Nothing to export or no target folder.": "Nic do eksportu lub brak folderu docelowego.",
   "Nothing to show yet. Name some people (Faces or Quiz) – the more photos from different years, the better.": "Na razie nie ma nic do pokazania. Nazwij kilka osób (Twarze lub Quiz) – im więcej zdjęć z różnych lat, tym lepiej.",
   "Objects": "Obiekty",
+  "off in config.toml": "wyłączone w config.toml",
   "office": "biuro",
   "office equipment": "sprzęt biurowy",
   "ok": "OK",

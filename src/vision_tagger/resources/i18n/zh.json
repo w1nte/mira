@@ -819,6 +819,7 @@
   "Nothing to export or no target folder.": "没有可导出的内容，或未指定目标文件夹。",
   "Nothing to show yet. Name some people (Faces or Quiz) – the more photos from different years, the better.": "暂无内容。请为一些人命名（在“人脸”或“测验”中），不同年份的照片越多越好。",
   "Objects": "物体",
+  "off in config.toml": "已在 config.toml 中关闭",
   "office": "办公室",
   "office equipment": "办公设备",
   "ok": "正常",
