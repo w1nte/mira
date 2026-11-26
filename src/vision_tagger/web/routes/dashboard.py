@@ -55,7 +55,9 @@ def status_context(request: Request) -> dict[str, Any]:
     alive = c.runner.running or control.is_runner_alive(c.db)
     return {
         "counts": counts,
-        "stages": [st for st in STAGE_NAMES if st in c.settings.pipeline.stages]
+        # every stage; the ones config.toml turns off are shown unticked and can still be run
+        "stages": list(STAGE_NAMES),
+        "enabled_stages": [st for st in STAGE_NAMES if st in c.settings.pipeline.stages]
         or list(STAGE_NAMES),
         "outdated": outdated,
         "ctrl": ctrl,
@@ -198,6 +200,8 @@ def start_run(
         return redirect(request, "/pipeline", err=_("Select at least one stage."))
     if control.is_runner_alive(c.db) or c.runner.running:
         return redirect(request, "/pipeline", err=_("A run is already active."))
+    if c.importing:
+        return redirect(request, "/pipeline", err=_("Wait until the database import has finished."))
     lim = int(limit) if limit.strip().isdigit() and int(limit) > 0 else None
     c.runner.start(stages, batch_size=batch_size or None, limit=lim)
     return redirect(
@@ -258,6 +262,21 @@ def change_state(request: Request, state: str) -> Response:
             request,
             "/pipeline",
             msg=_("Clustering started.") if ok else None,
+            err=None if ok else _("Another job is running."),
+        )
+    if state == "regroup-animals":
+        full = request.query_params.get("full") == "1"
+
+        def regroup_job(_j: Job) -> str:
+            from ...pipeline.stages.animals import group_animals
+
+            return group_animals(c.db, c.settings, full=full)
+
+        ok = c.jobs.start("regroup", regroup_job)
+        return redirect(
+            request,
+            "/pipeline",
+            msg=_("Grouping of the animals started.") if ok else None,
             err=None if ok else _("Another job is running."),
         )
     if state == "import-references":

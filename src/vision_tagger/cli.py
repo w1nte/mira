@@ -6,6 +6,7 @@ import logging
 import shutil
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated
 
@@ -93,6 +94,31 @@ class _Report:
                 f.write(message + "\n")
 
 
+def _report_config(say: Callable[[str], None] = typer.echo) -> bool:
+    """Say what loading config.toml did; True if it is outdated and could not be updated."""
+    from . import config as config_mod
+    from .config_migrate import CONFIG_VERSION, load_config
+
+    path = config_mod._resolve_config_file()
+    if path is None:
+        say("config:   none (defaults and VT_ environment variables)")
+        return False
+    done = config_mod.last_config_migration
+    if done is not None and done.path == path:
+        if not done.written:
+            say(f"config:   {path}: version {done.before}, could not be updated: {done.error}")
+            return True
+        say(f"config:   {path}: version {done.before} -> {done.after}")
+        say(f"backup:   {done.backup}")
+        for note in done.notes:
+            say(f"          - {note}")
+        return False
+    _data, now = load_config(path, write=False)
+    state = "up to date" if now.before == CONFIG_VERSION else f"newest: {CONFIG_VERSION}"
+    say(f"config:   {path}: version {now.before}, {state}")
+    return now.before < CONFIG_VERSION
+
+
 @app.command()
 def migrate(
     check: Annotated[
@@ -114,10 +140,11 @@ def migrate(
         ),
     ] = False,
 ) -> None:
-    """Upgrade the database schema to this version of vision-tagger.
+    """Upgrade the database schema (and config.toml) to this version of vision-tagger.
 
-    Exit codes: 0 done or nothing to do, 1 an upgrade is needed (--check), 3 the database is
-    from a newer version, 4 the migration failed (the database is unchanged).
+    An outdated config.toml is updated whenever it is loaded, also with --check. Exit codes:
+    0 done or nothing to do, 1 an upgrade is needed (--check), 3 the database is from a newer
+    version, 4 the migration failed (the database is unchanged).
     """
     import traceback
 
@@ -150,6 +177,7 @@ def migrate(
         report = _Report(None)
     url = f"sqlite:///{settings.db_path.as_posix()}"
     report(f"database: {settings.db_path}")
+    config_outdated = _report_config(report)
     try:
         engine = migration_engine(url)
         try:
@@ -163,7 +191,7 @@ def migrate(
         if status.state == "newer":
             raise status.too_new(settings.db_path)
         if check:
-            if status.needs_upgrade:
+            if status.needs_upgrade or config_outdated:
                 report("an upgrade is needed: run `vision-tagger migrate`")
                 raise typer.Exit(MIGRATE_NEEDED)
             report("up to date" if status.state == "current" else "new database")
@@ -205,6 +233,104 @@ def quit_app(
     from .desktop import quit_app as quit_desktop_app
 
     raise typer.Exit(quit_desktop_app(timeout, echo=typer.echo))
+
+
+db_app = typer.Typer(
+    help="Export or import the whole library database (backup, another computer).",
+    no_args_is_help=True,
+)
+app.add_typer(db_app, name="db")
+
+
+@db_app.command("export")
+def db_export(
+    target: Annotated[
+        Path,
+        typer.Argument(help="Target file or folder (default: vision-tagger-<date>.sqlite3 here)."),
+    ] = Path(),
+    force: Annotated[bool, typer.Option("--force", help="Overwrite an existing file.")] = False,
+) -> None:
+    """Write a consistent copy of the database (works while Mira and the pipeline run)."""
+    from .db import transfer
+
+    if target.is_dir():
+        target = target / transfer.export_name()
+    if target.exists() and not force:
+        typer.echo(f"error: {target} exists (use --force to overwrite)", err=True)
+        raise typer.Exit(1)
+    db = _db()
+    tmp = target.with_name(f".{target.name}.tmp")
+    transfer.remove_file(tmp)
+    try:
+        transfer.export_database(db, tmp)
+        tmp.replace(target)
+    except transfer.TransferError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1) from None
+    finally:
+        transfer.remove_file(tmp)
+        db.dispose()
+    typer.echo(f"exported {target} ({target.stat().st_size / 1024**2:.1f} MB)")
+
+
+@db_app.command("import")
+def db_import(
+    source: Annotated[Path, typer.Argument(help="Database file exported by Mira.")],
+) -> None:
+    """Replace the library with an exported database (a backup of the current one is kept).
+
+    Close the web UI first. Afterwards the location of every photo is checked; photos that are
+    not found are flagged as missing until a scan of their new folder links them again.
+    """
+    from .db import transfer
+    from .indexer import Indexer
+
+    if not source.is_file():
+        typer.echo(f"error: not a file: {source}", err=True)
+        raise typer.Exit(1)
+    settings = _settings()
+    db = _db()
+    try:
+        reason = transfer.busy_reason(db)
+        if reason is not None:
+            typer.echo(f"error: {reason}", err=True)
+            raise typer.Exit(1)
+        tmp = transfer.temp_file(settings, "import")
+        shutil.copyfile(source, tmp)  # the given file is never changed
+
+        def before_replace() -> None:
+            busy = transfer.busy_reason(db)
+            if busy is not None:
+                raise transfer.TransferError(busy)
+
+        try:
+            result = transfer.import_database(
+                db,
+                settings,
+                tmp,
+                before_replace=before_replace,
+                progress=lambda message: typer.echo(f"  {message}"),
+            )
+        except transfer.TransferError as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(1) from None
+        finally:
+            transfer.remove_file(tmp)
+        typer.echo(f"imported {result.images} photos (schema {result.revision})")
+        if result.backup:
+            typer.echo(f"backup:  {result.backup}")
+        typer.echo("checking where the photos are…")
+        missing = Indexer(db, settings).check_locations()
+        typer.echo(f"missing: {missing} of {result.images} photos not found on this computer")
+        if result.roots:
+            typer.echo(f"library folders: {', '.join(result.roots)}")
+        if missing:
+            typer.echo(
+                "scan the folders where the photos are now (`vision-tagger index FOLDER`): "
+                "they are linked again by perceptual hash, with their faces and properties"
+            )
+    finally:
+        db.dispose()
 
 
 @app.command()
@@ -250,6 +376,8 @@ def index(
         f"moved {stats.moved}, updated {stats.updated}, unchanged {stats.unchanged}, "
         f"missing {stats.missing}, errors {stats.errors}, thumbnails {stats.thumbnails}"
     )
+    if stats.places:
+        typer.echo(stats.places)
     for sample in stats.error_samples[:10]:
         typer.echo(f"  ! {sample}", err=True)
 
@@ -257,7 +385,8 @@ def index(
 @app.command()
 def run(
     stage: Annotated[
-        list[str] | None, typer.Option("--stage", "-s", help="faces / vlm (repeatable)")
+        list[str] | None,
+        typer.Option("--stage", "-s", help="faces / ages / animals / vlm / embed (repeatable)"),
     ] = None,
     batch_size: Annotated[int | None, typer.Option("--batch-size", "-b")] = None,
     limit: Annotated[
@@ -348,6 +477,18 @@ def cluster(
 
 
 @app.command()
+def pets(
+    full: Annotated[
+        bool, typer.Option(help="Dissolve the automatic groups first (named pets stay).")
+    ] = False,
+) -> None:
+    """(Re-)group the detected animals into pets and update their properties."""
+    from .pipeline.stages.animals import group_animals
+
+    typer.echo(group_animals(_db(), _settings(), full=full))
+
+
+@app.command()
 def refs() -> None:
     """Import the reference DB (references/<Person>/*.jpg) and name matching clusters."""
     from .faces.references import import_references
@@ -359,6 +500,24 @@ def refs() -> None:
     for f in stats.no_face:
         typer.echo(f"  no face found: {f}", err=True)
     typer.echo(cluster_and_match(db, _settings(), full=False))
+
+
+@app.command()
+def places(
+    refresh: Annotated[
+        bool,
+        typer.Option(
+            "--refresh", help="Regroup all photos and rename every place you did not name."
+        ),
+    ] = False,
+) -> None:
+    """Group GPS-tagged photos into named places (also runs after every index scan)."""
+    from .geo.places import find_places
+
+    result = find_places(
+        _db(), _settings(), refresh=refresh, progress=lambda m: typer.echo(f"  {m}")
+    )
+    typer.echo(result.message)
 
 
 @app.command("retry-errors")

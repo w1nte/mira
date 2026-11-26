@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Missing files') }}{% endblock %}
+{% block main_class %}wide{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <nav class="crumbs" aria-label="{{ _('Breadcrumb') }}"><a href="/database">{{ _('Database') }}</a></nav>
+    <h1>{{ _('Missing files') }} <small>{{ ngettext('%(num)d photo', '%(num)d photos', total) }}</small></h1>
+  </div>
+  <form method="post" action="/database/check"><button {{ 'disabled' if running }}>{{ icon('refresh', 'sm') }}{{ _('Check again') }}</button></form>
+</div>
+
+<div id="db-status">{% include "partials/database_status.html" %}</div>
+
+{% if rows %}
+<section class="card db-hint">
+  {{ icon('info') }}
+  <div>
+    <p>{{ _('These photos are not where Mira last saw them – for example because the database comes from another computer, or a drive is not connected.') }}</p>
+    {% if remote %}
+    <p>{{ _('Upload the photos again: Mira recognises them by their content (perceptual hash) and links them to their faces, names and properties instead of adding them twice.') }} <a href="/import">{{ _('Import photos') }}{{ icon('arrow-right', 'sm') }}</a></p>
+    {% else %}
+    <p>{{ _('Add or scan the folder where the photos are now: Mira recognises them by their content (perceptual hash) and links them again, with all faces, names and properties.') }} <a href="/import">{{ _('Import photos') }}{{ icon('arrow-right', 'sm') }}</a></p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="card flush-table">
+  <div class="table-wrap"><table class="missing-table">
+    <tr>
+      <th><span class="sr-only">{{ _('Thumbnail') }}</span></th>
+      <th>{{ _('File') }}</th>
+      <th>{{ _('Folder') }}</th>
+      <th>{{ _('Recorded') }}</th>
+      <th>{{ _('Faces') }}</th>
+    </tr>
+    {% for r in rows %}
+    <tr>
+      <td class="missing-thumb"><a class="thumb" href="/images/{{ r.id }}"><img loading="lazy" src="/media/thumb/{{ r.id }}?size=96" alt=""></a></td>
+      <td><a href="/images/{{ r.id }}">{{ r.filename }}</a></td>
+      <td class="missing-folder"><span class="mono" title="{{ r.path }}">{{ r.folder }}</span></td>
+      <td class="nowrap">{{ r.date | dt('%Y-%m-%d') }}</td>
+      <td>{% if r.faces %}{{ ngettext('%(num)d face', '%(num)d faces', r.faces) }}{% if r.persons %} · {{ r.persons | join(', ') }}{% endif %}{% else %}<span class="muted">–</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+</section>
+{% if pages > 1 %}
+<nav class="pager" aria-label="{{ _('Pages') }}">
+  {% if page > 1 %}<a class="btn" href="?page={{ page - 1 }}">{{ icon('chevron-left', 'sm') }}{{ _('Previous') }}</a>{% endif %}
+  <span class="muted">{{ _('Page %(page)s of %(pages)s', page=page, pages=pages) }}</span>
+  {% if page < pages %}<a class="btn" href="?page={{ page + 1 }}">{{ _('Next') }}{{ icon('chevron-right', 'sm') }}</a>{% endif %}
+</nav>
+{% endif %}
+{% else %}
+<section class="card empty">
+  {{ icon('check', 'lg') }}
+  <p>{{ _('No missing files. Every photo is where Mira expects it.') }}</p>
+</section>
+{% endif %}
+{% endblock %}

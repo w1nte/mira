@@ -18,6 +18,7 @@ data/
 
 # personal configuration and reference photos
 config.toml
+config.toml.bak-*
 .env
 references/
 

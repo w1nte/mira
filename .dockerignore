@@ -10,6 +10,7 @@ __pycache__
 data
 references
 config.toml
+config.toml.bak-*
 .env
 *.sqlite3
 *.sqlite3-*

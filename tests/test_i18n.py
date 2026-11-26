@@ -15,6 +15,7 @@ from vision_tagger.i18n import Lazy, LazyJoin, _, _n
 from vision_tagger.indexer import Indexer
 from vision_tagger.pipeline.runner import PipelineRunner
 from vision_tagger.pipeline.stages.ages import AgesStage
+from vision_tagger.pipeline.stages.animals import AnimalsStage
 from vision_tagger.pipeline.stages.embed import EmbedStage
 from vision_tagger.pipeline.stages.faces import FacesStage
 from vision_tagger.pipeline.stages.vlm import VlmStage
@@ -25,7 +26,13 @@ from vision_tagger.web.common import STATIC_DIR, TEMPLATES_DIR, label, pretty, t
 from vision_tagger.web.context import Job
 
 from .conftest import make_image
-from .helpers import FakeAgeEstimator, add_face, add_image, person_centers
+from .helpers import (
+    FakeAgeEstimator,
+    FakeAnimalAnalyzer,
+    add_face,
+    add_image,
+    person_centers,
+)
 from .test_faces_stage import FakeAnalyzer
 
 DE = {"Accept-Language": "de-DE,de;q=0.9,en;q=0.5"}
@@ -63,6 +70,7 @@ def web(settings, photos):
                 ctx.db, settings, analyzer=FakeAnalyzer(), age_estimator=FakeAgeEstimator()
             ),
             "ages": AgesStage(ctx.db, settings, estimator=FakeAgeEstimator()),
+            "animals": AnimalsStage(ctx.db, settings, analyzer=FakeAnimalAnalyzer()),
             "vlm": VlmStage(ctx.db, settings, backend=FakeBackend(Vocabulary.load())),
             "embed": EmbedStage(ctx.db, settings, backend=FakeBackend(Vocabulary.load())),
         }
@@ -130,6 +138,9 @@ PAGES = [
     "/import",
     "/pipeline",
     "/collections",
+    "/database",
+    "/database/missing",
+    "/partials/database-status",
     "/partials/status",
     "/partials/health",
     "/partials/activity",

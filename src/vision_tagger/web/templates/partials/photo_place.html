@@ -1,0 +1,4 @@
+{# Place and GPS rows of the photo details (image.html). Expects img (with lat/lon), place. #}
+{% if place %}<dt>{{ _('Place') }}</dt><dd><a href="/images?place={{ place.id }}" title="{{ _('All photos of this place') }}">{{ icon('pin', 'sm') }} {{ place.name }}</a>{% if place.user_named %} <span class="badge">{{ _('named by you') }}</span>{% endif %}</dd>{% endif %}
+<dt>GPS</dt><dd><span class="mono">{{ '%.5f' | format(img.lat) }}, {{ '%.5f' | format(img.lon) }}</span>
+  <a class="nowrap" href="/map?photo={{ img.id }}">{{ icon('map', 'sm') }} {{ _('Open on map') }}</a></dd>

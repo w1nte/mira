@@ -231,6 +231,20 @@ JS_KEYS = [
 ]
 
 
+# strings used by static/map.js (handed to the map page as JSON)
+MAP_JS_KEYS = [
+    "%(n)s photos",
+    "1 photo",
+    "Show photos",
+    "Name",
+    "Save",
+    "Empty: automatic name",
+    "Named by you",
+    "Could not load the map data.",
+    "Map tiles could not be loaded – showing photos without a background map.",
+]
+
+
 def js_strings(keys: list[str] | None = None) -> dict[str, str]:
     """Translations the browser scripts need (current language)."""
     return {k: gettext(k) for k in (keys or JS_KEYS)}

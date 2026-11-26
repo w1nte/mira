@@ -8,6 +8,7 @@
   <div class="row">
     <button type="button" class="filters-btn" @click="filtersOpen = !filtersOpen" :aria-expanded="filtersOpen" aria-controls="filters">{{ _('Filters') }}</button>
     <a class="btn" href="/overview?{{ f.query_string() }}">{{ icon('chart', 'sm') }}{{ _('Timeline') }}</a>
+    <a class="btn" href="/map{{ '?' ~ f.query_string() if not f.is_empty }}">{{ icon('map', 'sm') }}{{ _('Map') }}</a>
     <a class="btn" href="/overview/table?{{ f.query_string() }}">{{ _('Table') }}</a>
     <a class="btn" href="/properties?{{ f.query_string() }}">{{ icon('tag', 'sm') }}{{ _('Properties') }}</a>
     {% if not f.is_empty %}
@@ -98,6 +99,23 @@
       </div>
       {% endif %}
     </section>
+
+    {% if all_pets %}
+    <section>
+      <h3>{{ _('Pets') }}</h3>
+      <form method="get" action="/images/add" class="row nowrap">
+        {% for name, value in f.to_params() %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+        <select name="pet" aria-label="{{ _('Pet') }}">{% for p in all_pets %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}</select>
+        <button name="mode" value="include" class="icon-btn bordered" title="{{ _('Must contain') }}" aria-label="{{ _('Must contain') }}">{{ icon('plus') }}</button>
+        <button name="mode" value="exclude" class="icon-btn bordered" title="{{ _('Must not contain') }}" aria-label="{{ _('Must not contain') }}">{{ icon('minus') }}</button>
+      </form>
+      {% if pets %}
+      <div class="chips" style="margin-top:12px">
+        {% for p, n in pets[:14] %}<a class="chip {{ 'active' if p.id in f.pets }}" href="/images?{{ f.with_pet(p.id) }}">{{ icon('paw') }}{{ p.name }} <span class="n">{{ n }}</span></a>{% endfor %}
+      </div>
+      {% endif %}
+    </section>
+    {% endif %}
 
     <section>
       <h3>{{ _('Property') }}</h3>

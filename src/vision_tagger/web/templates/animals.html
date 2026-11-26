@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Animals') }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ _('Animals') }}</h1>
+    <small>{{ ngettext('%(num)d group', '%(num)d groups', total) }} · {{ _('Photos of the same animal are grouped. Give a group a name to find it in search, tick several to merge, open one to move or remove photos.') }}</small>
+  </div>
+  <div class="row">
+    <a class="btn" href="/animals/ungrouped">{{ _('Ungrouped') }} <span class="badge">{{ ungrouped }}</span></a>
+    <a class="btn" href="/animals/ignored">{{ _('Removed') }} <span class="badge">{{ ignored }}</span></a>
+  </div>
+</div>
+
+<form class="toolbar" method="get" action="/animals" role="search">
+  <input type="search" name="q" value="{{ q }}" placeholder="{{ _('Search name…') }}" aria-label="{{ _('Search by name') }}">
+  <select name="show" data-autosubmit aria-label="{{ _('Show') }}">
+    {% for v, l in [('all', _('All groups')), ('unnamed', _('Unnamed')), ('named', _('Named'))] %}
+    <option value="{{ v }}" {{ 'selected' if show == v }}>{{ l }}</option>{% endfor %}
+  </select>
+  {% if species_present | length > 1 or species %}
+  <select name="species" data-autosubmit aria-label="{{ _('Species') }}">
+    <option value="">{{ _('All species') }}</option>
+    {% for sp in species_present %}<option value="{{ sp }}" {{ 'selected' if species == sp }}>{{ sp | pretty('animal') }}</option>{% endfor %}
+  </select>
+  {% endif %}
+  <select name="sort" data-autosubmit aria-label="{{ _('Sort') }}">
+    {% for v, l in [('size', _('Largest first')), ('unnamed', _('Unnamed first')), ('newest', _('Newest first'))] %}
+    <option value="{{ v }}" {{ 'selected' if sort == v }}>{{ l }}</option>{% endfor %}
+  </select>
+</form>
+
+<datalist id="pet-names">{% for n in pet_names %}<option value="{{ n }}">{% endfor %}</datalist>
+
+{% if not pets %}
+  {% if total == 0 and not q and show == 'all' and not species %}
+  <div class="card empty">{{ _('No animals found yet. Run the %(stage)s stage on the pipeline page.', stage='<b>' | safe ~ _('Animals') ~ '</b>' | safe) }}</div>
+  {% else %}
+  <div class="card empty">{{ _('Nothing here.') }}</div>
+  {% endif %}
+{% else %}
+<div x-data="{n: 0}" @change="n = vt.count($el)" data-select-scope>
+  <div class="clusters">
+    {% for p in pets %}
+      {% include "partials/pet_card.html" %}
+    {% endfor %}
+  </div>
+  <form id="pet-merge-form" method="post" action="/pets/merge" class="actionbar" x-show="n > 0" x-cloak>
+    <b x-text="vtT('%(n)s selected', { n: vtNum(n) })"></b>
+    <button class="primary" :disabled="n < 2">{{ _('Merge selected') }}</button>
+    <small class="muted">{{ _('The named (or largest) group is kept.') }}</small>
+    <button type="button" class="icon-btn" @click="vt.toggleAll($root, false); n = 0" aria-label="{{ _('Clear selection') }}" title="{{ _('Clear selection') }}">{{ icon('x') }}</button>
+  </form>
+</div>
+{% if pages > 1 %}
+<nav class="pager" aria-label="{{ _('Pages') }}">
+  {% if page > 1 %}<a class="btn" href="?{{ urlencode({'page': page-1, 'sort': sort, 'q': q, 'show': show, 'species': species}) }}">{{ icon('chevron-left', 'sm') }}{{ _('Previous') }}</a>{% endif %}
+  <span class="muted">{{ _('Page %(page)s of %(pages)s', page=page, pages=pages) }}</span>
+  {% if page < pages %}<a class="btn" href="?{{ urlencode({'page': page+1, 'sort': sort, 'q': q, 'show': show, 'species': species}) }}">{{ _('Next') }}{{ icon('chevron-right', 'sm') }}</a>{% endif %}
+</nav>
+{% endif %}
+{% endif %}
+{% endblock %}

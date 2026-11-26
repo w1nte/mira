@@ -1,4 +1,4 @@
-{% set stage_notes = {'faces': _('Stage 1 · InsightFace'), 'ages': _('Stage 1b · AgeNet + InsightFace'), 'vlm': _('Stage 2 · VLM'), 'embed': _('Stage 3 · text embeddings')} %}
+{% set stage_notes = {'faces': _('Stage 1 · InsightFace'), 'ages': _('Stage 1b · AgeNet + InsightFace'), 'animals': _('Stage 1c · YOLOX + DINOv2'),'vlm': _('Stage 2 · VLM'), 'embed': _('Stage 3 · text embeddings')} %}
 <div class="stack">
   <section class="card">
     <div class="row spread">
@@ -20,7 +20,7 @@
       <div class="stat"><div class="v">{{ totals.faces }}</div><div class="l">{{ _('Faces') }}</div></div>
       <div class="stat"><div class="v">{{ totals.clusters }}</div><div class="l">{{ _('Clusters') }}</div></div>
       <div class="stat"><div class="v">{{ totals.persons }}</div><div class="l">{{ _('Persons') }}</div></div>
-      {% if totals.missing %}<div class="stat"><div class="v">{{ totals.missing }}</div><div class="l">{{ _('Missing files') }}</div></div>{% endif %}
+      {% if totals.missing %}<div class="stat"><div class="v">{{ totals.missing }}</div><div class="l"><a href="/database/missing">{{ _('Missing files') }}</a></div></div>{% endif %}
     </div>
   </section>
 

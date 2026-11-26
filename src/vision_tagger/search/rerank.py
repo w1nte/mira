@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..db.models import Cluster, Face, Image, ImageProperty, Person, VlmResult
+from ..db.models import Animal, Cluster, Face, Image, ImageProperty, Person, Pet, VlmResult
 from ..db.util import chunked
 from .document import date_words
 
@@ -45,6 +45,7 @@ _KEYS = [
     "main_activity",
     "composition",
     "objects",
+    "animal",
     "animals",
     "tags",
     "season",
@@ -63,7 +64,7 @@ class Judgement:
 
 
 def describe(s: Session, image_ids: list[int]) -> dict[int, str]:
-    """Short, LLM-friendly description per image (includes person names)."""
+    """Short, LLM-friendly description per image (includes person and pet names)."""
     out: dict[int, str] = {}
     keys = set(_KEYS)
     for part in chunked(image_ids):
@@ -92,6 +93,13 @@ def describe(s: Session, image_ids: list[int]) -> dict[int, str]:
             .where(Face.image_id.in_(part), Face.ignored.is_(False))
         ):
             people.setdefault(image_id, set()).add(name)
+        pets: dict[int, set[str]] = {}
+        for image_id, name, species in s.execute(
+            select(Animal.image_id, Pet.name, Pet.species)
+            .join(Pet, Pet.id == Animal.pet_id)
+            .where(Animal.image_id.in_(part), Animal.ignored.is_(False), Pet.name.is_not(None))
+        ):
+            pets.setdefault(image_id, set()).add(f"{name} ({species})")
         for image_id in part:
             img = images.get(image_id)
             if img is None:
@@ -99,6 +107,8 @@ def describe(s: Session, image_ids: list[int]) -> dict[int, str]:
             bits = [f"date: {date_words(img.recorded_at) or 'unknown'}"]
             if people.get(image_id):
                 bits.append("people: " + ", ".join(sorted(people[image_id])))
+            if pets.get(image_id):
+                bits.append("pets: " + ", ".join(sorted(pets[image_id])))
             if img.folder:
                 bits.append(f"folder: {img.folder}")
             if captions.get(image_id):

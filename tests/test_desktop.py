@@ -457,6 +457,29 @@ def test_migrate_desktop_upgrades_the_library_with_a_backup(desktop_library):
     assert r.exit_code == 0 and "already up to date" in r.output
 
 
+def test_migrate_desktop_updates_an_old_desktop_config(desktop_library, monkeypatch):
+    """Installers run `migrate --desktop`: it brings the app's config.toml up to date too."""
+    from vision_tagger.config_migrate import CONFIG_VERSION
+
+    monkeypatch.setattr(config_mod, "last_config_migration", None)
+    config = D.ensure_user_config(desktop_library)
+    old = config.read_text(encoding="utf-8").replace(
+        f"config_version = {CONFIG_VERSION}", "# (no version: written by an early release)"
+    )
+    old = old.replace("[pipeline]\n", '[pipeline]\nstages = ["faces", "vlm"]\n', 1)
+    config.write_text(old, encoding="utf-8")
+    data = desktop_library / "data"
+    data.mkdir()
+    build_at(data / "vision_tagger.sqlite3", "0003")
+    r = migrate_desktop()
+    assert r.exit_code == 0, r.output
+    assert f"version 1 -> {CONFIG_VERSION}" in r.output and "pipeline.stages" in r.output
+    assert f"config_version = {CONFIG_VERSION}" in config.read_text(encoding="utf-8")
+    assert list(desktop_library.glob("config.toml.bak-v1-*"))
+    log = (data / "logs" / "migrate.log").read_text(encoding="utf-8")
+    assert "version 1 -> " in log and "migrated: 0003" in log
+
+
 def test_migrate_desktop_uses_the_config_the_app_would_use(desktop_library, tmp_path, monkeypatch):
     data = tmp_path / "elsewhere"
     data.mkdir()

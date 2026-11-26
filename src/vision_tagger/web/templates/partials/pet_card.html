@@ -1,0 +1,20 @@
+{# One pet group: picture, number of photos, inline name. Expects p (Pet), photos ({pet id: photos}) #}
+{% set n = photos.get(p.id, 0) %}
+<div class="cluster-card pet-card" id="pet-{{ p.id }}">
+  <a class="cover" href="/pets/{{ p.id }}" aria-label="{{ ngettext('%(name)s: %(num)d photo', '%(name)s: %(num)d photos', n, name=pet_label(p)) }}">
+    {% if p.cover_animal_id %}<img loading="lazy" src="/media/animal/{{ p.cover_animal_id }}" alt="">{% endif %}
+    <span class="count" title="{{ ngettext('%(num)d photo', '%(num)d photos', n) }}">{{ n }}</span>
+    {% if p.locked %}<span class="lock" title="{{ _('Edited by you – kept when the animals are grouped again') }}">{{ icon('lock') }}</span>{% endif %}
+  </a>
+  <label class="pickbox" title="{{ _('Select for merge') }}">
+    <input class="pick" type="checkbox" name="pet_ids" value="{{ p.id }}" form="pet-merge-form" aria-label="{{ _('Select %(name)s', name=pet_label(p)) }}">
+  </label>
+  <div class="body">
+    <form class="name" hx-post="/pets/{{ p.id }}/name" hx-target="#pet-{{ p.id }}" hx-swap="outerHTML">
+      <input type="hidden" name="card" value="1">
+      <input type="text" name="name" list="pet-names" value="{{ p.name or '' }}" placeholder="{{ _('Add a name') }}" aria-label="{{ _('Name for %(name)s', name=pet_label(p)) }}" maxlength="200">
+      <button class="small" title="{{ _('Save name') }}" aria-label="{{ _('Save name') }}">{{ icon('check', 'sm') }}</button>
+    </form>
+    <small class="muted">{{ p.species | pretty('animal') }}{% if not p.name %} · #{{ p.id }}{% endif %}</small>
+  </div>
+</div>

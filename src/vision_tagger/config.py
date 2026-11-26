@@ -4,7 +4,8 @@ Settings are read (highest priority first) from:
 
 1. keyword arguments passed to :class:`Settings`
 2. environment variables prefixed with ``VT_`` (nested with ``__``, e.g. ``VT_VLM__MODEL``)
-3. a TOML file (``config.toml`` in the working directory, or the path in ``VT_CONFIG``)
+3. a TOML file (``config.toml`` in the working directory, or the path in ``VT_CONFIG``),
+   brought up to date by :mod:`vision_tagger.config_migrate` when it is older than the app
 4. the defaults below
 """
 
@@ -12,15 +13,18 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import (
     BaseSettings,
+    InitSettingsSource,
     PydanticBaseSettingsSource,
     SettingsConfigDict,
-    TomlConfigSettingsSource,
 )
+
+from .config_migrate import KEY as CONFIG_KEY
+from .config_migrate import ConfigMigration, load_config
 
 DEFAULT_EXTENSIONS = [
     ".jpg",
@@ -60,10 +64,14 @@ class IndexConfig(BaseModel):
     thumbnails: bool = True
 
 
+#: every stage, in pipeline order (``pipeline.stages`` defaults to all of them)
+DEFAULT_STAGES = ("faces", "ages", "animals", "vlm", "embed")
+
+
 class PipelineConfig(BaseModel):
     batch_size: int = 16
     max_attempts: int = 3
-    stages: list[str] = Field(default_factory=lambda: ["faces", "ages", "vlm", "embed"])
+    stages: list[str] = Field(default_factory=lambda: list(DEFAULT_STAGES))
     heartbeat_seconds: float = 5.0
     # closing the app pauses a running pipeline; the next start continues paused pipelines
     resume_on_start: bool = True
@@ -101,6 +109,36 @@ class FacesConfig(BaseModel):
     reference_threshold: float = 0.45
     auto_accept_threshold: float = 0.6
     references_per_named_cluster: int = 10
+
+
+class AnimalsConfig(BaseModel):
+    """Animal detection and pets (see ``animals``). Runs on ``faces.providers``.
+
+    The thresholds were chosen on real photos (9 dogs and cats with 5-6 photos each, plus 60
+    photos of 10 breeds); see the README section "Animals and pets".
+    """
+
+    model_dir: Path | None = None  # defaults to <faces.model_root>/models/animals
+    max_image_px: int = 1600  # photos are downscaled before detection and embedding
+    # detections weaker or smaller than this are dropped (short side, original pixels)
+    min_score: float = 0.5
+    min_box_px: int = 32
+    nms_iou: float = 0.45
+    # weaker or smaller animals are kept, but not grouped automatically
+    group_min_score: float = 0.6
+    group_min_px: int = 64
+    # grouping: cosine distance (1 - similarity) between photos of the same animal
+    cluster_eps: float = 0.3
+    cluster_min_samples: int = 2
+    # similarity to a pet's average to join it (named and edited pets keep their photos)
+    assign_threshold: float = 0.7
+    # species the detector mixes up on pets (a chow chow as a bear, a poodle as a sheep) are
+    # grouped together; the pet's species is what most of its photos say
+    species_pools: list[list[str]] = Field(
+        default_factory=lambda: [["cat", "dog", "bear", "sheep"]]
+    )
+    crop_size: int = 160  # pictures of the animals in the web UI
+    crop_margin: float = 0.1
 
 
 class VlmConfig(BaseModel):
@@ -167,6 +205,36 @@ class ExportConfig(BaseModel):
     sidecar_naming: Literal["append", "replace"] = "append"
 
 
+class GeoConfig(BaseModel):
+    """GPS places and the map (see ``geo.places``)."""
+
+    # find places at the end of every index run (also: `vision-tagger places`, map page)
+    auto: bool = True
+    # photos closer than this (km) end up in the same place; larger groups are split
+    cluster_km: float = 0.75
+    max_place_km: float = 5.0
+    # groups with the same automatic name this close (km, centre to centre) are one place: a
+    # town and its outskirts; same-named towns farther apart get unique names instead
+    merge_km: float = 25.0
+    # offline names come from GeoNames; the data (3 MB) is downloaded once into
+    # <data_dir>/models/geo. A local GeoNames dump (cities500.zip, cities1000.txt, ...) can be
+    # used instead.
+    download_gazetteer: bool = True
+    cities_file: Path | None = None
+    # Optional OpenStreetMap names (e.g. "Prenzlauer Berg, Berlin") from Nominatim. Off by
+    # default: it sends the (rounded) position of every place to that server.
+    nominatim: bool = False
+    nominatim_url: str = "https://nominatim.openstreetmap.org"
+    language: str = "en"  # language of the OpenStreetMap names
+    # Map background. Tile requests tell the tile server which area you look at; point this
+    # at your own tile server, or set it to "" for a map without background.
+    tile_url: str = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+    tile_attribution: str = (
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    )
+    tile_max_zoom: int = 19
+
+
 class RemoteConfig(BaseModel):
     """Remote mode: the app runs on a server; photos are uploaded through the web UI."""
 
@@ -191,6 +259,17 @@ class WebConfig(BaseModel):
 
 
 _config_file: Path | None = None
+#: what loading the config file last did (shown by `vision-tagger migrate`)
+last_config_migration: ConfigMigration | None = None
+
+
+def _load_toml(path: Path) -> dict[str, Any]:
+    global last_config_migration
+    data, result = load_config(path)
+    if result.changed:
+        last_config_migration = result
+    data.pop(CONFIG_KEY, None)
+    return data
 
 
 def _resolve_config_file() -> Path | None:
@@ -218,11 +297,13 @@ class Settings(BaseSettings):
     index: IndexConfig = Field(default_factory=IndexConfig)
     pipeline: PipelineConfig = Field(default_factory=PipelineConfig)
     faces: FacesConfig = Field(default_factory=FacesConfig)
+    animals: AnimalsConfig = Field(default_factory=AnimalsConfig)
     vlm: VlmConfig = Field(default_factory=VlmConfig)
     derived: DerivedConfig = Field(default_factory=DerivedConfig)
     search: SearchConfig = Field(default_factory=SearchConfig)
     export: ExportConfig = Field(default_factory=ExportConfig)
     web: WebConfig = Field(default_factory=WebConfig)
+    geo: GeoConfig = Field(default_factory=GeoConfig)
 
     @classmethod
     def settings_customise_sources(
@@ -236,7 +317,8 @@ class Settings(BaseSettings):
         sources: list[PydanticBaseSettingsSource] = [init_settings, env_settings]
         toml_file = _resolve_config_file()
         if toml_file is not None:
-            sources.append(TomlConfigSettingsSource(settings_cls, toml_file=toml_file))
+            # older config files are brought up to date first (config_migrate)
+            sources.append(InitSettingsSource(settings_cls, init_kwargs=_load_toml(toml_file)))
         return tuple(sources)
 
     # ---- derived paths -------------------------------------------------
@@ -259,6 +341,10 @@ class Settings(BaseSettings):
     @property
     def face_crops_dir(self) -> Path:
         return self.cache_dir / "faces"
+
+    @property
+    def animal_crops_dir(self) -> Path:
+        return self.cache_dir / "animals"
 
     @property
     def remote_mode(self) -> bool:
@@ -284,7 +370,7 @@ class Settings(BaseSettings):
         return self.data_dir / "exports"
 
     def ensure_dirs(self) -> None:
-        for d in (self.data_dir, self.thumbs_dir, self.face_crops_dir):
+        for d in (self.data_dir, self.thumbs_dir, self.face_crops_dir, self.animal_crops_dir):
             d.mkdir(parents=True, exist_ok=True)
         if self.remote_mode:
             for d in (self.upload_dir, self.uploads_tmp_dir, self.exports_dir):
