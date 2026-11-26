@@ -64,7 +64,8 @@ _ORDER = [
     "capture_device",
     "year",
 ]
-_SKIP = {"has_gps", "text_present", "pet"}
+# nsfw: a filter, not a description (marking a photo must not re-embed it)
+_SKIP = {"has_gps", "text_present", "pet", "nsfw"}
 
 
 def _label(key: str) -> str:

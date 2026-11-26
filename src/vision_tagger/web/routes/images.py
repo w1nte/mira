@@ -12,6 +12,8 @@ from ...db.util import chunked
 from ...export import METADATA, ExportStats, export_images, write_sidecars_in_place
 from ...faces.ages import age_label, check_image_date, correct_image_date
 from ...i18n import Lazy, LazyJoin, _
+from ...nsfw import KEY as NSFW_KEY
+from ...nsfw import YES
 from ...pipeline import control
 from ...query import (
     ImageFilter,
@@ -27,6 +29,7 @@ from ...query import (
 )
 from ..common import back, cached_property_counts, ctx, pet_label, redirect, render
 from ..context import Job
+from ..nsfw import shown as nsfw_shown
 
 router = APIRouter()
 
@@ -95,6 +98,34 @@ def _alternatives(c, s, f: ImageFilter) -> dict[str, object]:
         people = person_counts(s, others)[:14]
         pets = pet_counts(s, others)[:14]
     return {"facets": facets, "people": people, "pets": pets}
+
+
+def _nsfw_filter(c, s, request: Request, f: ImageFilter) -> dict | None:
+    """The gallery's NSFW section: hide them / only them (``xt`` / ``t=nsfw:yes``, so "or"
+    and collections work as with any property). ``None`` while the library has none."""
+    pair = (NSFW_KEY, YES)
+    hidden = pair in f.exclude_props
+    only = f.has_prop(*pair)
+    library = dict(cached_property_counts(c, s, None, key=NSFW_KEY).get(NSFW_KEY, []))
+    if not (library.get(YES) or hidden or only or nsfw_shown(request)):
+        return None
+    base = f.copy(
+        props=[p for p in f.props if p != pair],
+        prop_groups=[[a for a in g if a != pair] for g in f.prop_groups],
+        exclude_props=[p for p in f.exclude_props if p != pair],
+    )
+    counts = dict(cached_property_counts(c, s, base, key=NSFW_KEY).get(NSFW_KEY, []))
+    return {
+        "hidden": hidden,
+        "only": only,
+        "count": counts.get(YES, 0),
+        "hide_qs": base.query_string(exclude_props=[*base.exclude_props, pair])
+        if not hidden
+        else base.query_string(),
+        "only_qs": base.query_string(props=[*base.props, pair])
+        if not only
+        else base.query_string(),
+    }
 
 
 MAX_TIMELINE_MONTHS = 1200  # 100 years; older dates are almost always wrong camera clocks
@@ -171,6 +202,7 @@ def gallery(request: Request) -> Response:
         ]
         chips = _chips(s, f)
         timeline = _timeline(c, s, f)
+        nsfw = _nsfw_filter(c, s, request, f)
     return render(
         request,
         "images.html",
@@ -189,6 +221,7 @@ def gallery(request: Request) -> Response:
         keys=keys,
         cameras=cameras,
         export_mode=c.settings.export.mode,
+        nsfw=nsfw,
         **chips,
     )
 

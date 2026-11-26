@@ -5,7 +5,7 @@
   <div>
     <nav class="crumbs" aria-label="{{ _('Breadcrumb') }}"><a href="/persons">{{ _('Persons') }}</a></nav>
     <div class="title-row">
-      {% if clusters and clusters[0].cover_face_id %}<img class="avatar lg" src="/media/face/{{ clusters[0].cover_face_id }}" alt="">{% endif %}
+      {% if clusters and clusters[0].cover_face_id %}{{ face_img(clusters[0].cover_face_id, cls='avatar lg', lazy=false, link=true) }}{% endif %}
       <div>
         <h1>{{ person.name }}</h1>
         <small>{{ ngettext('%(num)d cluster', '%(num)d clusters', clusters | length) }} · {{ ngettext('%(num)d reference face', '%(num)d reference faces', refs | length) }}</small>
@@ -73,7 +73,7 @@
       {% for f in faces %}
         {% set a = f.best_age %}
         <a class="face" href="/images/{{ f.image_id }}" title="{{ f.recorded_at | dt('%Y-%m-%d') }} · {{ _('date from %(source)s', source=f.date_source) }}{% if f.face_age is not none %} · {{ _('face looks ~%(age)s', age=f.face_age) }}{% endif %}{% if f.suspicious %} · {% if f.suggested_year %}{{ _('date doubtful, faces suggest ~%(year)s', year=f.suggested_year) }}{% else %}{{ _('date doubtful') }}{% endif %}{% endif %}">
-          <img loading="lazy" src="/media/face/{{ f.face_id }}" alt="">
+          {{ face_img(f.face_id) }}
           {% if a is not none %}<span class="agebadge {{ 'est' if (f.calendar_age is none or f.suspicious) }}">{{ '~' if (f.calendar_age is none or f.suspicious) }}{{ a }}</span>{% endif %}
           {% if f.suspicious %}<span class="lq badge warn" aria-label="{{ _('date doubtful') }}">{{ icon('alert') }}</span>{% endif %}
         </a>
@@ -91,7 +91,7 @@
   <div class="table-wrap"><table>
     {% for f in ages.suspicious[:60] %}
     <tr>
-      <td style="width:64px"><a class="thumb" href="/images/{{ f.image_id }}" style="width:56px"><img loading="lazy" src="/media/thumb/{{ f.image_id }}?size=96" alt=""></a></td>
+      <td style="width:64px"><a class="thumb" href="/images/{{ f.image_id }}" style="width:56px">{{ thumb(f.image_id, 96) }}</a></td>
       <td>{{ _('Recorded %(date)s', date='<b>' | safe ~ f.recorded_at | dt('%Y-%m-%d') ~ '</b>' | safe) }} <span class="badge">{{ f.date_source }}</span><br>
         <small>{% if f.calendar_age is not none and f.face_age is not none %}{{ _('%(name)s would be %(age)s, but looks about %(face_age)s', name=person.name, age=f.calendar_age, face_age=f.face_age) }}{% elif f.calendar_age is not none %}{{ _('%(name)s would be %(age)s', name=person.name, age=f.calendar_age) }}{% elif f.face_age is not none %}{{ _('looks about %(face_age)s', face_age=f.face_age) }}{% endif %}</small></td>
       <td class="num">{% if f.suggested_year %}
@@ -111,7 +111,7 @@
 <div class="clusters">
   {% for cl in clusters %}
   <div class="cluster-card">
-    <a class="cover" href="/clusters/{{ cl.id }}" aria-label="{{ _('Cluster #%(id)s', id=cl.id) }}">{% if cl.cover_face_id %}<img loading="lazy" src="/media/face/{{ cl.cover_face_id }}" alt="">{% endif %}<span class="count" title="{{ ngettext('%(num)d face', '%(num)d faces', cl.face_count) }}">{{ cl.face_count }}</span>{% if cl.locked %}<span class="lock" title="{{ _('Edited by you – kept on re-cluster') }}">{{ icon('lock') }}</span>{% endif %}</a>
+    <a class="cover" href="/clusters/{{ cl.id }}" aria-label="{{ _('Cluster #%(id)s', id=cl.id) }}">{% if cl.cover_face_id %}{{ face_img(cl.cover_face_id) }}{% endif %}<span class="count" title="{{ ngettext('%(num)d face', '%(num)d faces', cl.face_count) }}">{{ cl.face_count }}</span>{% if cl.locked %}<span class="lock" title="{{ _('Edited by you – kept on re-cluster') }}">{{ icon('lock') }}</span>{% endif %}</a>
     <div class="body"><a href="/clusters/{{ cl.id }}">{{ _('Cluster #%(id)s', id=cl.id) }}</a></div>
   </div>
   {% endfor %}
@@ -123,7 +123,7 @@
 <div class="clusters">
   {% for cl in suggested %}
   <div class="cluster-card">
-    <a class="cover" href="/clusters/{{ cl.id }}" aria-label="{{ _('Cluster #%(id)s', id=cl.id) }}">{% if cl.cover_face_id %}<img loading="lazy" src="/media/face/{{ cl.cover_face_id }}" alt="">{% endif %}<span class="count" title="{{ ngettext('%(num)d face', '%(num)d faces', cl.face_count) }}">{{ cl.face_count }}</span></a>
+    <a class="cover" href="/clusters/{{ cl.id }}" aria-label="{{ _('Cluster #%(id)s', id=cl.id) }}">{% if cl.cover_face_id %}{{ face_img(cl.cover_face_id) }}{% endif %}<span class="count" title="{{ ngettext('%(num)d face', '%(num)d faces', cl.face_count) }}">{{ cl.face_count }}</span></a>
     <div class="body">
       <small>{{ _('%(percent)s%% match', percent='%.0f' | format((cl.suggestion_score or 0) * 100)) }}</small>
       <form method="post" action="/clusters/{{ cl.id }}/accept"><button class="small primary">{{ _('Accept') }}</button></form>
@@ -139,7 +139,7 @@
 <div class="faces">
   {% for r in refs %}
   <div class="face static">
-    <img loading="lazy" src="/media/reference/{{ r.id }}" alt="" title="{{ r.source_path or _('face #%(id)s', id=r.face_id) }}">
+    {% if r.face_id %}{{ face_img(r.face_id, src='/media/reference/' ~ r.id, title=r.source_path or _('face #%(id)s', id=r.face_id), link=true) }}{% else %}<img loading="lazy" src="/media/reference/{{ r.id }}" alt="" title="{{ r.source_path }}">{% endif %}
     <form method="post" action="/references/{{ r.id }}/delete" class="del"><button class="small danger" title="{{ _('Remove reference') }}" aria-label="{{ _('Remove reference') }}">{{ icon('x', 'sm') }}</button></form>
   </div>
   {% endfor %}

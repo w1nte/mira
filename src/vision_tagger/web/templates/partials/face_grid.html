@@ -10,7 +10,7 @@
   <div class="faces">
     {% for face in faces %}
     <label class="face" title="{{ _('score %(value)s', value='%.2f' | format(face.det_score)) }}{% if face.age %} · {{ _('~%(age)s y', age=face.age) }}{% endif %}{% if face.gender %} · {{ face.gender }}{% endif %}">
-      <img loading="lazy" src="/media/face/{{ face.id }}" alt="">
+      {{ face_img(face.id) }}
       <input class="pick" type="checkbox" name="face_ids" value="{{ face.id }}" aria-label="{{ _('Select face #%(id)s', id=face.id) }}">
       {% if not face.clusterable %}<span class="lq badge warn" title="{{ _('Small or low-confidence face – not used for clustering') }}">{{ _('lq') }}</span>{% endif %}
       <a class="open" href="/images/{{ face.image_id }}" title="{{ _('Open photo') }}" aria-label="{{ _('Open photo') }}">{{ icon('external') }}</a>

@@ -64,8 +64,9 @@ class IndexConfig(BaseModel):
     thumbnails: bool = True
 
 
-#: every stage, in pipeline order (``pipeline.stages`` defaults to all of them)
-DEFAULT_STAGES = ("faces", "ages", "animals", "vlm", "embed")
+#: every stage, in pipeline order (``pipeline.stages`` defaults to all of them); the fast NSFW
+#: check comes first, so new photos get their cover before anyone browses them
+DEFAULT_STAGES = ("nsfw", "faces", "ages", "animals", "vlm", "embed")
 
 
 class PipelineConfig(BaseModel):
@@ -139,6 +140,18 @@ class AnimalsConfig(BaseModel):
     )
     crop_size: int = 160  # pictures of the animals in the web UI
     crop_margin: float = 0.1
+
+
+class NsfwConfig(BaseModel):
+    """The NSFW check (see ``nsfw``): a local image classifier on ``faces.providers``.
+
+    The threshold was chosen on safe photos (objects, pets and people); see the README section
+    "Not safe for work (NSFW)".
+    """
+
+    model_dir: Path | None = None  # defaults to <faces.model_root>/models/nsfw
+    # photos the classifier scores at least this high (0..1) are covered; lower: more covers
+    threshold: float = Field(default=0.7, ge=0.0, le=1.0)
 
 
 class VlmConfig(BaseModel):
@@ -313,6 +326,7 @@ class Settings(BaseSettings):
     pipeline: PipelineConfig = Field(default_factory=PipelineConfig)
     faces: FacesConfig = Field(default_factory=FacesConfig)
     animals: AnimalsConfig = Field(default_factory=AnimalsConfig)
+    nsfw: NsfwConfig = Field(default_factory=NsfwConfig)
     vlm: VlmConfig = Field(default_factory=VlmConfig)
     derived: DerivedConfig = Field(default_factory=DerivedConfig)
     search: SearchConfig = Field(default_factory=SearchConfig)

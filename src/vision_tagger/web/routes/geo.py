@@ -12,6 +12,7 @@ from ...i18n import MAP_JS_KEYS, _, js_strings
 from ...query import ImageFilter, count_images
 from ..common import back, ctx, redirect, render
 from ..context import Job
+from ..nsfw import covered_ids
 from .images import _chips
 
 router = APIRouter()
@@ -88,6 +89,7 @@ def api_place(request: Request, place_id: int) -> JSONResponse:
     if data is None:
         raise HTTPException(404)
     data["gallery"] = "/images?" + f.copy(places=[place_id]).query_string()
+    data["nsfw"] = covered_ids(request, data.get("images", []))  # shown with a cover
     return JSONResponse(data)
 
 

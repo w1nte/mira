@@ -1,6 +1,6 @@
 <div class="cluster-card" id="cluster-{{ cl.id }}">
   <a class="cover" href="/clusters/{{ cl.id }}" aria-label="{{ ngettext('%(name)s: %(num)d face', '%(name)s: %(num)d faces', cl.face_count, name=cl.person.name if cl.person else _('Cluster #%(id)s', id=cl.id)) }}">
-    {% if cl.cover_face_id %}<img loading="lazy" src="/media/face/{{ cl.cover_face_id }}" alt="">{% endif %}
+    {% if cl.cover_face_id %}{{ face_img(cl.cover_face_id) }}{% endif %}
     <span class="count" title="{{ ngettext('%(num)d face', '%(num)d faces', cl.face_count) }}">{{ cl.face_count }}</span>
     {% if cl.locked %}<span class="lock" title="{{ _('Edited by you – kept on re-cluster') }}">{{ icon('lock') }}</span>{% endif %}
   </a>

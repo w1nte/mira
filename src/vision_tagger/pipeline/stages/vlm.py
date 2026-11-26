@@ -12,6 +12,8 @@ from sqlalchemy import delete, select
 from ...db.models import Image, ImageProperty, PropertyAlias, VlmResult, utcnow
 from ...derived import derive
 from ...imaging import load_image
+from ...nsfw import KEY as NSFW_KEY
+from ...nsfw.verdict import record_vlm
 from ...vlm.backend import VlmBackend, VlmConnectionError, make_backend
 from ...vlm.normalize import Normalizer
 from ...vlm.prompt import USER_PROMPT, prompt_version, system_prompt
@@ -36,7 +38,7 @@ def build_properties(
     """Flatten a coerced VLM answer into ``(key, value, confidence, source)`` rows."""
     rows: list[tuple[str, str, float | None, str]] = []
     for f in vocab.fields.values():
-        if not f.store:
+        if not f.store or f.name == NSFW_KEY:  # combined with the classifier (nsfw.verdict)
             continue
         value = data.get(f.name)
         source = "inferred" if f.inferred else "vlm"
@@ -163,7 +165,9 @@ class VlmStage(Stage):
         with self.db.write() as s:
             s.execute(
                 delete(ImageProperty).where(
-                    ImageProperty.image_id == image_id, ImageProperty.source.in_(VLM_SOURCES)
+                    ImageProperty.image_id == image_id,
+                    ImageProperty.source.in_(VLM_SOURCES),
+                    ImageProperty.key != NSFW_KEY,  # one row, also the classifier's and yours
                 )
             )
             seen: set[tuple[str, str]] = set()
@@ -176,6 +180,8 @@ class VlmStage(Stage):
                         image_id=image_id, key=key, value=value, confidence=conf, source=source
                     )
                 )
+            if NSFW_KEY in self.vocab.fields:
+                record_vlm(s, image_id, data.get(NSFW_KEY), self.settings.nsfw.threshold)
             result = s.get(VlmResult, image_id) or VlmResult(image_id=image_id)
             result.model = self.backend.model
             result.prompt_version = self.prompt_version

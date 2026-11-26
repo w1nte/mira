@@ -1,9 +1,12 @@
 {% set qs = f.query_string() %}
 {% for img in images %}
-<a class="thumb" href="/images/{{ img.id }}{{ '?' ~ qs if qs }}" title="{{ img.rel_path }}">
-  <img loading="lazy" src="/media/thumb/{{ img.id }}" alt="">
-  <span class="cap">{{ img.recorded_at | dt('%Y-%m-%d') }} · {{ img.filename }}</span>
-</a>
+<div class="tile">
+  <a class="thumb" href="/images/{{ img.id }}{{ '?' ~ qs if qs }}" title="{{ img.rel_path }}">
+    {{ thumb(img.id) }}
+    <span class="cap">{{ img.recorded_at | dt('%Y-%m-%d') }} · {{ img.filename }}</span>
+  </a>
+  <input class="pick" type="checkbox" name="image_ids" value="{{ img.id }}" form="gallery-actions" aria-label="{{ _('Select %(name)s', name=img.filename) }}">
+</div>
 {% endfor %}
 {% if next_page %}
 <div hx-get="/images/page?page={{ next_page }}{{ '&' ~ qs if qs }}" hx-trigger="revealed" hx-swap="outerHTML" class="muted" style="grid-column:1/-1;text-align:center;padding:1rem">{{ _('Loading…') }}</div>

@@ -83,7 +83,7 @@
   {% if img %}
   <div class="result">
     <a class="thumb" href="/images/{{ img.id }}" title="{{ img.rel_path }} · {{ _('score %(value)s', value='%.2f' | format(h.score)) }}{% if h.semantic is not none %} · {{ _('semantic %(value)s', value='%.2f' | format(h.semantic)) }}{% endif %}{% if h.properties is not none %} · {{ _('properties %(value)s', value='%.2f' | format(h.properties)) }}{% endif %}{% if h.keywords is not none %} · {{ _('keywords %(value)s', value='%.2f' | format(h.keywords)) }}{% endif %}">
-      <img loading="lazy" src="/media/thumb/{{ img.id }}" alt="">
+      {{ thumb(img.id) }}
       <span class="rank">{{ loop.index }}{% if h.rerank is not none %} · {{ '%.0f' | format(h.rerank) }}/10{% endif %}</span>
       <span class="scorebar" style="width: {{ (h.score * 100) | round(0) }}%"></span>
       <span class="cap">{{ img.recorded_at | dt('%Y-%m-%d') }} · {{ img.filename }}</span>

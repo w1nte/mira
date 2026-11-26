@@ -244,12 +244,21 @@
         show.href = d.gallery;
         const photoQuery = d.gallery.split("?")[1] || "";
         thumbs.replaceChildren();
+        // NSFW photos: a black cover (as web/nsfw.py writes it); the link opens the photo
+        const nsfw = new Set((d.nsfw || []).map(String));
         d.images.forEach((id) => {
           const a = make("a");
           a.href = "/images/" + encodeURIComponent(id) + (photoQuery ? "?" + photoQuery : "");
           const img = make("img");
-          img.src = "/media/thumb/" + encodeURIComponent(id) + "?size=160";
-          img.alt = "";
+          if (nsfw.has(String(id))) {
+            img.src = "/static/nsfw.svg";
+            img.dataset.nsfw = String(id);
+            img.alt = "NSFW";
+            img.title = t("Not safe for work – open the photo to see it");
+          } else {
+            img.src = "/media/thumb/" + encodeURIComponent(id) + "?size=160";
+            img.alt = "";
+          }
           a.append(img);
           thumbs.append(a);
         });

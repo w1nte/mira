@@ -19,7 +19,7 @@
     {% set p = r.person %}
     <div class="cluster-card">
       <a class="cover" href="/persons/{{ p.id }}" aria-label="{{ p.name }}">
-        {% if r.cover %}<img loading="lazy" src="/media/face/{{ r.cover }}" alt="">{% endif %}
+        {% if r.cover %}{{ face_img(r.cover) }}{% endif %}
         <span class="count" title="{{ ngettext('%(num)d image', '%(num)d images', r.images) }}">{{ r.images }}</span>
       </a>
       <label class="pickbox" title="{{ _('Select') }}"><input class="pick" type="checkbox" name="person_ids" value="{{ p.id }}" form="merge-persons" aria-label="{{ _('Select %(name)s', name=p.name) }}"></label>
