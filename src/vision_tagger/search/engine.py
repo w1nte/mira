@@ -1,10 +1,11 @@
 """Hybrid search: structured filters + property matches + keywords + semantic similarity.
 
 1. The query is interpreted (LLM, or keyword fallback) into persons, pets, dates, required /
-   preferred / excluded properties, keywords and an English "semantic" rewrite.
-2. The strict part (persons, pets, required and excluded properties, dates) selects candidates via
-   the normal gallery filter (``query.conditions``). If nothing matches, required properties
-   are relaxed into preferences.
+   preferred / excluded properties, keywords and an English "semantic" rewrite. Alternatives
+   ("Anna or Ben", "beach or mountains", "2019 or 2021") are OR groups; groups are AND-ed.
+2. The strict part (persons, pets, required properties and their alternatives, exclusions,
+   dates) selects candidates via the normal gallery filter (``query.conditions``). If nothing
+   matches, required properties are relaxed into preferences.
 3. Candidates are scored by: semantic similarity of the rewrite to each image's document
    embedding, how many preferred properties / persons they have, and keyword hits in captions,
    visible text, property values and file names.
@@ -275,7 +276,7 @@ class SearchEngine:
         result = SearchResult(interpretation=it, hits=[], notes=list(it.notes))
         with self.db.session() as s:
             candidates = all_image_ids(s, it.hard_filter())
-            if not candidates and it.must:
+            if not candidates and it.required:
                 candidates = all_image_ids(s, it.hard_filter(relaxed=True))
                 result.relaxed = bool(candidates)
             total = s.scalar(

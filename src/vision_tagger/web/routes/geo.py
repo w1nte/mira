@@ -87,7 +87,7 @@ def api_place(request: Request, place_id: int) -> JSONResponse:
         data = place_detail(s, place_id, f)
     if data is None:
         raise HTTPException(404)
-    data["gallery"] = "/images?" + f.copy(place=place_id).query_string()
+    data["gallery"] = "/images?" + f.copy(places=[place_id]).query_string()
     return JSONResponse(data)
 
 

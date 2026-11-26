@@ -62,10 +62,14 @@ are never moved or modified.
   summer 2021, no work photos".
   - The local LLM turns the request into persons, dates and required, preferred or excluded
     properties, validated against your real vocabulary and person list.
+  - Alternatives work too: "Anna or Ben at the beach", "dogs or cats", "Paris or Rome",
+    "photos from 2019 or 2021" (see [Alternatives](#alternatives-or)).
   - A text-embedding index (Stage 3) adds semantic similarity over everything extracted per
     image: caption, visible text, all properties, folder and date.
   - **Deep search** lets the LLM double-check the best ~40 results and explain why each fits.
-  - Without an LLM, a keyword fallback (English and German) still works.
+  - Without an LLM, a keyword fallback still works: English and German words, the vocabulary
+    in the language of the UI, names of persons, pets and places, dates, and "or" in every UI
+    language.
 - **Ages and doubtful dates.** Give a person a birth year, or let Mira estimate one
   from photo dates and face ages.
   - **Face ages from two models.** InsightFace's age model turns babies and children into young
@@ -400,12 +404,12 @@ prefer it.
 | **Cluster** | All faces of a cluster. Select faces to **split** into a new cluster, **assign to a person**, **move** to another cluster, or **remove**. **Auto-split** mixed clusters. Similar clusters with one-click merge. |
 | **Animals** | Pet groups with picture and number of photos, by species. Name a group inline (typing another group's name merges the two), tick several to **merge**. Per group: all its photos to **move** to a pet (by name) or a new group, **take out** ("Not this one") or **remove**, similar groups with one-click merge, and the species (correct it when the detector took a dog for a bear). Views for ungrouped and removed animals. |
 | **Persons** | Named persons. Rename (renaming to an existing name merges), merge, delete, manage references. Images with *all* / *any* of the selected persons. Per person: birth year (set or estimated), age today, a "through the years" face timeline, and photos with a doubtful date with suggested fixes. |
-| **Properties** | Every extracted property grouped by topic, with counts. Tick values and show images with **all** / **any** of them. Per property: sample images per value, **merge / rename / delete** values (remembered for future results). |
-| **Images** | **Timeline slider** above the gallery: photos per month; click the first month, then the last, drag the band or its edges, or sweep across the bars (arrow keys move the handles). Gallery with infinite scroll and a filter builder: persons and pets (AND/OR, NOT), properties (AND/OR, NOT), date range, folder, camera, faces, text search, sort. Facets refine the current result. **Export** the result, with XMP metadata for other apps. Filters are part of the URL, so they can be bookmarked. |
+| **Properties** | Every extracted property grouped by topic, with counts. Tick values and show images with **all** / **any** of them (*any* keeps the other filters: "summer and (beach or mountains)"). Per property: sample images per value, **merge / rename / delete** values (remembered for future results). |
+| **Images** | **Timeline slider** above the gallery: photos per month; click the first month, then the last, drag the band or its edges, or sweep across the bars (arrow keys move the handles). Gallery with infinite scroll and a filter builder: persons and pets (AND/OR, NOT), properties (AND/OR, NOT), date range, folder, camera, faces, text search, sort. Facets refine the current result; their **or** switch (or Ctrl+click / ⌘+click on a value) adds a value as an alternative, e.g. "beach or mountains" (see [Alternatives](#alternatives-or)). **Export** the result, with XMP metadata for other apps. Filters are part of the URL, so they can be bookmarked. |
 | **Image** | Full image with face and animal boxes and names, all properties with source and confidence, metadata, duplicates, raw VLM JSON, per-stage status and re-run buttons. `←` / `→` open the previous / next photo of the current filter. |
 | **Quiz** | "Who's that?": name the largest unnamed clusters with one click (suggestions from references and look-alikes), or play the face quiz with score, streaks and "you vs. the AI"; wrong answers can fix misfiled faces. Keys 1–4 and Enter. |
 | **Generations** | Every person with photos from different ages. Per person: a grow-up timelapse (play, scrub, download as animated WebP), "looks most like…" ranking, and a same-age comparison with any other person. |
-| **Search** | Search box in the top bar on every page (`/` focuses it). Shows how the request was understood (persons, pets, required / preferred / excluded properties, dates, keywords), ranks the results and, with **Deep search**, gives the LLM's reason for each. "Open in filter builder" turns the strict part into a gallery filter; results can be exported. |
+| **Search** | Search box in the top bar on every page (`/` focuses it). Shows how the request was understood (persons, pets, required / preferred / excluded properties, alternatives such as "Anna or Ben", dates, keywords), ranks the results and, with **Deep search**, gives the LLM's reason for each. "Open in filter builder" turns the strict part into a gallery filter; results can be exported. |
 | **Map** | Heatmap of the geotagged photos of the current filter (e.g. one person's photos), the places with their photo counts (click one for thumbnails, *Show photos* and renaming), **Photos in this area** (the map bounds as a gallery filter) and *Find places*. The view is kept in the URL (`#zoom/lat/lon`). |
 | **Overview** | Timeline (year → month → day), breakdowns by folder, camera, file type, date reliability, work/personal, orientation, and a sortable metadata table. |
 
@@ -510,8 +514,9 @@ position in `images.lat` / `images.lon` and groups the photos into **places**:
   (Mannheim), Germany"; "Springfield, IL" and "Springfield, MO" differ already).
 - Every photo gets the place as `images.place_id` and as the properties **place**, **city** and
   **country**. They work everywhere other properties work: gallery facets and filters, the
-  properties page, XMP export and the search index. `/images?place=12` shows one place,
-  `/images?bbox=minlon,minlat,maxlon,maxlat` an area of the map.
+  properties page, XMP export and the search index. `/images?place=12` shows one place
+  (`place=12&place=14` either of two), `/images?bbox=minlon,minlat,maxlon,maxlat` an area of
+  the map.
 - Places are found at the end of every scan, with **Find places** on the map page, or with
   `vision-tagger places` (`--refresh` groups everything again and renames every place you did
   not name).
@@ -673,8 +678,8 @@ To customise the fields, copy `vocabulary.yaml` and set `vlm.vocabulary_file` in
    together with the vocabulary, the most frequent free-text values, the person and pet names
    and the date range. The JSON answer is checked against the database: unknown persons or values
    become free-text keywords instead of failing.
-2. **Candidates.** Persons, pets, required and excluded properties, and dates filter strictly. If
-   nothing is left, required properties are relaxed into preferences.
+2. **Candidates.** Persons, pets, required and excluded properties, alternatives and dates filter
+   strictly. If nothing is left, required properties are relaxed into preferences.
 3. **Ranking** combines three signals:
    - semantic similarity of an English rewrite of the request to each image's document
      embedding;
@@ -688,6 +693,42 @@ To customise the fields, copy `vocabulary.yaml` and set `vlm.vocabulary_file` in
 
 The search index is kept up to date automatically: images whose VLM results or property values
 change are queued for Stage 3 again.
+
+### Alternatives ("or")
+
+Alternatives inside a condition are OR-ed, conditions are AND-ed, and exclusions always apply:
+
+| Request | Understood as |
+|---|---|
+| Anna or Ben at the beach | (Anna or Ben) and beach |
+| Anna oder Ben am Strand | the same, in German |
+| dogs or cats | animals: dog or cat |
+| beach or mountains in summer 2021 | (beach or mountains) and summer, 2021 |
+| photos from 2019 or 2021 | taken in 2019 or in 2021 |
+| Paris or Rome, not at work | city Paris or Rome, without work photos |
+| without Anna or Ben | neither Anna nor Ben |
+
+"Anna and Ben" still means photos with both. The LLM understands "or" in any language; the
+keyword fallback knows *or, oder, ou, o, of, lub, или, 或, または* and *か* (between two
+recognised names, values, places or dates, so names that contain such a word stay whole). The
+search page shows each group as one chip ("Anna *or* Ben"), and **Open in filter builder** keeps
+the groups.
+
+In the gallery, a facet's **or** switch lists the values you could add as alternatives (counted
+without the condition on that property); Ctrl+click (⌘+click) on a value does the same. The
+filter chips show alternatives in one chip, each with its own remove button. In the URL, `|`
+separates the alternatives of one `t` condition; a photo has one date and one place, so repeated
+`d` and `place` parameters are alternatives as well:
+
+```
+/images?t=location_type:beach|location_type:mountain&t=season:summer   (beach or mountains) and summer
+/images?p=3&p=4&pm=any                                                   Anna or Ben (pm=all: both)
+/images?d=2019&d=2021-06..2021-08                                        2019 or summer 2021
+/images?place=12&place=14                                                either of two places
+```
+
+Older URLs and saved collections keep their meaning: repeated `t` parameters are all required,
+and `tm=any` (the former "any property" switch) makes them one "or" condition.
 
 ## Configuration
 

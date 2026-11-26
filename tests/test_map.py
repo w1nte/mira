@@ -62,14 +62,14 @@ def _filenames(client, f: ImageFilter) -> set[str]:
 # --------------------------------------------------------------------------- filters
 def test_place_and_bbox_parameters_round_trip():
     f = ImageFilter.from_params(QueryParams("place=12&bbox=13.3,52.4,13.5,52.6&p=3"))
-    assert f.place == 12 and f.bbox == (13.3, 52.4, 13.5, 52.6)
+    assert f.places == [12] and f.bbox == (13.3, 52.4, 13.5, 52.6)
     assert f.query_string() == "p=3&place=12&bbox=13.3%2C52.4%2C13.5%2C52.6"
     assert ImageFilter.from_params(QueryParams(f.query_string())) == f
-    assert f.query_string(place=None, bbox=None) == "p=3"
-    assert not ImageFilter(place=1).is_empty and not ImageFilter(bbox=(0, 0, 1, 1)).is_empty
+    assert f.query_string(places=[], bbox=None) == "p=3"
+    assert not ImageFilter(places=[1]).is_empty and not ImageFilter(bbox=(0, 0, 1, 1)).is_empty
     for bad in ("1,2,3", "a,b,c,d", "0,10,1,5", "0,-91,1,1", "200,0,201,1", "nan,0,1,1"):
         assert ImageFilter.from_params(QueryParams(f"bbox={bad}")).bbox is None, bad
-    assert ImageFilter.from_params(QueryParams("place=abc")).place is None
+    assert ImageFilter.from_params(QueryParams("place=abc")).places == []
     long = ImageFilter(bbox=(13.123456789, 52.0, 13.5, 52.6)).query_string()
     assert "13.12346" in long  # five decimals (~1 m) are plenty
 
@@ -77,7 +77,7 @@ def test_place_and_bbox_parameters_round_trip():
 def test_place_and_bbox_filters_select_photos(client):
     places = _places(client)
     berlin = places["Berlin, Germany"]
-    assert _filenames(client, ImageFilter(place=berlin.id)) == {
+    assert _filenames(client, ImageFilter(places=[berlin.id])) == {
         "IMG_1.jpg",
         "IMG_2.jpg",
         "IMG_3.jpg",
@@ -88,7 +88,7 @@ def test_place_and_bbox_filters_select_photos(client):
     assert _filenames(client, across_dateline) == {"IMG_6.jpg"}
     with client.ctx.db.session() as s:
         assert count_images(s, ImageFilter(bbox=(-10.0, 40.0, 20.0, 60.0))) == 5
-        assert count_images(s, ImageFilter(place=999_999)) == 0
+        assert count_images(s, ImageFilter(places=[999_999])) == 0
 
 
 def test_gallery_shows_place_chips_and_facet(client):
@@ -104,6 +104,21 @@ def test_gallery_shows_place_chips_and_facet(client):
     assert "2 images" in page
     page = ok(client.get("/images?t=country:Germany")).text
     assert "3 images" in page
+
+
+def test_places_as_alternatives(client):
+    places = _places(client)
+    berlin, paris = places["Berlin, Germany"], places["Paris, France"]
+    assert _filenames(client, ImageFilter(places=[berlin.id, paris.id])) == {
+        f"IMG_{n}.jpg" for n in range(1, 6)
+    }
+    page = ok(client.get(f"/images?place={berlin.id}&place={paris.id}")).text
+    assert "5 images" in page
+    assert '<span class="alt">Berlin, Germany' in page and '<span class="or">or</span>' in page
+    assert f'href="/images?place={paris.id}"' in page  # removes Berlin
+    # the same with the place properties (names with commas)
+    page = ok(client.get("/images?t=place:Berlin, Germany|place:Paris, France")).text
+    assert "5 images" in page
 
 
 # --------------------------------------------------------------------------- API

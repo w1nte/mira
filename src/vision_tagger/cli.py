@@ -770,14 +770,19 @@ def search(
     result = SearchEngine(db, _settings()).search(query, deep=deep, limit=limit)
     it = result.interpretation
     parts = [f"mode={it.mode}", f"semantic={'on' if result.semantic_used else 'off'}"]
-    if it.persons:
-        parts.append("persons=" + ",".join(n for _, n in it.persons))
+    who = [n for _, n in [*it.persons, *it.pets]]
+    if who:
+        parts.append("persons=" + ("|" if it.who_any else ",").join(who))
     if it.must or it.should:
         parts.append("props=" + ",".join(f"{t.key}:{t.value}" for t in [*it.must, *it.should]))
+    for group in it.any_of:
+        parts.append("one of=" + "|".join(f"{t.key}:{t.value}" for t in group))
     if it.exclude:
         parts.append("not=" + ",".join(f"{t.key}:{t.value}" for t in it.exclude))
     if it.date_from or it.date_to:
         parts.append(f"dates={it.date_from or ''}..{it.date_to or ''}")
+    if it.dates:
+        parts.append("dates=" + "|".join(f"{a or ''}..{b or ''}" for a, b in it.dates))
     typer.echo(" ".join(parts))
     for note in result.notes:
         typer.echo(f"  note: {note}")

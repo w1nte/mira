@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
 
 import httpx
 import numpy as np
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from vision_tagger import i18n
 from vision_tagger.db.models import (
     Cluster,
     ImageEmbedding,
@@ -26,8 +29,11 @@ from vision_tagger.search.index import EmbeddingMatrix
 from vision_tagger.search.interpret import KeywordInterpreter
 from vision_tagger.vlm.backend import FakeBackend, OllamaBackend
 from vision_tagger.vlm.schema import Vocabulary
+from vision_tagger.web.app import create_app
 
 from .helpers import add_face, add_image, person_centers
+
+DE = {"Accept-Language": "de-DE,de;q=0.9"}
 
 LIBRARY = {
     # n: (caption, date, folder, props, persons)
@@ -347,6 +353,267 @@ def test_search_without_embeddings_still_works(db, settings, vocab):
     eng, _ = engine(db, settings, vocab)
     r = eng.search("beach")
     assert not r.semantic_used and ids(r)[0] == 1
+
+
+# --------------------------------------------------------------------------- alternatives ("or")
+def answer(**fields):
+    """An LLM answer with every field of the schema (empty unless given)."""
+    base = {
+        "persons": [],
+        "persons_mode": "all",
+        "exclude_persons": [],
+        "pets": [],
+        "exclude_pets": [],
+        "must": [],
+        "should": [],
+        "exclude": [],
+        "any_of": [],
+        "date_from": "",
+        "date_to": "",
+        "semantic_query": "",
+        "keywords": [],
+    }
+    return {**base, **fields}
+
+
+@pytest.fixture
+def places(library):
+    """The library plus cities, animals and a person whose name contains an "or" word."""
+    db, backend = library
+    with db.write() as s:
+        for image_id, key, value in [
+            (1, "city", "Rimini"),
+            (5, "city", "Athens"),
+            (3, "city", "Frankfurt (Oder)"),
+            (1, "animals", "dog"),
+            (3, "animals", "cat"),
+        ]:
+            s.add(ImageProperty(image_id=image_id, key=key, value=value, source="vlm"))
+        s.add(Cluster(locked=True, person=Person(name="Ou Yang")))
+    return db, backend
+
+
+def keyword(ctx, query, lang="en"):
+    token = i18n.activate(lang)
+    try:
+        return KeywordInterpreter().interpret(query, ctx)
+    finally:
+        i18n.reset(token)
+
+
+@pytest.mark.parametrize(
+    "query, lang",
+    [
+        ("Anna or Ben at the beach", "en"),
+        ("either Anna or Ben", "en"),
+        ("Anna oder Ben am Strand", "de"),
+        ("Anna ou Ben à la plage", "fr"),
+        ("Anna o Ben en la playa", "es"),
+        ("Anna oppure Ben", "it"),
+        ("Anna ou Ben na praia", "pt"),
+        ("Anna of Ben op het strand", "nl"),
+        ("Anna lub Ben na plaży", "pl"),
+        ("Anna или Ben на пляже", "ru"),
+        ("Anna或Ben在海滩", "zh"),
+        ("AnnaまたはBenの写真", "ja"),
+        ("Anna/Ben", "en"),
+    ],
+)
+def test_keyword_or_between_persons_in_every_ui_language(places, settings, vocab, query, lang):
+    eng, _ = engine(places[0], settings, vocab)
+    it = keyword(eng.context(), query, lang)
+    assert [n for _, n in it.persons] == ["Anna", "Ben"] and it.persons_mode == "any"
+    assert it.who_any and not it.notes
+    assert not {"either", "oder", "ou", "oppure", "lub", "или"} & set(it.keywords)
+
+
+def test_keyword_alternatives_of_properties_places_and_dates(places, settings, vocab):
+    eng, _ = engine(places[0], settings, vocab)
+    ctx = eng.context()
+    it = keyword(ctx, "Anna or Ben at the beach")
+    assert [(t.key, t.value) for t in it.should] == [("location_type", "beach")]
+    assert it.semantic_query == "at the beach"  # without the names and the "or" between them
+    assert keyword(ctx, "beach or mountains").semantic_query == "beach or mountains"
+    assert keyword(ctx, "Anna and Ben").persons_mode == "all"
+    # translated words: "是" (yes / is) and "nie" (no / not) stand for no property
+    assert [(t.key, t.value) for t in keyword(ctx, "是狗", "zh").should] == [("animals", "dog")]
+    assert not keyword(ctx, "nie", "pl").should
+    for query, lang in [
+        ("dogs or cats", "en"),
+        ("Hunde oder Katzen", "de"),
+        ("chiens ou chats", "fr"),  # the vocabulary of the UI language
+        ("狗或猫", "zh"),
+        ("犬か猫", "ja"),
+    ]:
+        it = keyword(ctx, query, lang)
+        assert [[(t.key, t.value) for t in g] for g in it.any_of] == [
+            [("animals", "dog"), ("animals", "cat")]
+        ], query
+    it = keyword(ctx, "beach or mountains in summer 2021")
+    assert [[t.value for t in g] for g in it.any_of] == [["beach", "mountain"]]
+    assert [t.value for t in it.should] == ["summer"]
+    assert (it.date_from, it.date_to, it.dates) == ("2021", "2021", [])
+    # places; a name with "oder" in it is not split
+    it = keyword(ctx, "Frankfurt (Oder) oder Rimini")
+    assert [[t.value for t in g] for g in it.any_of] == [["Frankfurt (Oder)", "Rimini"]]
+    it = keyword(ctx, "Ou Yang or Anna")
+    assert [n for _, n in it.persons] == ["Ou Yang", "Anna"] and it.persons_mode == "any"
+    # dates: alternatives, a month taking the year of its neighbour, a plain range
+    assert keyword(ctx, "photos from 2019 or 2021").dates == [("2019", "2019"), ("2021", "2021")]
+    it = keyword(ctx, "Juni oder Juli 2021")
+    assert it.dates == [("2021-06", "2021-06"), ("2021-07", "2021-07")]
+    it = keyword(ctx, "from 2019 to 2021")
+    assert (it.date_from, it.date_to, it.dates) == ("2019", "2021", [])
+    # exclusions of alternatives exclude each of them
+    it = keyword(ctx, "without Anna or Ben")
+    assert [n for _, n in it.exclude_persons] == ["Anna", "Ben"] and not it.persons
+    it = keyword(ctx, "Strand ohne Arbeit oder Schnee")
+    assert {(t.key, t.value) for t in it.exclude} == {("work_image", "yes"), ("weather", "snowy")}
+    assert not it.any_of
+    # English "of" is no "or" next to an article; "and" / lists without "or" are no alternatives
+    assert not keyword(ctx, "the beach of the city").any_of
+    assert not keyword(ctx, "beach, mountain").any_of
+    assert len(keyword(ctx, "beach, mountain or city").any_of[0]) == 3
+
+
+def test_llm_alternatives_are_validated(places, settings, vocab):
+    raw = answer(
+        should=[{"key": "season", "value": "summer", "weight": 0.8}],
+        any_of=[
+            [
+                {"key": "location_type", "value": "Beach"},
+                {"key": "location_type", "value": "mountain"},
+                {"key": "colour", "value": "red"},  # unknown: a keyword
+            ],
+            [{"key": "person", "value": "anna"}, {"key": "person", "value": "Ben"}],
+            [
+                {"key": "date", "value": "2019"},
+                {"key": "date", "value": "2021-06..2021-08"},
+                {"key": "date", "value": "someday"},
+            ],
+            [{"key": "place", "value": "rimini"}, {"key": "city", "value": "ATHENS"}],
+            [{"key": "location_type", "value": "office"}, {"key": "date", "value": "2020"}],
+            [{"key": "location_type", "value": "home"}],  # one alternative: required
+            "garbage",
+            [1, None],
+            [{"key": "objects", "value": ""}],
+        ],
+        semantic_query="a holiday photo",
+    )
+    eng, backend = engine(places[0], settings, vocab, chat=[raw])
+    it = eng.interpret("beach or mountains, Anna or Ben, 2019 or summer 2021, Rimini or Athens")
+    assert it.mode == "llm"
+    assert [[(t.key, t.value) for t in g] for g in it.any_of] == [
+        [("location_type", "beach"), ("location_type", "mountain")],
+        [("city", "Rimini"), ("city", "Athens")],
+    ]
+    assert [n for _, n in it.persons] == ["Anna", "Ben"] and it.persons_mode == "any"
+    assert it.dates == [("2019", "2019"), ("2021-06", "2021-08")]
+    assert [(t.key, t.value) for t in it.must] == [("location_type", "home")]
+    # alternatives of different kinds only rank, and say so
+    assert {(t.key, t.value) for t in it.should} == {
+        ("season", "summer"),
+        ("location_type", "office"),
+    }
+    assert any("different kinds" in str(n) for n in it.notes)
+    assert {"red", "someday"} <= set(it.keywords)
+    f = it.hard_filter()
+    assert f.prop_groups == [
+        [("location_type", "beach"), ("location_type", "mountain")],
+        [("city", "Rimini"), ("city", "Athens")],
+    ]
+    assert f.dates == it.dates and f.persons_mode == "any"
+    prompt = backend.chat_calls[0][0]
+    assert "any_of" in prompt and "Places: " in prompt and "Rimini" in prompt
+
+
+def test_llm_persons_or_with_other_persons_widens_and_says_so(places, settings, vocab):
+    raw = answer(
+        persons=["Anna"],
+        any_of=[[{"key": "person", "value": "Ben"}, {"key": "person", "value": "Ou Yang"}]],
+    )
+    eng, _ = engine(places[0], settings, vocab, chat=[raw])
+    it = eng.interpret("Anna with Ben or Ou Yang")
+    assert [n for _, n in it.persons] == ["Anna", "Ben", "Ou Yang"] and it.persons_mode == "any"
+    assert any("more of them come first" in str(n) for n in it.notes)
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        ValueError("no JSON in the answer"),
+        {"any_of": "beach or sea", "persons": "Anna", "must": {"key": "x"}},
+        {"any_of": [[{"key": "location_type"}], {"key": "season", "value": "summer"}]},
+    ],
+)
+def test_bad_or_partial_llm_answers(places, settings, vocab, bad):
+    eng, _ = engine(places[0], settings, vocab, chat=[bad])
+    it = eng.interpret("Anna oder Ben")
+    if isinstance(bad, Exception):  # no usable answer: the keyword mode, which knows "oder"
+        assert it.mode == "basic" and it.persons_mode == "any"
+        assert [n for _, n in it.persons] == ["Anna", "Ben"]
+    else:  # broken parts are ignored
+        assert it.mode == "llm" and not it.any_of and not it.persons and not it.must
+    r = eng.search("Anna oder Ben")
+    assert r.hits
+
+
+def test_or_search_filters_strictly_and_still_ranks(places, settings, vocab):
+    db = places[0]
+    raw = answer(
+        any_of=[
+            [
+                {"key": "location_type", "value": "beach"},
+                {"key": "location_type", "value": "mountain"},
+            ]
+        ],
+        semantic_query="snowy mountain hike with a view",
+    )
+    eng, _ = engine(db, settings, vocab, chat=[raw])
+    r = eng.search("beach or mountains")
+    assert set(ids(r)) == {1, 3, 5} and r.candidates == 3 and not r.relaxed
+    assert r.semantic_used and ids(r)[0] == 3  # ranked inside the OR-filtered set
+    # keyword mode: (Anna or Ben) and beach ranks first
+    eng, _ = engine(db, settings, vocab)
+    r = eng.search("Anna or Ben at the beach")
+    assert set(ids(r)) == {1, 2, 3, 4} and ids(r)[0] == 1
+    assert set(ids(eng.search("photos from 2019 or 2021"))) == {1, 2, 5}
+    assert set(ids(eng.search("Rimini or Athens"))) == {1, 5}
+    assert set(ids(eng.search("Anna or Ben without work"))) == {1, 3, 4}
+    # nothing matches the alternatives: they become preferences
+    raw = answer(
+        any_of=[
+            [{"key": "event_type", "value": "wedding"}, {"key": "event_type", "value": "party"}]
+        ]
+    )
+    eng, _ = engine(db, settings, vocab, chat=[raw])
+    r = eng.search("wedding or party")
+    assert r.relaxed and len(ids(r)) == 5
+
+
+@pytest.fixture
+def web(places, settings):
+    app = create_app(settings)
+    with TestClient(app) as c:
+        yield c
+
+
+def test_understood_as_chips_show_alternatives(web):
+    page = web.get("/search/results?q=Anna or Ben at the beach").text
+    assert re.search(
+        r'class="chip active alternatives".*Anna.*<span class="or">or</span>.*Ben', page, re.S
+    )
+    assert "all together" not in page
+    page = web.get("/search/results?q=dogs or cats in 2019 or 2021").text
+    assert re.search(r"dog</span>\s*<span class=\"or\">or</span><span class=\"alt\">cat", page)
+    assert re.search(r"2019.*<span class=\"or\">or</span>.*2021", page, re.S)
+    page = web.get("/search/results?q=Anna oder Ben am Strand", headers=DE).text
+    assert '<span class="or">oder</span>' in page and "Strand" in page
+    page = web.get("/search/results?q=Anna and Ben").text
+    assert "all together" in page and '<span class="or">' not in page
+    # the strict part as a gallery filter keeps the alternatives
+    page = web.get("/search/results?q=Rimini or Athens").text
+    assert "t=city%3ARimini%7Ccity%3AAthens" in page
 
 
 # --------------------------------------------------------------------------- Ollama payloads

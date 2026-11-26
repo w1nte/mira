@@ -2,6 +2,8 @@
 {% block title %}{{ _('Images') }}{% endblock %}
 {% block main_class %}wide{% endblock %}
 {% block content %}
+{# "or" toggle of a facet section (Alpine state `alt`): its values are then added as alternatives #}
+{% macro or_toggle() %}<button type="button" class="or-toggle" :class="alt && 'on'" :aria-pressed="alt ? 'true' : 'false'" @click="alt = !alt" title="{{ _('Alternatives: add values with “or”, photos with any of them match. Ctrl+click (⌘+click) on a value does the same.') }}">{{ _('or') }}</button>{% endmacro %}
 <div x-data="{ filtersOpen: false }">
 <div class="page-head">
   <div><h1>{{ _('Images') }}</h1><small>{% if f.is_empty %}{{ ngettext('%(num)d image', '%(num)d images', total) }}{% else %}{{ ngettext('%(num)d image matches the filter', '%(num)d images match the filter', total) }}{% endif %}</small></div>
@@ -85,8 +87,9 @@
       </form>
     </section>
 
-    <section>
-      <h3>{{ _('People') }}</h3>
+    {% set alt_people = alternatives.people %}
+    <section{% if alt_people %} x-data="{ alt: {{ 'true' if f.who_count > 1 and f.persons_mode == 'any' else 'false' }} }"{% endif %}>
+      <h3 class="facet-title">{{ _('People') }}{% if alt_people %}{{ or_toggle() }}{% endif %}</h3>
       <form method="get" action="/images/add" class="row nowrap">
         {% for name, value in f.to_params() %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
         <select name="person" aria-label="{{ _('Person') }}">{% for p in all_persons %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}</select>
@@ -94,15 +97,21 @@
         <button name="mode" value="exclude" class="icon-btn bordered" title="{{ _('Must not contain') }}" aria-label="{{ _('Must not contain') }}">{{ icon('minus') }}</button>
       </form>
       {% if people %}
-      <div class="chips" style="margin-top:12px">
-        {% for p, n in people[:14] %}<a class="chip {{ 'active' if p.id in f.persons }}" href="/images?{{ f.with_person(p.id) }}">{{ p.name }} <span class="n">{{ n }}</span></a>{% endfor %}
+      <div class="chips" style="margin-top:12px"{% if alt_people %} x-show="!alt"{% endif %}>
+        {% for p, n in people[:14] %}<a class="chip {{ 'active' if p.id in f.persons }}" href="/images?{{ f.with_person(p.id) }}"{% if alt_people %} data-or-href="/images?{{ f.with_person_alt(p.id) }}" title="{{ _('Ctrl+click: add with “or”') }}"{% endif %}>{{ p.name }} <span class="n">{{ n }}</span></a>{% endfor %}
+      </div>
+      {% endif %}
+      {% if alt_people %}
+      <div class="chips" style="margin-top:12px" x-show="alt" x-cloak>
+        {% for p, n in alt_people %}{% set on = p.id in f.persons %}<a class="chip {{ 'active' if on else 'option' }}" href="/images?{{ f.without_person(p.id) if on else f.with_person_alt(p.id) }}" title="{{ _('Remove filter') if on else _('Add with “or”') }}">{{ p.name }} <span class="n">{{ n }}</span></a>{% endfor %}
       </div>
       {% endif %}
     </section>
 
     {% if all_pets %}
-    <section>
-      <h3>{{ _('Pets') }}</h3>
+    {% set alt_pets = alternatives.pets %}
+    <section{% if alt_pets %} x-data="{ alt: {{ 'true' if f.who_count > 1 and f.persons_mode == 'any' else 'false' }} }"{% endif %}>
+      <h3 class="facet-title">{{ _('Pets') }}{% if alt_pets %}{{ or_toggle() }}{% endif %}</h3>
       <form method="get" action="/images/add" class="row nowrap">
         {% for name, value in f.to_params() %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
         <select name="pet" aria-label="{{ _('Pet') }}">{% for p in all_pets %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}</select>
@@ -110,8 +119,13 @@
         <button name="mode" value="exclude" class="icon-btn bordered" title="{{ _('Must not contain') }}" aria-label="{{ _('Must not contain') }}">{{ icon('minus') }}</button>
       </form>
       {% if pets %}
-      <div class="chips" style="margin-top:12px">
-        {% for p, n in pets[:14] %}<a class="chip {{ 'active' if p.id in f.pets }}" href="/images?{{ f.with_pet(p.id) }}">{{ icon('paw') }}{{ p.name }} <span class="n">{{ n }}</span></a>{% endfor %}
+      <div class="chips" style="margin-top:12px"{% if alt_pets %} x-show="!alt"{% endif %}>
+        {% for p, n in pets[:14] %}<a class="chip {{ 'active' if p.id in f.pets }}" href="/images?{{ f.with_pet(p.id) }}"{% if alt_pets %} data-or-href="/images?{{ f.with_pet_alt(p.id) }}" title="{{ _('Ctrl+click: add with “or”') }}"{% endif %}>{{ icon('paw') }}{{ p.name }} <span class="n">{{ n }}</span></a>{% endfor %}
+      </div>
+      {% endif %}
+      {% if alt_pets %}
+      <div class="chips" style="margin-top:12px" x-show="alt" x-cloak>
+        {% for p, n in alt_pets %}{% set on = p.id in f.pets %}<a class="chip {{ 'active' if on else 'option' }}" href="/images?{{ f.without_pet(p.id) if on else f.with_pet_alt(p.id) }}" title="{{ _('Remove filter') if on else _('Add with “or”') }}">{{ icon('paw') }}{{ p.name }} <span class="n">{{ n }}</span></a>{% endfor %}
       </div>
       {% endif %}
     </section>
@@ -131,14 +145,23 @@
       </form>
     </section>
 
-    {% for key, vals in facets.items() %}
-    <section>
-      <h3><a href="/properties/{{ key }}?{{ f.query_string() }}">{{ key | label }}</a></h3>
-      <div class="chips">
+    {% for key in facet_keys %}
+    {% set vals = facets.get(key, []) %}
+    {% set alts = alternatives.facets.get(key) %}
+    <section{% if alts %} x-data="{ alt: {{ 'true' if key in f.grouped_keys else 'false' }} }"{% endif %}>
+      <h3 class="facet-title"><a href="/properties/{{ key }}?{{ f.query_string() }}">{{ key | label }}</a>{% if alts %}{{ or_toggle() }}{% endif %}</h3>
+      <div class="chips"{% if alts %} x-show="!alt"{% endif %}>
         {% for v, n in vals %}
-          <a class="chip {{ 'active' if (key, v) in f.props }}" href="/images?{{ f.with_prop(key, v) }}" title="{{ _('include') }}">{{ v | pretty(key) }} <span class="n">{{ n }}</span></a>
+          <a class="chip {{ 'active' if f.has_prop(key, v) }}" href="/images?{{ f.with_prop(key, v) }}"{% if alts %} data-or-href="/images?{{ f.with_prop_alt(key, v) }}" title="{{ _('include') }} · {{ _('Ctrl+click: add with “or”') }}"{% else %} title="{{ _('include') }}"{% endif %}>{{ v | pretty(key) }} <span class="n">{{ n }}</span></a>
         {% endfor %}
       </div>
+      {% if alts %}
+      <div class="chips" x-show="alt" x-cloak>
+        {% for v, n in alts %}{% set on = f.has_prop(key, v) %}
+          <a class="chip {{ 'active' if on else 'option' }}" href="/images?{{ f.without_prop(key, v) if on else f.with_prop_alt(key, v) }}" title="{{ _('Remove filter') if on else _('Add with “or”') }}">{{ v | pretty(key) }} <span class="n">{{ n }}</span></a>
+        {% endfor %}
+      </div>
+      {% endif %}
     </section>
     {% endfor %}
   </aside>

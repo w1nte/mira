@@ -8,8 +8,11 @@ Mira shows them on its "What's new" page, and each GitHub release uses its secti
 ### New
 - The installed app tells you when a new Mira is out (Home, sidebar and Pipeline page), with a link to the download; `updates.check = "off"` turns this off.
 - A "What's new" page lists the changes of every version; it is linked in the sidebar and next to the version on the Pipeline page.
+- Search understands "or": "Anna or Ben at the beach", "dogs or cats", "photos from 2019 or 2021", in every UI language, also without an LLM.
+- Gallery filters take alternatives: a filter section's "or" switch (or Ctrl+click on a value) gives "beach or mountains"; collections keep them.
 
 ### Changed
+- Properties page: "Images with any selected" keeps the other filters, e.g. summer and (beach or mountains).
 - The Windows gpu setup is a single `.exe` again; it no longer needs a `.bin` file next to it.
 
 ## 1.3 - 2026-11-26

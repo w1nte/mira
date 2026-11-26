@@ -9,28 +9,38 @@ parameter  meaning                                                example
 ``c``      face cluster id (repeatable, for unnamed clusters)     ``c=17``
 ``pet``    pet id (repeatable; see ``animals``)                   ``pet=5``
 ``pm``     combine persons/clusters/pets: ``all`` (AND) / ``any`` ``pm=any``
-``t``      property ``key:value`` (repeatable)                    ``t=location_type:beach``
-``tm``     combine properties with ``all`` (AND) / ``any`` (OR)   ``tm=all``
+``t``      property ``key:value`` (repeatable: AND); ``|``        ``t=season:summer``
+           separates alternatives of one condition (OR)           ``t=city:Paris|city:Rome``
+``tm``     older URLs: ``any`` makes all ``t`` one OR condition   ``tm=any``
 ``xp``     exclude person id                                      ``xp=4``
 ``xpet``   exclude pet id                                         ``xpet=5``
 ``xt``     exclude property ``key:value``                         ``xt=work_image:yes``
 ``from``   recorded on/after date (YYYY-MM-DD, YYYY-MM or YYYY)   ``from=2021``
 ``to``     recorded on/before date                                ``to=2021-08``
+``d``      date range ``FROM..TO`` or a period (repeatable: OR)   ``d=2019&d=2021-06..2021-08``
 ``folder`` folder prefix (relative to the root)                   ``folder=2021/Italy``
 ``camera`` camera model                                           ``camera=iPhone 13``
 ``faces``  ``yes`` / ``no``                                       ``faces=yes``
 ``stage``  + ``status``: pipeline state                           ``stage=vlm&status=error``
 ``q``      text search in file name, path and caption             ``q=birthday``
-``place``  place id (see ``geo.places``)                          ``place=12``
+``place``  place id (see ``geo.places``; repeatable: OR)          ``place=12&place=14``
 ``bbox``   map area: min lon, min lat, max lon, max lat           ``bbox=13.3,52.4,13.5,52.6``
 ``sort``   ``date_desc`` (default), ``date_asc``, ``name``, ``path``, ``faces``, ``size``
 =========  =====================================================  =========
+
+Alternatives ("or"): the alternatives of one condition are OR-ed, conditions are AND-ed and
+exclusions always apply. ``t=location_type:beach|location_type:mountain&t=season:summer`` is
+"(beach or mountain) and summer". A photo has one date and one place, so repeated ``d`` and
+``place`` values are alternatives too. Persons, clusters and pets are combined by ``pm``.
+Older URLs and saved collections keep their meaning: a ``t`` without ``|`` is one condition,
+and ``tm=any`` (the former "any property" switch) makes all of them one OR condition.
 """
 
 from __future__ import annotations
 
 import calendar
 import math
+import re
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -51,7 +61,7 @@ from .db.models import (
     StageStatus,
     VlmResult,
 )
-from .db.util import like_escape
+from .db.util import chunked, like_escape
 
 SORTS = ("date_desc", "date_asc", "name", "path", "faces", "size")
 
@@ -95,6 +105,46 @@ def _pairs(values: Iterable[str]) -> list[tuple[str, str]]:
     return out
 
 
+#: ``|`` followed by ``key:`` starts the next alternative of a ``t`` value. Keys are slugs, so
+#: a ``|`` inside a value (normalised values never have one) does not split it.
+_ALTERNATIVE = re.compile(r"\|(?=[\w-]+:)")
+
+
+def _groups(values: Iterable[str]) -> list[list[tuple[str, str]]]:
+    """``t`` values: each is one condition; ``key:value|key:value`` lists alternatives (OR)."""
+    out = []
+    for v in values:
+        alternatives = _pairs(_ALTERNATIVE.split(v))
+        if alternatives:
+            out.append(alternatives)
+    return out
+
+
+def _ranges(values: Iterable[str]) -> list[tuple[str | None, str | None]]:
+    """``d`` values: ``FROM..TO`` (either end may be empty) or one period (``2019-07``)."""
+    out: list[tuple[str | None, str | None]] = []
+    for v in values:
+        first, sep, last = str(v).partition("..")
+        start, end = first.strip() or None, (last if sep else first).strip() or None
+        if start is None and end is None:
+            continue
+        if (start and _parse_date(start) is None) or (end and _parse_date(end, end=True) is None):
+            continue
+        out.append((start, end))
+    return out
+
+
+def range_param(start: str | None, end: str | None) -> str:
+    """A date range as a ``d`` value: ``2019`` (a whole period) or ``2019-06..2019-08``."""
+    if start and start == end:
+        return start
+    return f"{start or ''}..{end or ''}"
+
+
+def _unique(items: Iterable[Any]) -> list[Any]:
+    return list(dict.fromkeys(items))
+
+
 def _bbox(value: str | None) -> tuple[float, float, float, float] | None:
     """``"minlon,minlat,maxlon,maxlat"``; min lon > max lon crosses the date line."""
     try:
@@ -128,47 +178,74 @@ class ImageFilter:
     pets: list[int] = field(default_factory=list)
     persons_mode: str = "all"  # persons, clusters and pets together
     props: list[tuple[str, str]] = field(default_factory=list)
-    props_mode: str = "all"
+    props_mode: str = "all"  # "any" (older URLs, tm=any): normalised into one of prop_groups
+    prop_groups: list[list[tuple[str, str]]] = field(default_factory=list)  # each: OR
     exclude_persons: list[int] = field(default_factory=list)
     exclude_pets: list[int] = field(default_factory=list)
     exclude_props: list[tuple[str, str]] = field(default_factory=list)
     date_from: str | None = None
     date_to: str | None = None
+    dates: list[tuple[str | None, str | None]] = field(default_factory=list)  # OR-ed ranges
     folder: str | None = None
     camera: str | None = None
     has_faces: bool | None = None
     stage: str | None = None
     status: str | None = None
     text: str | None = None
-    place: int | None = None
+    places: list[int] = field(default_factory=list)  # OR: a photo has one place
     bbox: tuple[float, float, float, float] | None = None
     include_missing: bool = False
     sort: str = "date_desc"
+
+    def __post_init__(self) -> None:
+        """Normalise the alternatives, so equal filters have equal URLs."""
+        groups = [[tuple(a) for a in g] for g in self.prop_groups]
+        props = [tuple(p) for p in self.props]
+        if self.props_mode == "any":  # the former "any property" switch: one OR condition
+            groups, props = [[*props, *(a for g in groups for a in g)]], []
+        self.props_mode = "all"
+        self.prop_groups = []
+        for group in groups:
+            alternatives = _unique(group)
+            if len(alternatives) == 1:
+                if alternatives[0] not in props:
+                    props.append(alternatives[0])
+            elif alternatives and alternatives not in self.prop_groups:
+                self.prop_groups.append(alternatives)
+        self.props = props
+        dates = _unique((a or None, b or None) for a, b in self.dates if a or b)
+        if len(dates) == 1 and not self.date_from and not self.date_to:
+            (self.date_from, self.date_to), dates = dates[0], []
+        self.dates = dates
+        self.places = _unique(self.places)
 
     # ------------------------------------------------------------------ (de)serialisation
     @classmethod
     def from_params(cls, params: Mapping[str, Any]) -> ImageFilter:
         faces = params.get("faces")
         sort = params.get("sort") or "date_desc"
+        groups = _groups(_getlist(params, "t"))
         return cls(
             persons=_ints(_getlist(params, "p")),
             clusters=_ints(_getlist(params, "c")),
             pets=_ints(_getlist(params, "pet")),
             persons_mode="any" if params.get("pm") == "any" else "all",
-            props=_pairs(_getlist(params, "t")),
+            props=[g[0] for g in groups if len(g) == 1],
             props_mode="any" if params.get("tm") == "any" else "all",
+            prop_groups=[g for g in groups if len(g) > 1],
             exclude_persons=_ints(_getlist(params, "xp")),
             exclude_pets=_ints(_getlist(params, "xpet")),
             exclude_props=_pairs(_getlist(params, "xt")),
             date_from=params.get("from") or None,
             date_to=params.get("to") or None,
+            dates=_ranges(_getlist(params, "d")),
             folder=params.get("folder") or None,
             camera=params.get("camera") or None,
             has_faces=True if faces == "yes" else False if faces == "no" else None,
             stage=params.get("stage") or None,
             status=params.get("status") or None,
             text=(params.get("q") or "").strip() or None,
-            place=(_ints([params.get("place")]) or [None])[0],
+            places=_ints(_getlist(params, "place")),
             bbox=_bbox(params.get("bbox")),
             include_missing=params.get("missing") == "1",
             sort=sort if sort in SORTS else "date_desc",
@@ -182,8 +259,7 @@ class ImageFilter:
         if self.persons_mode == "any" and self.who_count > 1:
             out.append(("pm", "any"))
         out += [("t", f"{k}:{v}") for k, v in self.props]
-        if self.props_mode == "any" and len(self.props) > 1:
-            out.append(("tm", "any"))
+        out += [("t", "|".join(f"{k}:{v}" for k, v in g)) for g in self.prop_groups]
         out += [("xp", str(p)) for p in self.exclude_persons]
         out += [("xpet", str(p)) for p in self.exclude_pets]
         out += [("xt", f"{k}:{v}") for k, v in self.exclude_props]
@@ -198,10 +274,10 @@ class ImageFilter:
         ):
             if val:
                 out.append((key, val))
+        out += [("d", range_param(a, b)) for a, b in self.dates]
         if self.has_faces is not None:
             out.append(("faces", "yes" if self.has_faces else "no"))
-        if self.place is not None:
-            out.append(("place", str(self.place)))
+        out += [("place", str(p)) for p in self.places]
         if self.bbox is not None:
             out.append(("bbox", ",".join(_coord(v) for v in self.bbox)))
         if self.include_missing:
@@ -215,7 +291,7 @@ class ImageFilter:
         return urlencode(f.to_params())
 
     def copy(self, **changes: Any) -> ImageFilter:
-        data = {k: (list(v) if isinstance(v, list) else v) for k, v in self.__dict__.items()}
+        data = {k: _copy_value(v) for k, v in self.__dict__.items()}
         data.update(changes)
         return ImageFilter(**data)
 
@@ -246,8 +322,35 @@ class ImageFilter:
             return self.query_string()
         return self.query_string(pets=[*self.pets, pid])
 
+    def has_prop(self, key: str, value: str) -> bool:
+        """``key: value`` is required, alone or as an alternative of a condition."""
+        pair = (key, value)
+        return pair in self.props or any(pair in g for g in self.prop_groups)
+
+    @property
+    def prop_keys(self) -> set[str]:
+        """Keys with a condition: their facets offer alternatives."""
+        return {k for k, _ in self.props} | {k for g in self.prop_groups for k, _ in g}
+
+    @property
+    def grouped_keys(self) -> set[str]:
+        """Keys that are part of an OR condition already."""
+        return {k for g in self.prop_groups for k, _ in g}
+
+    def without_key(self, key: str) -> ImageFilter:
+        """The filter without its conditions on ``key``: which alternatives there are."""
+        return self.copy(
+            props=[p for p in self.props if p[0] != key],
+            prop_groups=[g for g in self.prop_groups if all(k != key for k, _ in g)],
+        )
+
     def without_prop(self, key: str, value: str) -> str:
-        return self.query_string(props=[p for p in self.props if p != (key, value)])
+        """Without ``key: value``; an OR condition left with one alternative becomes plain."""
+        pair = (key, value)
+        return self.query_string(
+            props=[p for p in self.props if p != pair],
+            prop_groups=[[a for a in g if a != pair] for g in self.prop_groups],
+        )
 
     def without_exclude_prop(self, key: str, value: str) -> str:
         return self.query_string(exclude_props=[p for p in self.exclude_props if p != (key, value)])
@@ -256,9 +359,36 @@ class ImageFilter:
         return self.query_string(exclude_persons=[p for p in self.exclude_persons if p != pid])
 
     def with_prop(self, key: str, value: str) -> str:
-        if (key, value) in self.props:
+        if self.has_prop(key, value):
             return self.query_string()
         return self.query_string(props=[*self.props, (key, value)])
+
+    def with_prop_alt(self, key: str, value: str) -> str:
+        """``key: value`` as an alternative (OR) to the condition on the same key.
+
+        It joins the first OR condition with that key, or makes the last plain condition on the
+        key an OR condition; without a condition on the key it is simply required.
+        """
+        pair = (key, value)
+        if self.has_prop(key, value):
+            return self.query_string()
+        groups = [list(g) for g in self.prop_groups]
+        for g in groups:
+            if any(k == key for k, _ in g):
+                g.append(pair)
+                return self.query_string(prop_groups=groups)
+        same = [p for p in self.props if p[0] == key]
+        if not same:
+            return self.query_string(props=[*self.props, pair])
+        props = list(self.props)
+        props.remove(same[-1])
+        return self.query_string(props=props, prop_groups=[*groups, [same[-1], pair]])
+
+    def without_place(self, place_id: int) -> str:
+        return self.query_string(places=[p for p in self.places if p != place_id])
+
+    def without_range(self, start: str | None, end: str | None) -> str:
+        return self.query_string(dates=[r for r in self.dates if r != (start, end)])
 
     def with_exclude_prop(self, key: str, value: str) -> str:
         return self.query_string(exclude_props=[*self.exclude_props, (key, value)])
@@ -267,6 +397,26 @@ class ImageFilter:
         if pid in self.persons:
             return self.query_string()
         return self.query_string(persons=[*self.persons, pid])
+
+    @property
+    def who_alternatives(self) -> bool:
+        """Persons / pets can get an alternative: one is chosen, or several with "any"."""
+        return self.who_count == 1 or (self.who_count > 1 and self.persons_mode == "any")
+
+    def with_person_alt(self, pid: int) -> str:
+        """A person as an alternative: photos with any of the chosen persons and pets."""
+        persons = self.persons if pid in self.persons else [*self.persons, pid]
+        return self.query_string(persons=persons, persons_mode="any")
+
+    def with_pet_alt(self, pid: int) -> str:
+        pets = self.pets if pid in self.pets else [*self.pets, pid]
+        return self.query_string(pets=pets, persons_mode="any")
+
+
+def _copy_value(v: Any) -> Any:
+    if isinstance(v, list):
+        return [list(x) if isinstance(x, list) else x for x in v]
+    return v
 
 
 # --------------------------------------------------------------------------- SQL building
@@ -300,6 +450,33 @@ def _prop_images(key: str, value: str):
     )
 
 
+def _any_prop_images(alternatives: list[tuple[str, str]]):
+    """An OR condition: one id set per key (``value IN (...)``) from the covering index."""
+    by_key: dict[str, list[str]] = {}
+    for k, v in alternatives:
+        by_key.setdefault(k, []).append(v)
+    parts = [
+        Image.id.in_(
+            select(ImageProperty.image_id).where(
+                ImageProperty.key == k, ImageProperty.value.in_(part)
+            )
+        )
+        for k, values in by_key.items()
+        for part in chunked(values)
+    ]
+    return parts[0] if len(parts) == 1 else or_(*parts)
+
+
+def _date_range(start: str | None, end: str | None) -> list[Any]:
+    lo, hi = _parse_date(start), _parse_date(end, end=True)
+    out = []
+    if lo:
+        out.append(Image.recorded_at >= lo)
+    if hi:
+        out.append(Image.recorded_at <= hi)
+    return out
+
+
 def conditions(f: ImageFilter) -> list[Any]:
     conds: list[Any] = []
     if not f.include_missing:
@@ -311,17 +488,15 @@ def conditions(f: ImageFilter) -> list[Any]:
     )
     if people:
         conds.append(or_(*people) if f.persons_mode == "any" else and_(*people))
-    props = [_prop_images(k, v) for k, v in f.props]
-    if props:
-        conds.append(or_(*props) if f.props_mode == "any" else and_(*props))
+    conds += [_prop_images(k, v) for k, v in f.props]  # props_mode is normalised to "all"
+    conds += [_any_prop_images(g) for g in f.prop_groups]
     conds += [not_(_person_images(p)) for p in f.exclude_persons]
     conds += [not_(_pet_images(p)) for p in f.exclude_pets]
     conds += [not_(_prop_images(k, v)) for k, v in f.exclude_props]
-    start, end = _parse_date(f.date_from), _parse_date(f.date_to, end=True)
-    if start:
-        conds.append(Image.recorded_at >= start)
-    if end:
-        conds.append(Image.recorded_at <= end)
+    conds += _date_range(f.date_from, f.date_to)
+    ranges = [and_(*r) for r in (_date_range(a, b) for a, b in f.dates) if r]
+    if ranges:
+        conds.append(or_(*ranges))
     if f.folder:
         folder = f.folder.replace("\\", "/").strip("/")
         conds.append(
@@ -332,8 +507,8 @@ def conditions(f: ImageFilter) -> list[Any]:
         )
     if f.camera:
         conds.append(Image.camera == f.camera)
-    if f.place is not None:
-        conds.append(Image.place_id == f.place)
+    if f.places:
+        conds.append(or_(*(Image.place_id.in_(part) for part in chunked(f.places))))
     if f.bbox is not None:
         w, s, e, n = f.bbox
         conds.append(Image.lat.between(s, n))

@@ -10,7 +10,7 @@
       <small class="muted">{{ ngettext('%(hits)s of %(num)d candidate · %(seconds)s s', '%(hits)s of %(num)d candidates · %(seconds)s s', result.candidates, hits=result.hits | length, seconds=result.seconds) }}</small>
     </div>
     <div class="row">
-      <a class="btn small" href="/images?{{ filter_qs }}" title="{{ _('The strict part (persons, pets, required / excluded properties, dates) as a gallery filter') }}">{{ _('Open in filter builder') }}</a>
+      <a class="btn small" href="/images?{{ filter_qs }}" title="{{ _('The strict part (persons, pets, required / excluded properties, dates, alternatives) as a gallery filter') }}">{{ _('Open in filter builder') }}</a>
       {% if result.hits %}
       <details class="dropdown">
         <summary class="btn small">{{ icon('download', 'sm') }}{{ _('Export') }}</summary>
@@ -44,16 +44,32 @@
       {% endif %}
     </div>
   </div>
+  {% macro or_sep() %}<span class="or">{{ _('or') }}</span>{% endmacro %}
   <div class="chips" style="margin-top:12px">
+    {% if it.who_any %}{# "Anna or Ben": one chip, one of them is enough #}
+    <span class="chip active alternatives" title="{{ _('one of them') }}">
+      {% for _id, name in it.persons %}{% if not loop.first %}{{ or_sep() }}{% endif %}<span class="alt">{{ icon('user') }}{{ name }}</span>{% endfor %}
+      {% for _id, name in it.pets %}{% if it.persons or not loop.first %}{{ or_sep() }}{% endif %}<span class="alt">{{ icon('paw') }}{{ name }}</span>{% endfor %}
+    </span>
+    {% else %}
     {% for _id, name in it.persons %}<span class="chip active">{{ icon('user') }}{{ name }}</span>{% endfor %}
     {% for _id, name in it.pets %}<span class="chip active">{{ icon('paw') }}{{ name }}</span>{% endfor %}
-    {% if (it.persons | length) + (it.pets | length) > 1 %}<span class="chip">{{ _('all together') if it.persons_mode == 'all' else _('any of them') }}</span>{% endif %}
+    {% if (it.persons | length) + (it.pets | length) > 1 %}<span class="chip">{{ _('all together') }}</span>{% endif %}
+    {% endif %}
     {% for _id, name in it.exclude_persons %}<span class="chip neg">{{ icon('user') }}{{ _('not %(name)s', name=name) }}</span>{% endfor %}
     {% for _id, name in it.exclude_pets %}<span class="chip neg">{{ icon('paw') }}{{ _('not %(name)s', name=name) }}</span>{% endfor %}
     {% for t in it.must %}<span class="chip active" title="{{ _('required') }}">{{ t.key | label }}: {{ t.value | pretty(t.key) }}</span>{% endfor %}
+    {% for group in it.any_of %}{% set one_key = group | map(attribute='key') | unique | list | length == 1 %}
+    <span class="chip active alternatives" title="{{ _('required: one of them') }}">{% if one_key %}<span class="key">{{ group[0].key | label }}:</span>{% endif %}
+      {% for t in group %}{% if not loop.first %}{{ or_sep() }}{% endif %}<span class="alt">{% if not one_key %}{{ t.key | label }}: {% endif %}{{ t.value | pretty(t.key) }}</span>{% endfor %}
+    </span>
+    {% endfor %}
     {% for t in it.should %}<span class="chip soft" title="{{ _('preferred, weight %(weight)s%%', weight='%.0f' | format(t.weight * 100)) }}">{{ t.key | label }}: {{ t.value | pretty(t.key) }}{% if t.weight < 1 %} <span class="w">{{ '%.0f' | format(t.weight * 100) }}%</span>{% endif %}</span>{% endfor %}
     {% for t in it.exclude %}<span class="chip neg">{{ _('not %(name)s', name=(t.key | label) ~ ': ' ~ t.value | pretty(t.key)) }}</span>{% endfor %}
     {% if it.date_from or it.date_to %}<span class="chip active">{{ icon('calendar') }}{{ it.date_from or '…' }} – {{ it.date_to or '…' }}</span>{% endif %}
+    {% if it.dates %}<span class="chip active alternatives" title="{{ _('one of them') }}">{{ icon('calendar') }}
+      {% for a, b in it.dates %}{% if not loop.first %}{{ or_sep() }}{% endif %}<span class="alt">{% if a == b %}{{ a }}{% else %}{{ a or '…' }} – {{ b or '…' }}{% endif %}</span>{% endfor %}
+    </span>{% endif %}
     {% for k in it.keywords %}<span class="chip soft" title="{{ _('free-text keyword') }}">“{{ k }}”</span>{% endfor %}
   </div>
   {% if it.semantic_query and it.semantic_query != q %}<p class="muted hint">{{ _('Looking for: %(query)s', query='<i>' | safe ~ it.semantic_query ~ '</i>' | safe) }}</p>{% endif %}
