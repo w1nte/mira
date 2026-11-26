@@ -329,8 +329,9 @@ begin
   if Code = MigrateTooNew then
     SuppressibleMsgBox(CustomMessage('DatabaseTooNew'), mbError, MB_OK, IDOK)
   else
-    SuppressibleMsgBox(FmtMessage(CustomMessage('MigrationFailed'),
-      [IntToStr(Code), ExpandConstant('{localappdata}\vision-tagger\data')]), mbError, MB_OK, IDOK);
+    { no line may start with "[" here: Inno Setup would read it as a new section }
+    SuppressibleMsgBox(FmtMessage(CustomMessage('MigrationFailed'), [IntToStr(Code),
+      ExpandConstant('{localappdata}\vision-tagger\data')]), mbError, MB_OK, IDOK);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
