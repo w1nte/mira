@@ -3,12 +3,12 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <nav class="crumbs" aria-label="Breadcrumb"><a href="/properties?{{ f.query_string() }}">Properties</a></nav>
-    <h1>{{ key | label }} <small>{{ values | length }} values</small></h1>
+    <nav class="crumbs" aria-label="{{ _('Breadcrumb') }}"><a href="/properties?{{ f.query_string() }}">{{ _('Properties') }}</a></nav>
+    <h1>{{ key | label }} <small>{{ ngettext('%(num)d value', '%(num)d values', values | length) }}</small></h1>
     {% if spec %}<small>{{ spec.type.replace('_', ' ') }}{% if spec.description %} – {{ spec.description }}{% endif %}</small>{% endif %}
   </div>
   <div class="row">
-    <a class="btn" href="/images?{{ f.query_string() }}">{{ icon('image', 'sm') }}Gallery</a>
+    <a class="btn" href="/images?{{ f.query_string() }}">{{ icon('image', 'sm') }}{{ _('Gallery') }}</a>
   </div>
 </div>
 {% set base = '/properties/' ~ key %}
@@ -17,13 +17,13 @@
 <form method="post" x-data="{n: 0}" @change="n = vt.count($el)" data-select-scope>
   <section class="card flush-table">
     <div class="table-wrap"><table>
-      <tr><th style="width:2.5rem"><span class="sr-only">Select</span></th><th>Value</th><th class="num">Images</th><th>Examples</th></tr>
+      <tr><th style="width:2.5rem"><span class="sr-only">{{ _('Select') }}</span></th><th>{{ _('Value') }}</th><th class="num">{{ _('Images') }}</th><th>{{ _('Examples') }}</th></tr>
       {% for v, n in values %}
       <tr>
-        <td><input class="pick" type="checkbox" name="values" value="{{ v }}" aria-label="Select {{ v | pretty }}"></td>
+        <td><input class="pick" type="checkbox" name="values" value="{{ v }}" aria-label="{{ _('Select %(name)s', name=v | pretty(key)) }}"></td>
         <td style="white-space:nowrap">
-          <a class="ink" href="/images?{{ f.query_string(props=f.props + [(key, v)]) }}"><b>{{ v | pretty }}</b></a><br>
-          <small><a class="subtle" href="/images?{{ f.query_string(exclude_props=f.exclude_props + [(key, v)]) }}">exclude</a></small>
+          <a class="ink" href="/images?{{ f.query_string(props=f.props + [(key, v)]) }}"><b>{{ v | pretty(key) }}</b></a><br>
+          <small><a class="subtle" href="/images?{{ f.query_string(exclude_props=f.exclude_props + [(key, v)]) }}">{{ _('exclude') }}</a></small>
         </td>
         <td class="num">{{ n }}</td>
         <td style="width:65%">
@@ -37,23 +37,23 @@
   </section>
   <datalist id="values-list">{% for v, n in values %}<option value="{{ v }}">{% endfor %}</datalist>
   <div class="actionbar" x-show="n > 0" x-cloak>
-    <b x-text="n + ' selected'"></b>
-    <input type="text" name="target" list="values-list" placeholder="merge into / rename to…" style="width:16rem" aria-label="Merge into or rename to">
-    <button class="primary" formaction="/properties/{{ key }}/merge">Merge / rename</button>
-    <button class="danger" formaction="/properties/{{ key }}/delete" data-confirm="Delete the selected values from all images and future results?">{{ icon('trash', 'sm') }}Delete values</button>
-    <small class="muted">Merges are remembered and applied to future VLM results.</small>
-    <button type="button" class="icon-btn" @click="vt.toggleAll($root, false); n = 0" aria-label="Clear selection" title="Clear selection">{{ icon('x') }}</button>
+    <b x-text="vtT('%(n)s selected', { n: vtNum(n) })"></b>
+    <input type="text" name="target" list="values-list" placeholder="{{ _('merge into / rename to…') }}" style="width:16rem" aria-label="{{ _('Merge into or rename to') }}">
+    <button class="primary" formaction="/properties/{{ key }}/merge">{{ _('Merge / rename') }}</button>
+    <button class="danger" formaction="/properties/{{ key }}/delete" data-confirm="{{ _('Delete the selected values from all images and future results?') }}">{{ icon('trash', 'sm') }}{{ _('Delete values') }}</button>
+    <small class="muted">{{ _('Merges are remembered and applied to future VLM results.') }}</small>
+    <button type="button" class="icon-btn" @click="vt.toggleAll($root, false); n = 0" aria-label="{{ _('Clear selection') }}" title="{{ _('Clear selection') }}">{{ icon('x') }}</button>
   </div>
 </form>
 
 {% if aliases %}
-<div class="section-title"><h2>Remembered merges</h2></div>
+<div class="section-title"><h2>{{ _('Remembered merges') }}</h2></div>
 <section class="card flush-table">
   <table>
-    <tr><th>From</th><th>To</th><th></th></tr>
+    <tr><th>{{ _('From') }}</th><th>{{ _('To') }}</th><th></th></tr>
     {% for a in aliases %}
-    <tr><td>{{ a.from_value }}</td><td>{{ a.to_value if a.to_value is not none else '(deleted)' }}</td>
-      <td class="num"><form method="post" action="/aliases/{{ a.id }}/delete"><button class="small">Forget</button></form></td></tr>
+    <tr><td>{{ a.from_value }}</td><td>{{ a.to_value if a.to_value is not none else _('(deleted)') }}</td>
+      <td class="num"><form method="post" action="/aliases/{{ a.id }}/delete"><button class="small">{{ _('Forget') }}</button></form></td></tr>
     {% endfor %}
   </table>
 </section>

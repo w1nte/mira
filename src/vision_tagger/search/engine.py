@@ -26,6 +26,7 @@ from ..db.cache import VersionedCache
 from ..db.models import Cluster, Face, Image, ImageEmbedding, ImageProperty, VlmResult
 from ..db.session import Database
 from ..db.util import chunked, like_escape
+from ..i18n import Lazy
 from ..query import all_image_ids, property_counts
 from ..vlm.backend import VlmBackend, VlmError, make_backend
 from ..vlm.schema import Vocabulary, default_synonyms_path
@@ -63,7 +64,7 @@ class SearchResult:
     semantic_used: bool = False
     semantic_coverage: float = 0.0
     deep: bool = False
-    notes: list[str] = field(default_factory=list)
+    notes: list[str | Lazy] = field(default_factory=list)  # shown in the UI: Lazy
     seconds: float = 0.0
 
 
@@ -113,7 +114,9 @@ class SearchEngine:
             log.info("LLM query interpretation unavailable (%s); using keyword mode", exc)
             it = KeywordInterpreter().interpret(query, ctx)
             if self.backend.model != "fake":
-                it.notes.append(f"LLM unavailable ({exc}); basic keyword mode")
+                it.notes.append(
+                    Lazy("LLM unavailable (%(error)s); basic keyword mode", error=str(exc))
+                )
         else:
             self._cache[key] = it
             while len(self._cache) > 128:
@@ -219,13 +222,13 @@ class SearchEngine:
         return out
 
     def _semantic_scores(
-        self, it: Interpretation, candidates: list[int], notes: list[str]
+        self, it: Interpretation, candidates: list[int], notes: list[str | Lazy]
     ) -> dict[int, float] | None:
         model = self.settings.search.embed_model
         try:
             self.index.ensure(model)
         except Exception as exc:  # pragma: no cover - defensive
-            notes.append(f"semantic index unavailable: {exc}")
+            notes.append(Lazy("semantic index unavailable: %(error)s", error=str(exc)))
             return None
         if self.index.count == 0:
             return None
@@ -234,7 +237,7 @@ class SearchEngine:
                 0
             ]
         except (VlmError, ValueError) as exc:
-            notes.append(f"semantic search unavailable ({exc})")
+            notes.append(Lazy("semantic search unavailable (%(error)s)", error=str(exc)))
             return None
         sims = self.index.similarities(q, candidates)
         if not sims:
@@ -312,7 +315,7 @@ class SearchEngine:
                 self.backend, self.llm_model, query, descriptions, self.settings.search.rerank_batch
             )
         except (VlmError, ValueError, KeyError, TypeError) as exc:
-            result.notes.append(f"deep search unavailable ({exc})")
+            result.notes.append(Lazy("deep search unavailable (%(error)s)", error=str(exc)))
             return
         for h in top:
             j = judged.get(h.image_id)

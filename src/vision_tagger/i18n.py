@@ -2,9 +2,16 @@
 
 * Strings are English in the code and templates: ``{{ _("Photos") }}``,
   ``{{ _("%(n)s photos", n=count) }}`` and ``{{ ngettext("%(num)d photo", "%(num)d photos", n) }}``.
+  Templates always %-format (a literal ``%`` is written ``%%`` there); Python's ``_()`` only
+  formats when variables are given.
 * Catalogs live in ``resources/i18n/<lang>.json``: ``{"English text": "translation"}``; plural
   entries hold a list with one form per plural category of the language (see ``PLURALS``).
-  A missing entry falls back to English.
+  A missing entry falls back to English. Keys starting with ``@`` are notes for translators.
+  ``python -m vision_tagger.i18n_extract update`` adds new strings to every catalog,
+  ``... check`` reports what is missing or broken.
+* Text made outside a request (background jobs) or kept in caches shared by all requests is
+  stored language-neutral: as :class:`Lazy` (translated when shown), or marked with ``N_()``
+  and translated at render time.
 * The language of a request is the ``vt_lang`` cookie (the switcher in the sidebar) or else the
   best match of the browser's ``Accept-Language`` header, else English. It is kept in a context
   variable, so ``_()`` works in templates and in Python code handling the request.
@@ -115,6 +122,72 @@ def _(message: str, **variables: Any) -> str:
     return text % variables if variables else text
 
 
+def _n(singular: str, plural: str, n: int, **variables: Any) -> str:
+    """``ngettext`` and fill the placeholders (``%(num)d`` is ``n``) in Python code."""
+    return ngettext(singular, plural, n) % {"num": n, **variables}
+
+
+def N_(message: str) -> str:
+    """Mark a string for extraction without translating it here (it is translated later)."""
+    return message
+
+
+CONTEXT_SEP = "|"
+
+
+def pgettext(context: str, message: str) -> str:
+    """``gettext`` of a word whose translation depends on a context (catalog key
+    ``"context|message"``, e.g. ``"orientation|landscape"``); else the plain translation."""
+    value = catalog(current()).get(f"{context}{CONTEXT_SEP}{message}")
+    if isinstance(value, list):
+        value = value[0] if value else None
+    return value or gettext(message)
+
+
+class Lazy:
+    """Text translated when it is shown (``str()``), not when it is made.
+
+    For messages made outside a request (background jobs, which have no language) or kept in
+    data shared by requests in different languages (caches): each viewer sees their language.
+    Variables may be ``Lazy`` themselves.
+    """
+
+    __slots__ = ("message", "variables")
+
+    def __init__(self, message: str, /, **variables: Any) -> None:
+        self.message = message
+        self.variables = variables
+
+    def __str__(self) -> str:
+        return _(self.message, **self.variables)
+
+    def __bool__(self) -> bool:
+        return bool(self.message)
+
+    def __repr__(self) -> str:
+        return f"Lazy({self.message!r}, **{self.variables!r})"
+
+
+class LazyJoin(Lazy):
+    """Several texts (``str`` or :class:`Lazy`) joined when shown."""
+
+    __slots__ = ("parts", "separator")
+
+    def __init__(self, separator: str, parts: list[Any]) -> None:
+        super().__init__("")
+        self.separator = separator
+        self.parts = list(parts)
+
+    def __str__(self) -> str:
+        return self.separator.join(str(p) for p in self.parts)
+
+    def __bool__(self) -> bool:
+        return any(bool(p) for p in self.parts)
+
+    def __repr__(self) -> str:
+        return f"LazyJoin({self.separator!r}, {self.parts!r})"
+
+
 def negotiate(accept_language: str | None, cookie: str | None = None) -> str:
     """The UI language: the switcher's cookie, else the browser's preference, else English."""
     if cookie in LANGUAGES:
@@ -153,6 +226,8 @@ JS_KEYS = [
     "Browser storage for waiting uploads: %(used)s of %(quota)s",
     "%(n)s files skipped (not photos)",
     "Photos in this folder: %(n)s",
+    "File no longer available",
+    "%(n)s selected",
 ]
 
 

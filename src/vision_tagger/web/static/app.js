@@ -541,7 +541,7 @@ window.vtFolderPicker = function () {
         item.state = "uploading";
         try {
           const file = await idb.file(item.id);
-          if (!file) throw Object.assign(new Error("file no longer available"), { status: 400 });
+          if (!file) throw Object.assign(new Error(vtT("File no longer available")), { status: 400 });
           let state = null;
           if (item.serverId) {
             try { state = await this.api("/api/uploads/" + item.serverId); } catch (e) { if (e.status !== 404) throw e; }

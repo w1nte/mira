@@ -1,32 +1,30 @@
 {% extends "base.html" %}
-{% block title %}{{ ('Search: ' ~ q) if q else 'Search' }}{% endblock %}
+{% block title %}{{ _('Search: %(query)s', query=q) if q else _('Search') }}{% endblock %}
 {% block content %}
 <div class="page-head">
   <div>
-    <h1>Search</h1>
-    <small>Describe what you are looking for, in any language. The local LLM interprets the request,
-      the search index finds images with similar content, and <b>Deep search</b> lets the LLM double-check
-      the best matches and explain them.</small>
+    <h1>{{ _('Search') }}</h1>
+    <small>{{ _('Describe what you are looking for, in any language. The local LLM interprets the request, the search index finds images with similar content, and %(deep)s lets the LLM double-check the best matches and explain them.', deep='<b>' | safe ~ _('Deep search') ~ '</b>' | safe) }}</small>
   </div>
 </div>
 
 <form class="searchbox" method="get" action="/search" role="search">
-  <input type="search" name="q" value="{{ q }}" {{ 'autofocus' if not q }} aria-label="Search request"
-         placeholder="e.g. “Anna and Ben at the beach in summer 2021, no work photos”">
-  <label title="The LLM re-ranks the top results and explains each choice (slower)">
-    <input type="checkbox" name="deep" value="1" {{ 'checked' if deep }}> Deep search</label>
-  <button class="primary">{{ icon('search', 'sm') }}Search</button>
+  <input type="search" name="q" value="{{ q }}" {{ 'autofocus' if not q }} aria-label="{{ _('Search request') }}"
+         placeholder="{{ _('e.g. “Anna and Ben at the beach in summer 2021, no work photos”') }}">
+  <label title="{{ _('The LLM re-ranks the top results and explains each choice (slower)') }}">
+    <input type="checkbox" name="deep" value="1" {{ 'checked' if deep }}> {{ _('Deep search') }}</label>
+  <button class="primary">{{ icon('search', 'sm') }}{{ _('Search') }}</button>
 </form>
 
 {% if not q %}
   <div class="chips examples">
-    <small class="muted">Try:</small>
+    <small class="muted">{{ _('Try:') }}</small>
     {% for ex in examples %}<a class="chip" href="/search?q={{ ex | urlencode }}">{{ ex }}</a>{% endfor %}
   </div>
 {% else %}
   <div id="results" class="results" hx-get="{{ results_url }}" hx-trigger="load" hx-swap="innerHTML">
     <div class="card empty"><span class="spinner"></span>
-      Interpreting your request{% if deep %}, ranking and asking the LLM about the best matches{% endif %}…</div>
+      {% if deep %}{{ _('Interpreting your request, ranking and asking the LLM about the best matches…') }}{% else %}{{ _('Interpreting your request…') }}{% endif %}</div>
   </div>
 {% endif %}
 {% endblock %}

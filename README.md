@@ -243,6 +243,12 @@ uv run vision-tagger growup "Anna" anna-growing-up.webp  # grow-up animation
 The sidebar groups the pages into *Library*, *People*, *Organize* and *System* and shows what
 the pipeline is doing right now. On small screens it folds away behind the menu button.
 
+**Languages.** The UI speaks English, German, French, Spanish, Italian, Portuguese, Dutch,
+Polish, Russian, Chinese and Japanese. It starts in your browser's language; the language menu at
+the bottom of the sidebar changes it (kept in the `vt_lang` cookie). Property names and values
+are translated too, while filters, exports and the database keep the English values, so links
+and exported keywords stay the same in every language. Searches can be typed in any language.
+
 **Light and dark mode.** The switch at the bottom of the sidebar picks the theme: *System*
 (follows your operating system), *Light* or *Dark*. The choice is kept in a cookie (`vt_theme`),
 so every page is rendered in the right theme from the start, without flashing.
@@ -441,6 +447,17 @@ uv run pytest -v
 
 GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs ruff and the full
 test suite on Ubuntu and Windows.
+
+**Translations.** UI text is English in the code: `_("…")` / `ngettext(…)` in templates and
+Python (see [`i18n.py`](src/vision_tagger/i18n.py)); the catalogs are
+`src/vision_tagger/resources/i18n/<lang>.json`. After adding or changing UI text:
+
+```bash
+uv run python -m vision_tagger.i18n_extract update       # adds new strings to every catalog
+uv run python -m vision_tagger.i18n_extract check de -v  # what is missing or broken in one language
+```
+
+`tests/test_i18n.py` fails while a catalog misses a string or a translation breaks a placeholder.
 
 Schema changes always need an Alembic migration in `src/vision_tagger/migrations/versions/`.
 See [CLAUDE.md](CLAUDE.md#database-migrations-mandatory) for the workflow.

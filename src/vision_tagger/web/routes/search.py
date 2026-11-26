@@ -10,19 +10,21 @@ from fastapi.responses import Response
 from ...db.models import Image
 from ...db.util import chunked
 from ...export import METADATA, export_images
+from ...i18n import N_, Lazy, _, _n
 from ..common import ctx, ints, redirect, render
 from ..context import Job
 from .images import export_summary
 
 router = APIRouter()
 
+# shown in the UI language (one on purpose in another language: any language works)
 EXAMPLES = [
-    "Anna and Ben at the beach in summer",
-    "snowy mountains without people",
-    "Weihnachten mit der Familie",
-    "screenshots and documents from work",
-    "sunsets at the sea",
-    "birthday party with cake",
+    N_("Anna and Ben at the beach in summer"),
+    N_("snowy mountains without people"),
+    N_("Weihnachten mit der Familie"),
+    N_("screenshots and documents from work"),
+    N_("sunsets at the sea"),
+    N_("birthday party with cake"),
 ]
 
 
@@ -34,7 +36,7 @@ def search_page(request: Request, q: str = "", deep: int = 0) -> Response:
         "search.html",
         q=q,
         deep=bool(deep),
-        examples=EXAMPLES,
+        examples=[_(example) for example in EXAMPLES],
         results_url="/search/results?" + urlencode({"q": q, "deep": int(bool(deep))}),
     )
 
@@ -83,11 +85,11 @@ def export_results(
     image_ids = ints(ids.split(","))
     back_url = "/search?" + urlencode({"q": q})
     if not image_ids or not target.strip():
-        return redirect(request, back_url, err="Nothing to export or no target folder.")
+        return redirect(request, back_url, err=_("Nothing to export or no target folder."))
     mode = mode if mode in ("copy", "hardlink", "symlink") else "copy"
     layout = layout if layout in ("flat", "date", "folder") else "flat"
 
-    def job(_j: Job) -> str:
+    def job(_j: Job) -> Lazy:
         from ...query import ImageFilter
 
         stats = export_images(
@@ -100,11 +102,19 @@ def export_results(
             metadata=[m for m in metadata if m in METADATA],
             sidecar_naming=c.settings.export.sidecar_naming,
         )
-        return export_summary(stats, "Search export")
+        return export_summary(stats, search=True)
 
     if not c.jobs.start("export", job):
-        return redirect(request, back_url, err="Another job is running.")
-    return redirect(request, back_url, msg=f"Exporting {len(image_ids)} images – see dashboard.")
+        return redirect(request, back_url, err=_("Another job is running."))
+    return redirect(
+        request,
+        back_url,
+        msg=_n(
+            "Exporting %(num)d image – see dashboard.",
+            "Exporting %(num)d images – see dashboard.",
+            len(image_ids),
+        ),
+    )
 
 
 @router.get("/search/download.zip")

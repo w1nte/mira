@@ -5,17 +5,17 @@
 {% set qs = f.query_string() %}
 <div class="page-head">
   <div>
-    <nav class="crumbs" aria-label="Breadcrumb"><a href="/images{{ '?' ~ qs if qs }}">Images</a>{% if img.folder %}<a href="/images?folder={{ img.folder | urlencode }}">{{ img.folder }}</a>{% endif %}</nav>
+    <nav class="crumbs" aria-label="{{ _('Breadcrumb') }}"><a href="/images{{ '?' ~ qs if qs }}">{{ _('Images') }}</a>{% if img.folder %}<a href="/images?folder={{ img.folder | urlencode }}">{{ img.folder }}</a>{% endif %}</nav>
     <h1 class="filename">{{ img.filename }}</h1>
     <small class="mono path">{{ img.path }}</small>
-    {% if img.missing %}<span class="badge err">file missing</span>{% endif %}
+    {% if img.missing %}<span class="badge err">{{ _('file missing') }}</span>{% endif %}
   </div>
   <div class="row">
-    {% if prev_id %}<a class="btn" href="/images/{{ prev_id }}{{ '?' ~ qs if qs }}" data-hotkey="ArrowLeft" title="Previous photo (←)" aria-keyshortcuts="ArrowLeft">{{ icon('chevron-left', 'sm') }}Previous</a>
-    {% else %}<span class="btn" aria-disabled="true">{{ icon('chevron-left', 'sm') }}Previous</span>{% endif %}
-    {% if next_id %}<a class="btn" href="/images/{{ next_id }}{{ '?' ~ qs if qs }}" data-hotkey="ArrowRight" title="Next photo (→)" aria-keyshortcuts="ArrowRight">Next{{ icon('chevron-right', 'sm') }}</a>
-    {% else %}<span class="btn" aria-disabled="true">Next{{ icon('chevron-right', 'sm') }}</span>{% endif %}
-    <a class="btn" href="/media/image/{{ img.id }}" target="_blank" rel="noopener">{{ icon('external', 'sm') }}Open original</a>
+    {% if prev_id %}<a class="btn" href="/images/{{ prev_id }}{{ '?' ~ qs if qs }}" data-hotkey="ArrowLeft" title="{{ _('Previous photo (←)') }}" aria-keyshortcuts="ArrowLeft">{{ icon('chevron-left', 'sm') }}{{ _('Previous') }}</a>
+    {% else %}<span class="btn" aria-disabled="true">{{ icon('chevron-left', 'sm') }}{{ _('Previous') }}</span>{% endif %}
+    {% if next_id %}<a class="btn" href="/images/{{ next_id }}{{ '?' ~ qs if qs }}" data-hotkey="ArrowRight" title="{{ _('Next photo (→)') }}" aria-keyshortcuts="ArrowRight">{{ _('Next') }}{{ icon('chevron-right', 'sm') }}</a>
+    {% else %}<span class="btn" aria-disabled="true">{{ _('Next') }}{{ icon('chevron-right', 'sm') }}</span>{% endif %}
+    <a class="btn" href="/media/image/{{ img.id }}" target="_blank" rel="noopener">{{ icon('external', 'sm') }}{{ _('Open original') }}</a>
   </div>
 </div>
 
@@ -37,42 +37,41 @@
     </div>
     <div class="row spread viewer-foot">
       {% if vlm and vlm.caption %}<p class="caption">{{ vlm.caption }}</p>{% else %}<span></span>{% endif %}
-      {% if img.faces %}<label class="toggle"><input type="checkbox" x-model="boxes"> Face boxes</label>{% endif %}
+      {% if img.faces %}<label class="toggle"><input type="checkbox" x-model="boxes"> {{ _('Face boxes') }}</label>{% endif %}
     </div>
   </div>
 
-  <aside class="info" aria-label="Photo details">
+  <aside class="info" aria-label="{{ _('Photo details') }}">
     {% if date_check and date_check.suspicious %}
     <section>
       <div class="notice">
-        <h3>{{ icon('alert', 'sm') }} This date looks wrong</h3>
-        <p>Recorded {{ date_check.recorded_year }} (from {{ date_check.date_source }}), but the faces suggest
-          <b>about {{ date_check.suggested_year }}</b> <small class="muted">({{ date_check.low }}–{{ date_check.high }})</small>:</p>
+        <h3>{{ icon('alert', 'sm') }} {{ _('This date looks wrong') }}</h3>
+        <p>{{ _('Recorded %(year)s (from %(source)s), but the faces suggest %(suggested)s %(range)s:', year=date_check.recorded_year, source=date_check.date_source, suggested='<b>' | safe ~ _('about %(year)s', year=date_check.suggested_year) ~ '</b>' | safe, range='<small class="muted">(' | safe ~ date_check.low ~ '–' ~ date_check.high ~ ')</small>' | safe) }}</p>
         <ul class="plain">
           {% for f in date_check.faces.values() if f.face_age is not none %}
-            <li>{{ f.person }}: {% if f.calendar_age is not none %}would be {{ f.calendar_age }}, {% endif %}looks about {{ f.face_age }}{% if f.birth_source == 'estimated' %} <small class="muted">(birth year estimated)</small>{% endif %}</li>
+            <li>{% if f.calendar_age is not none %}{{ _('%(person)s: would be %(age)s, looks about %(face_age)s', person=f.person, age=f.calendar_age, face_age=f.face_age) }}{% else %}{{ _('%(person)s: looks about %(face_age)s', person=f.person, face_age=f.face_age) }}{% endif %}{% if f.birth_source == 'estimated' %} <small class="muted">{{ _('(birth year estimated)') }}</small>{% endif %}</li>
           {% endfor %}
         </ul>
         <form method="post" action="/images/{{ img.id }}/date" class="row">
           <input type="hidden" name="year" value="{{ date_check.suggested_year }}">
-          <button class="small primary">Set year to {{ date_check.suggested_year }}</button>
+          <button class="small primary">{{ _('Set year to %(year)s', year=date_check.suggested_year) }}</button>
         </form>
-        <small class="muted">Face ages are estimates – only fix it if it looks right to you.</small>
+        <small class="muted">{{ _('Face ages are estimates – only fix it if it looks right to you.') }}</small>
       </div>
     </section>
     {% endif %}
 
     {% if img.faces %}
     <section>
-      <h3>People</h3>
+      <h3>{{ _('People') }}</h3>
       <div class="chips">
         {% for face in img.faces if not face.ignored %}
           {% if face.cluster and face.cluster.person %}
-            <a class="chip" href="/images?p={{ face.cluster.person_id }}">{{ icon('user') }}{{ face.cluster.person.name }}{% if face_ages.get(face.id) %} <span class="n" title="age in this photo{{ ' (face estimate)' if face_ages[face.id].startswith('~') }}">{{ face_ages[face.id] }}</span>{% endif %}</a>
+            <a class="chip" href="/images?p={{ face.cluster.person_id }}">{{ icon('user') }}{{ face.cluster.person.name }}{% if face_ages.get(face.id) %} <span class="n" title="{{ _('age in this photo (face estimate)') if face_ages[face.id].startswith('~') else _('age in this photo') }}">{{ face_ages[face.id] }}</span>{% endif %}</a>
           {% elif face.cluster_id %}
-            <a class="chip" href="/clusters/{{ face.cluster_id }}">{{ icon('users') }}Cluster #{{ face.cluster_id }}</a>
+            <a class="chip" href="/clusters/{{ face.cluster_id }}">{{ icon('users') }}{{ _('Cluster #%(id)s', id=face.cluster_id) }}</a>
           {% else %}
-            <a class="chip soft" href="/faces/unclustered">unclustered face</a>
+            <a class="chip soft" href="/faces/unclustered">{{ _('unclustered face') }}</a>
           {% endif %}
         {% endfor %}
       </div>
@@ -80,52 +79,52 @@
     {% endif %}
 
     <section>
-      <h3>Details</h3>
+      <h3>{{ _('Details') }}</h3>
       <dl class="kv">
-        <dt>Recorded</dt><dd>{{ img.recorded_at | dt('%Y-%m-%d %H:%M:%S') }} <span class="badge {{ 'warn' if date_check and date_check.suspicious }}">{{ img.date_source }}</span>
-          <details class="inline-edit"><summary>Edit</summary>
+        <dt>{{ _('Recorded') }}</dt><dd>{{ img.recorded_at | dt('%Y-%m-%d %H:%M:%S') }} <span class="badge {{ 'warn' if date_check and date_check.suspicious }}">{{ img.date_source }}</span>
+          <details class="inline-edit"><summary>{{ _('Edit') }}</summary>
             <form method="post" action="/images/{{ img.id }}/date" class="row">
-              <input type="number" name="year" value="{{ img.recorded_at.year if img.recorded_at else '' }}" min="1850" max="2100" style="width:6rem" required aria-label="Year">
-              <input type="number" name="month" min="1" max="12" placeholder="month" style="width:5.5rem" aria-label="Month">
-              <button class="small">Set date</button>
+              <input type="number" name="year" value="{{ img.recorded_at.year if img.recorded_at else '' }}" min="1850" max="2100" style="width:6rem" required aria-label="{{ _('Year') }}">
+              <input type="number" name="month" min="1" max="12" placeholder="{{ _('month') }}" style="width:5.5rem" aria-label="{{ _('Month') }}">
+              <button class="small">{{ _('Set date') }}</button>
             </form></details></dd>
-        <dt>Folder</dt><dd><a href="/images?folder={{ img.folder | urlencode }}">{{ icon('folder', 'sm') }} {{ img.folder or '(root)' }}</a></dd>
-        <dt>Size</dt><dd>{{ img.width }} × {{ img.height }} · {{ img.size_bytes | bytes }} · {{ img.ext }}</dd>
-        {% if img.camera %}<dt>Camera</dt><dd><a href="/images?camera={{ img.camera | urlencode }}">{{ icon('camera', 'sm') }} {{ img.camera }}</a></dd>{% endif %}
-        {% if img.meta.get('lens') %}<dt>Lens</dt><dd>{{ img.meta.lens }}</dd>{% endif %}
+        <dt>{{ _('Folder') }}</dt><dd><a href="/images?folder={{ img.folder | urlencode }}">{{ icon('folder', 'sm') }} {{ img.folder or _('(root)') }}</a></dd>
+        <dt>{{ _('Size') }}</dt><dd>{{ img.width }} × {{ img.height }} · {{ img.size_bytes | bytes }} · {{ img.ext }}</dd>
+        {% if img.camera %}<dt>{{ _('Camera') }}</dt><dd><a href="/images?camera={{ img.camera | urlencode }}">{{ icon('camera', 'sm') }} {{ img.camera }}</a></dd>{% endif %}
+        {% if img.meta.get('lens') %}<dt>{{ _('Lens') }}</dt><dd>{{ img.meta.lens }}</dd>{% endif %}
         {% if img.meta.get('gps') %}<dt>GPS</dt><dd>{{ img.meta.gps.lat }}, {{ img.meta.gps.lon }}</dd>{% endif %}
         <dt>pHash</dt><dd class="mono">{{ img.phash }}</dd>
       </dl>
       {% if img.duplicates %}
-        <details class="more"><summary>{{ img.duplicates | length }} duplicate file{{ 's' if img.duplicates | length != 1 }}</summary>
+        <details class="more"><summary>{{ ngettext('%(num)d duplicate file', '%(num)d duplicate files', img.duplicates | length) }}</summary>
           <ul class="plain">{% for d in img.duplicates %}<li class="mono">{{ d.path }}</li>{% endfor %}</ul></details>
       {% endif %}
     </section>
 
     <section>
-      <h3>Properties</h3>
+      <h3>{{ _('Properties') }}</h3>
       {% if props %}
       <dl class="kv props">
         {% for key, rows in props.items() %}
         <dt><a href="/properties/{{ key }}">{{ key | label }}</a></dt>
         <dd class="chips">
           {% for p in rows %}
-            <a class="chip" href="/images?t={{ (key ~ ':' ~ p.value) | urlencode }}" title="{{ p.source }}{% if p.confidence is not none %} · confidence {{ '%.2f' | format(p.confidence) }}{% endif %}">{{ p.value | pretty }}{% if p.source in ('inferred', 'derived') and p.confidence is not none %} <span class="n">{{ '%.0f' | format(p.confidence * 100) }}%</span>{% endif %}</a>
+            <a class="chip" href="/images?t={{ (key ~ ':' ~ p.value) | urlencode }}" title="{{ p.source }}{% if p.confidence is not none %} · {{ _('confidence %(value)s', value='%.2f' | format(p.confidence)) }}{% endif %}">{{ p.value | pretty(key) }}{% if p.source in ('inferred', 'derived') and p.confidence is not none %} <span class="n">{{ '%.0f' | format(p.confidence * 100) }}%</span>{% endif %}</a>
           {% endfor %}
         </dd>
         {% endfor %}
       </dl>
-      {% else %}<p class="muted">No properties yet.</p>{% endif %}
+      {% else %}<p class="muted">{{ _('No properties yet.') }}</p>{% endif %}
     </section>
 
     <section>
-      <h3>Pipeline</h3>
+      <h3>{{ _('Pipeline') }}</h3>
       <table class="compact">
         {% for st in img.stages %}
         <tr>
           <td>{{ st.stage }}</td>
-          <td><span class="badge {{ st.status }}">{{ st.status }}</span>{% if st.last_error %}<br><small class="mono">{{ st.last_error[:200] }}</small>{% endif %}</td>
-          <td class="num"><form method="post" action="/images/{{ img.id }}/requeue"><input type="hidden" name="stage" value="{{ st.stage }}"><button class="small" title="Run this stage again for this photo">{{ icon('refresh', 'sm') }}Re-run</button></form></td>
+          <td><span class="badge {{ st.status }}">{{ status_title(st.status) }}</span>{% if st.last_error %}<br><small class="mono">{{ st.last_error[:200] }}</small>{% endif %}</td>
+          <td class="num"><form method="post" action="/images/{{ img.id }}/requeue"><input type="hidden" name="stage" value="{{ st.stage }}"><button class="small" title="{{ _('Run this stage again for this photo') }}">{{ icon('refresh', 'sm') }}{{ _('Re-run') }}</button></form></td>
         </tr>
         {% endfor %}
       </table>
@@ -133,11 +132,11 @@
 
     <section>
       {% if vlm %}
-      <details class="more"><summary>Raw VLM result <small class="muted">{{ vlm.model }} · {{ vlm.prompt_version }} · {{ vlm.duration_s }}s</small></summary>
+      <details class="more"><summary>{{ _('Raw VLM result') }} <small class="muted">{{ vlm.model }} · {{ vlm.prompt_version }} · {{ vlm.duration_s }}s</small></summary>
         <pre class="json">{{ vlm.raw_json | tojson(indent=2) }}</pre>
       </details>
       {% endif %}
-      <details class="more"><summary>File metadata</summary>
+      <details class="more"><summary>{{ _('File metadata') }}</summary>
         <pre class="json">{{ img.meta | tojson(indent=2) }}</pre>
       </details>
     </section>

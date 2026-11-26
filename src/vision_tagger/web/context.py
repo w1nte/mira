@@ -15,6 +15,7 @@ from typing import Any
 from ..config import Settings
 from ..db.cache import VersionedCache
 from ..db.session import Database
+from ..i18n import Lazy
 from ..indexer import ensure_stage_rows
 from ..pipeline import control
 from ..pipeline.runner import BackgroundRunner, PipelineRunner
@@ -27,7 +28,8 @@ log = logging.getLogger(__name__)
 class Job:
     name: str
     status: str = "running"
-    message: str = ""
+    # shown to every viewer: messages made in the job thread are ``Lazy`` (translated when shown)
+    message: str | Lazy = ""
     progress: dict[str, Any] = field(default_factory=dict)
     started_at: datetime = field(default_factory=datetime.now)
     finished_at: datetime | None = None
@@ -46,7 +48,7 @@ class JobManager:
     def busy(self) -> bool:
         return self.current is not None and self.current.status == "running"
 
-    def start(self, name: str, fn: Callable[[Job], str | None]) -> bool:
+    def start(self, name: str, fn: Callable[[Job], str | Lazy | None]) -> bool:
         with self._lock:
             if self.busy:
                 return False
@@ -57,7 +59,7 @@ class JobManager:
             try:
                 result = fn(job)
                 job.status = "done"
-                job.message = result or job.message or "done"
+                job.message = result or job.message or Lazy("done")
             except Exception as exc:
                 job.status = "failed"
                 job.message = f"{type(exc).__name__}: {exc}"

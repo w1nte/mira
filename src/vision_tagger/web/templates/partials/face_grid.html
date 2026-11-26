@@ -1,35 +1,35 @@
 {# Selectable face grid + action bar. Expects: faces, persons, mode ('cluster'|'unclustered'|'ignored') #}
 <form method="post" action="/faces/action" x-data="{n: 0}" @change="n = vt.count($el)" data-select-scope>
   <div class="row spread grid-head">
-    <small class="muted">Click faces to select them (shift-click for a range).</small>
+    <small class="muted">{{ _('Click faces to select them (shift-click for a range).') }}</small>
     <div class="row">
-      <button type="button" class="small" @click="vt.toggleAll($root, true); n = vt.count($root)">Select all</button>
-      <button type="button" class="small" @click="vt.toggleAll($root, false); n = 0">Clear</button>
+      <button type="button" class="small" @click="vt.toggleAll($root, true); n = vt.count($root)">{{ _('Select all') }}</button>
+      <button type="button" class="small" @click="vt.toggleAll($root, false); n = 0">{{ _('Clear') }}</button>
     </div>
   </div>
   <div class="faces">
     {% for face in faces %}
-    <label class="face" title="score {{ '%.2f' | format(face.det_score) }}{% if face.age %} · ~{{ face.age }} y{% endif %}{% if face.gender %} · {{ face.gender }}{% endif %}">
+    <label class="face" title="{{ _('score %(value)s', value='%.2f' | format(face.det_score)) }}{% if face.age %} · {{ _('~%(age)s y', age=face.age) }}{% endif %}{% if face.gender %} · {{ face.gender }}{% endif %}">
       <img loading="lazy" src="/media/face/{{ face.id }}" alt="">
-      <input class="pick" type="checkbox" name="face_ids" value="{{ face.id }}" aria-label="Select face #{{ face.id }}">
-      {% if not face.clusterable %}<span class="lq badge warn" title="Small or low-confidence face – not used for clustering">lq</span>{% endif %}
-      <a class="open" href="/images/{{ face.image_id }}" title="Open photo" aria-label="Open photo">{{ icon('external') }}</a>
+      <input class="pick" type="checkbox" name="face_ids" value="{{ face.id }}" aria-label="{{ _('Select face #%(id)s', id=face.id) }}">
+      {% if not face.clusterable %}<span class="lq badge warn" title="{{ _('Small or low-confidence face – not used for clustering') }}">{{ _('lq') }}</span>{% endif %}
+      <a class="open" href="/images/{{ face.image_id }}" title="{{ _('Open photo') }}" aria-label="{{ _('Open photo') }}">{{ icon('external') }}</a>
     </label>
     {% endfor %}
   </div>
   <div class="actionbar" x-show="n > 0" x-cloak>
-    <b x-text="n + ' selected'"></b>
+    <b x-text="vtT('%(n)s selected', { n: vtNum(n) })"></b>
     {% if mode == 'ignored' %}
-      <button name="action" value="unignore" class="primary">Restore</button>
+      <button name="action" value="unignore" class="primary">{{ _('Restore') }}</button>
     {% else %}
-      <input type="text" name="name" list="person-names" placeholder="Person name…" style="width:12rem" aria-label="Person name">
-      <button name="action" value="person" class="primary" title="Move to this person's cluster">Assign to person</button>
-      <button name="action" value="split" title="Move into a new cluster (optionally named)">Split to new cluster</button>
-      <input type="number" name="target_cluster" placeholder="cluster #" style="width:7rem" aria-label="Target cluster number">
-      <button name="action" value="cluster">Move to cluster</button>
-      <button name="action" value="ignore" class="danger" title="Not a face / not relevant">{{ icon('trash', 'sm') }}Remove</button>
+      <input type="text" name="name" list="person-names" placeholder="{{ _('Person name…') }}" style="width:12rem" aria-label="{{ _('Person name') }}">
+      <button name="action" value="person" class="primary" title="{{ _("Move to this person's cluster") }}">{{ _('Assign to person') }}</button>
+      <button name="action" value="split" title="{{ _('Move into a new cluster (optionally named)') }}">{{ _('Split to new cluster') }}</button>
+      <input type="number" name="target_cluster" placeholder="{{ _('cluster #') }}" style="width:7rem" aria-label="{{ _('Target cluster number') }}">
+      <button name="action" value="cluster">{{ _('Move to cluster') }}</button>
+      <button name="action" value="ignore" class="danger" title="{{ _('Not a face / not relevant') }}">{{ icon('trash', 'sm') }}{{ _('Remove') }}</button>
     {% endif %}
-    <button type="button" class="icon-btn" @click="vt.toggleAll($root, false); n = 0" aria-label="Clear selection" title="Clear selection">{{ icon('x') }}</button>
+    <button type="button" class="icon-btn" @click="vt.toggleAll($root, false); n = 0" aria-label="{{ _('Clear selection') }}" title="{{ _('Clear selection') }}">{{ icon('x') }}</button>
   </div>
 </form>
 <datalist id="person-names">{% for p in persons %}<option value="{{ p.name }}">{% endfor %}</datalist>

@@ -9,7 +9,7 @@ from fastapi.responses import Response
 from sqlalchemy import func, select
 
 from ...db.models import AppSetting, Cluster, DuplicateFile, Face, Image, Person, Run, utcnow
-from ...i18n import _
+from ...i18n import Lazy, LazyJoin, _, _n
 from ...indexer import ROOTS_KEY, Indexer, stored_roots
 from ...pipeline import control
 from ...pipeline.stages import STAGE_NAMES
@@ -145,22 +145,31 @@ def start_index(request: Request, roots: str = Form(""), analyse: str = Form("")
     if not root_list:
         return redirect(request, "/import", err=_("Add at least one folder first."))
 
-    def job(j: Job) -> str:
-        def progress(stats: Any) -> None:
+    def job(j: Job) -> Lazy:
+        def progress(stats: Any) -> None:  # runs in the job thread: translated when shown
             j.progress = stats.as_dict()
-            j.message = (
-                f"{stats.processed}/{stats.candidates} new or changed files analysed "
-                f"({stats.found} found)"
+            message = Lazy(
+                "%(processed)s/%(candidates)s new or changed files analysed (%(found)s found)",
+                processed=stats.processed,
+                candidates=stats.candidates,
+                found=stats.found,
             )
             if stats.thumbnails_todo:
-                j.message += f" · thumbnails {stats.thumbnails_warmed}/{stats.thumbnails_todo}"
+                thumbs = Lazy(
+                    "thumbnails %(warmed)s/%(todo)s",
+                    warmed=stats.thumbnails_warmed,
+                    todo=stats.thumbnails_todo,
+                )
+                j.message = LazyJoin(" · ", [message, thumbs])
+            else:
+                j.message = message
 
         stats = Indexer(
             c.db, c.settings, progress=progress, should_stop=lambda: j.stop_requested
         ).run(root_list)
         if analyse and not j.stop_requested and not c.runner.running:
             c.runner.start(None)
-        return _(
+        return Lazy(
             "Index: %(new)s new, %(dup)s duplicates, %(moved)s moved, %(updated)s updated, "
             "%(unchanged)s unchanged, %(errors)s errors",
             new=stats.new,
@@ -186,36 +195,56 @@ def start_run(
     c = ctx(request)
     stages = [st for st in STAGE_NAMES if st in stages]
     if not stages:
-        return redirect(request, "/pipeline", err="Select at least one stage.")
+        return redirect(request, "/pipeline", err=_("Select at least one stage."))
     if control.is_runner_alive(c.db) or c.runner.running:
-        return redirect(request, "/pipeline", err="A run is already active.")
+        return redirect(request, "/pipeline", err=_("A run is already active."))
     lim = int(limit) if limit.strip().isdigit() and int(limit) > 0 else None
     c.runner.start(stages, batch_size=batch_size or None, limit=lim)
-    return redirect(request, "/pipeline", msg=f"Run started: {', '.join(stages)}.")
+    return redirect(
+        request, "/pipeline", msg=_("Run started: %(stages)s.", stages=", ".join(stages))
+    )
 
 
 @router.post("/actions/{state}")
 def change_state(request: Request, state: str) -> Response:
     c = ctx(request)
     mapping = {"pause": control.PAUSED, "resume": control.RUNNING, "stop": control.STOPPED}
+    requested = {
+        "pause": _("Pause requested."),
+        "resume": _("Resume requested."),
+        "stop": _("Stop requested."),
+    }
     if state in mapping:
         control.request_state(c.db, mapping[state])
         if state == "stop":
             c.jobs.request_stop()
-        return redirect(request, "/pipeline", msg=f"{state.capitalize()} requested.")
+        return redirect(request, "/pipeline", msg=requested[state])
     if state == "retry-errors":
         n = control.retry_errors(c.db, request.query_params.get("stage"))
-        return redirect(request, "/pipeline", msg=f"{n} items re-queued.")
+        return redirect(
+            request, "/pipeline", msg=_n("%(num)d item re-queued.", "%(num)d items re-queued.", n)
+        )
     if state == "skip-errors":
         n = control.skip_errors(c.db, request.query_params.get("stage"))
-        return redirect(request, "/pipeline", msg=f"{n} items skipped.")
+        return redirect(
+            request, "/pipeline", msg=_n("%(num)d item skipped.", "%(num)d items skipped.", n)
+        )
     if state == "requeue-outdated":
         stage = request.query_params.get("stage", "")
         versions = c.stage_versions()
         if stage not in versions:
-            return redirect(request, "/pipeline", err="Unknown stage.")
+            return redirect(request, "/pipeline", err=_("Unknown stage."))
         n = control.requeue_outdated(c.db, stage, versions[stage])
-        return redirect(request, "/pipeline", msg=f"{n} outdated {stage} results re-queued.")
+        return redirect(
+            request,
+            "/pipeline",
+            msg=_n(
+                "%(num)d outdated %(stage)s result re-queued.",
+                "%(num)d outdated %(stage)s results re-queued.",
+                n,
+                stage=stage,
+            ),
+        )
     if state == "recluster":
         full = request.query_params.get("full") == "1"
 
@@ -228,30 +257,35 @@ def change_state(request: Request, state: str) -> Response:
         return redirect(
             request,
             "/pipeline",
-            msg="Clustering started." if ok else None,
-            err=None if ok else "Another job is running.",
+            msg=_("Clustering started.") if ok else None,
+            err=None if ok else _("Another job is running."),
         )
     if state == "import-references":
 
-        def job(_j: Job) -> str:
+        def job(_j: Job) -> Lazy:
             from ...faces.references import import_references
             from ...pipeline.stages.faces import cluster_and_match
 
             stats = import_references(c.db, c.settings)
-            msg = cluster_and_match(c.db, c.settings, full=False)
-            return (
-                f"References: {stats.added} added for {stats.persons} persons, "
-                f"{len(stats.no_face)} without face, {len(stats.errors)} errors. {msg}"
+            msg = cluster_and_match(c.db, c.settings, full=False)  # technical summary
+            return Lazy(
+                "References: %(added)s added for %(persons)s persons, %(no_face)s without face, "
+                "%(errors)s errors. %(details)s",
+                added=stats.added,
+                persons=stats.persons,
+                no_face=len(stats.no_face),
+                errors=len(stats.errors),
+                details=msg,
             )
 
         ok = c.jobs.start("references", job)
         return redirect(
             request,
             "/pipeline",
-            msg="Reference import started." if ok else None,
-            err=None if ok else "Another job is running.",
+            msg=_("Reference import started.") if ok else None,
+            err=None if ok else _("Another job is running."),
         )
-    return redirect(request, "/pipeline", err=f"Unknown action {state}.")
+    return redirect(request, "/pipeline", err=_("Unknown action %(action)s.", action=state))
 
 
 @router.get("/api/status")
@@ -273,6 +307,6 @@ def api_status(request: Request) -> dict[str, Any]:
         else {
             "name": data["job"].name,
             "status": data["job"].status,
-            "message": data["job"].message,
+            "message": str(data["job"].message),
         },
     }

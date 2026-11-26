@@ -17,21 +17,23 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..db.models import Cluster, Face, Person
+from ..i18n import N_, _
 from .vectors import from_blob, normalize
 
 STREAK_TITLES = [
-    (25, "Face whisperer"),
-    (15, "Family historian"),
-    (10, "On fire"),
-    (5, "Sharp eyes"),
-    (3, "Warming up"),
+    (25, N_("Face whisperer")),
+    (15, N_("Family historian")),
+    (10, N_("On fire")),
+    (5, N_("Sharp eyes")),
+    (3, N_("Warming up")),
 ]
 
 
 def streak_title(streak: int) -> str | None:
+    """The title earned with a streak (in the current language)."""
     for threshold, title in STREAK_TITLES:
         if streak >= threshold:
-            return title
+            return _(title)
     return None
 
 
@@ -234,16 +236,23 @@ def judge(s: Session, face_id: int, chosen_person_id: int, streak: int = 0) -> V
 
 def ai_comment(verdict: Verdict) -> str:
     """A playful one-liner comparing the player with the face recognition."""
-    sure = verdict.ai_answer
+    sure = f"{verdict.ai_answer:.0%}"
     if verdict.correct:
-        if sure >= 0.6:
-            return f"The AI agrees - it was {sure:.0%} sure too."
-        if sure >= 0.4:
-            return f"Nice! The AI was only {sure:.0%} sure - you beat it."
-        return f"Impressive - the AI barely recognised this one ({sure:.0%})."
+        if verdict.ai_answer >= 0.6:
+            return _("The AI agrees - it was %(sure)s sure too.", sure=sure)
+        if verdict.ai_answer >= 0.4:
+            return _("Nice! The AI was only %(sure)s sure - you beat it.", sure=sure)
+        return _("Impressive - the AI barely recognised this one (%(sure)s).", sure=sure)
     if verdict.ai_agrees_with_player:
-        return (
-            f"Hmm… the AI also thinks this looks more like {verdict.chosen.name} "
-            f"({verdict.ai_chosen:.0%} vs {sure:.0%}). Maybe the cluster is wrong?"
+        return _(
+            "Hmm… the AI also thinks this looks more like %(name)s (%(chosen)s vs %(sure)s). "
+            "Maybe the cluster is wrong?",
+            name=verdict.chosen.name,
+            chosen=f"{verdict.ai_chosen or 0:.0%}",
+            sure=sure,
         )
-    return f"The face is filed under {verdict.answer.name} (AI: {sure:.0%} sure)."
+    return _(
+        "The face is filed under %(name)s (AI: %(sure)s sure).",
+        name=verdict.answer.name,
+        sure=sure,
+    )

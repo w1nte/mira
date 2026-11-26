@@ -116,6 +116,13 @@ migration makes the app refuse to start, or corrupts existing data.
     (`web/security.py`);
   - never put user data into inline JavaScript; use `data-*` attributes;
   - redirect with `common.redirect(request, back(request, …))`.
+- Translations (`i18n.py`, catalogs in `resources/i18n/<lang>.json`):
+  - every user-visible text goes through `_()` / `ngettext()` (templates and Python); in
+    templates a literal `%` is written `%%`;
+  - text made outside a request (background jobs) or stored in shared caches stays
+    language-neutral: `Lazy(...)` or `N_()` and translate at render time;
+  - after adding or changing UI text run `python -m vision_tagger.i18n_extract update` and fill in
+    every catalog; `tests/test_i18n.py` checks completeness and placeholders.
 - Tests:
   - every bug fix or feature gets a test;
   - tests must not need network access or a GPU: use `FakeBackend` / `FakeAnalyzer`;

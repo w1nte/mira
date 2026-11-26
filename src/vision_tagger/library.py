@@ -5,41 +5,46 @@ string). Some are suggested from what the pipeline found (beach, birthdays, pets
 with the most photos, …) and only appear when there are photos for them; others are saved by
 the user from any gallery filter (table ``collections``).
 
-Everything returned here is plain data, so it can be cached (see ``db.cache``).
+Everything returned here is plain data, so it can be cached (see ``db.cache``). Cached data is
+shared by requests in every language: suggestion names stay English and are translated when
+shown (:attr:`CollectionView.display_name`).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
+from typing import Any
 
 from sqlalchemy import extract, func, select
 from sqlalchemy.orm import Session
 from starlette.datastructures import QueryParams
 
 from .db.models import Cluster, Collection, Face, Image, ImageProperty, Person
+from .i18n import N_, _
 from .query import ImageFilter, count_images, page_images, person_counts, property_counts
 
 MIN_PHOTOS = 3  # a suggestion needs at least this many photos
 
-# (key, value, title, icon): suggested when the pipeline found the value
+# (key, value, title, icon): suggested when the pipeline found the value (titles are translated
+# when shown)
 SUGGESTIONS: list[tuple[str, str, str, str]] = [
-    ("event_type", "vacation", "Vacations", "image"),
-    ("location_type", "beach", "At the beach", "image"),
-    ("location_type", "mountain", "In the mountains", "image"),
-    ("event_type", "birthday", "Birthdays", "calendar"),
-    ("event_type", "christmas", "Christmas", "calendar"),
-    ("event_type", "wedding", "Weddings", "calendar"),
-    ("event_type", "family_gathering", "Family gatherings", "users"),
-    ("composition", "group", "Group photos", "users"),
-    ("composition", "selfie", "Selfies", "user"),
-    ("animals", "dog", "Dogs", "image"),
-    ("animals", "cat", "Cats", "image"),
-    ("composition", "food", "Food", "image"),
-    ("season", "winter", "Winter", "calendar"),
-    ("time_of_day", "night", "At night", "image"),
-    ("aesthetic", "high", "Best shots", "image"),
-    ("work_image", "yes", "Work & documents", "tag"),
+    ("event_type", "vacation", N_("Vacations"), "image"),
+    ("location_type", "beach", N_("At the beach"), "image"),
+    ("location_type", "mountain", N_("In the mountains"), "image"),
+    ("event_type", "birthday", N_("Birthdays"), "calendar"),
+    ("event_type", "christmas", N_("Christmas"), "calendar"),
+    ("event_type", "wedding", N_("Weddings"), "calendar"),
+    ("event_type", "family_gathering", N_("Family gatherings"), "users"),
+    ("composition", "group", N_("Group photos"), "users"),
+    ("composition", "selfie", N_("Selfies"), "user"),
+    ("animals", "dog", N_("Dogs"), "image"),
+    ("animals", "cat", N_("Cats"), "image"),
+    ("composition", "food", N_("Food"), "image"),
+    ("season", "winter", N_("Winter"), "calendar"),
+    ("time_of_day", "night", N_("At night"), "image"),
+    ("aesthetic", "high", N_("Best shots"), "image"),
+    ("work_image", "yes", N_("Work & documents"), "tag"),
 ]
 
 
@@ -52,6 +57,14 @@ class CollectionView:
     covers: list[int] = field(default_factory=list)  # image ids, newest first
     saved_id: int | None = None
     icon: str = "image"
+    # suggestions: ``name`` is English; this msgid (and variables) is translated when shown
+    msgid: str | None = None
+    msg_vars: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def display_name(self) -> str:
+        """The name in the current language (saved collections and people as they are)."""
+        return _(self.msgid, **self.msg_vars) if self.msgid else self.name
 
 
 @dataclass
@@ -166,7 +179,7 @@ def saved(s: Session) -> list[CollectionView]:
 
 def suggested(s: Session, limit: int = 12, people: int = 4) -> list[CollectionView]:
     """Collections worth looking at, from what the pipeline found in *this* library."""
-    counts = property_counts(s, None, keys={k for k, *_ in SUGGESTIONS})
+    counts = property_counts(s, None, keys={k for k, *_rest in SUGGESTIONS})
     out: list[CollectionView] = []
     for person, n in person_counts(s, ImageFilter())[:people]:
         if n >= MIN_PHOTOS:
@@ -191,9 +204,18 @@ def suggested(s: Session, limit: int = 12, people: int = 4) -> list[CollectionVi
             )
         )
         query = str(QueryParams({"t": f"{key}:{value}"}))
-        out.append(CollectionView(f"auto:{key}-{value}", title, query, n, covers, icon=icon))
+        out.append(
+            CollectionView(f"auto:{key}-{value}", title, query, n, covers, icon=icon, msgid=title)
+        )
     year = date.today().year
-    this_year = _view_for(s, "auto:this-year", f"This year ({year})", f"from={year}&to={year}")
+    this_year = _view_for(
+        s,
+        "auto:this-year",
+        f"This year ({year})",
+        f"from={year}&to={year}",
+        msgid=N_("This year (%(year)s)"),
+        msg_vars={"year": year},
+    )
     if this_year.count >= MIN_PHOTOS:
         out.insert(0, this_year)
     return out[:limit]
@@ -203,7 +225,7 @@ def suggested(s: Session, limit: int = 12, people: int = 4) -> list[CollectionVi
 def add(s: Session, name: str, query: str) -> Collection:
     name = name.strip()[:200]
     if not name:
-        raise ValueError("A collection needs a name.")
+        raise ValueError(_("A collection needs a name."))
     query = _filter(query).query_string()  # normalised; unknown parameters dropped
     position = (s.scalar(select(func.max(Collection.position))) or 0) + 1
     collection = Collection(name=name, query=query, position=position)
@@ -215,9 +237,9 @@ def add(s: Session, name: str, query: str) -> Collection:
 def rename(s: Session, collection_id: int, name: str) -> None:
     c = s.get(Collection, collection_id)
     if c is None:
-        raise LookupError("collection not found")
+        raise LookupError(_("collection not found"))
     if not name.strip():
-        raise ValueError("A collection needs a name.")
+        raise ValueError(_("A collection needs a name."))
     c.name = name.strip()[:200]
 
 
