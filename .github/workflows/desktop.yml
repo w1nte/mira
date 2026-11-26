@@ -10,7 +10,9 @@ name: Desktop apps
 #   cpu: runs everywhere; gpu: NVIDIA GPU, with CUDA and cuDNN (driver R580 or newer)
 #
 # Publishing a GitHub release (tag v1.2.3, v1.2.3-rc.1, ...; drafts don't count, pre-releases
-# do) builds everything with the tag as the version and attaches the files to the release.
+# do) builds everything with the tag as the version and attaches the files to the release. A
+# release published without notes gets the changelog's section for its tag as notes
+# (packaging/changelog.py; src/vision_tagger/resources/CHANGELOG.md).
 # Manual runs and the quick checks on pushes to main and on pull requests (cpu builds) keep the
 # files as workflow artifacts. packaging/plan.py decides which builds run.
 
@@ -193,6 +195,30 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Release notes from the changelog (only if the release has none)
+        # Notes written on GitHub stay as they are. A problem here never keeps the files from
+        # being attached, hence continue-on-error.
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          body=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq '.body // ""')
+          if [ -n "$(printf '%s' "$body" | tr -d '[:space:]')" ]; then
+            echo "The release has notes; they stay as they are."
+            exit 0
+          fi
+          # the section of the tag, else Unreleased (with a warning); empty if neither has any
+          python3 packaging/changelog.py notes "$TAG" > notes.md
+          if [ ! -s notes.md ]; then
+            echo "No notes in the changelog for $TAG; the release stays without notes."
+            exit 0
+          fi
+          cat notes.md
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file notes.md
       - uses: actions/download-artifact@v4
         with:
           pattern: Mira-*

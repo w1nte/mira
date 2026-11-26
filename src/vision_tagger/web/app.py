@@ -30,6 +30,7 @@ from .common import STATIC_DIR, ctx
 from .context import AppContext
 from .routes import (
     animals,
+    changelog,
     dashboard,
     database,
     faces,
@@ -120,6 +121,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         quiz,
         generations,
         geo,
+        changelog,
     ):
         app.include_router(module.router)
 

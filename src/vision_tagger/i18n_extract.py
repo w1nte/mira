@@ -124,6 +124,12 @@ NOTES: dict[str, str] = {
     "finishing": "Phase of an AI model download, after the model name.",
     "Downloading AI models": "Name of the job that downloads the AI models (shown while it runs).",
     "Search queries": "What an AI model is used for: understanding what the user searches for.",
+    "What's new": "Sidebar link and page title: what changed in each version of the app.",
+    "Version": "The app's version number (Environment card on the Pipeline page).",
+    "Unreleased": "What's new page: heading of the changes that are in no released version yet.",
+    "changelog|New": "What's new page: heading above the new features of a version.",
+    "changelog|Changed": "What's new page: heading above what works differently in a version.",
+    "changelog|Fixed": "What's new page: heading above the bugs fixed in a version.",
 }
 
 PLACEHOLDER = re.compile(r"%\(\w+\)[sd]")

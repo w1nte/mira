@@ -834,7 +834,9 @@ def self_test() -> int:
         server = AppServer(settings, 0)
         server.start()
         try:
-            pages = ("", "import", "pipeline", "images", "faces", "static/app.css", "sw.js")
+            # "changelog" reads the bundled CHANGELOG.md: the build must contain it
+            pages = ("", "import", "pipeline", "images", "faces", "changelog")
+            pages += ("static/app.css", "sw.js")
             for page in pages:
                 r = httpx.get(server.url + page, timeout=30)
                 assert r.status_code == 200, (page, r.status_code)

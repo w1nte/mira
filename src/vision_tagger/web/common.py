@@ -15,7 +15,7 @@ from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
 from sqlalchemy.orm import Session
 
-from .. import APP_NAME, i18n
+from .. import APP_NAME, __version__, i18n
 from ..i18n import N_, _
 from ..query import ImageFilter, property_counts
 from ..vlm.models import phase_text, pull_message
@@ -34,6 +34,7 @@ templates.env.globals.update(
     current_lang=i18n.current,
     js_i18n=i18n.js_strings,
     app_name=APP_NAME,
+    app_version=__version__,
 )
 
 
