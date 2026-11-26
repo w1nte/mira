@@ -10,7 +10,7 @@
   {% if frames | length >= 2 %}
   <div class="row">
     <a class="btn" href="/generations/{{ person.id }}/animation.webp" target="_blank" rel="noopener">{{ icon('external', 'sm') }}{{ _('Open animation') }}</a>
-    <a class="btn primary" href="/generations/{{ person.id }}/animation.webp?download=1">{{ icon('download', 'sm') }}{{ _('Download animation') }}</a>
+    <a class="btn primary" download href="/generations/{{ person.id }}/animation.webp?download=1">{{ icon('download', 'sm') }}{{ _('Download animation') }}</a>
   </div>
   {% endif %}
 </div>
