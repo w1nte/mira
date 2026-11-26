@@ -21,6 +21,7 @@ from ..query import ImageFilter, property_counts
 from ..updates import Offer
 from ..vlm.models import phase_text, pull_message
 from .context import AppContext
+from .nsfw import GLOBALS as NSFW_GLOBALS
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 STATIC_DIR = Path(__file__).parent / "static"
@@ -138,7 +139,7 @@ def fmt_duration(seconds: float | None) -> str:
 
 # keys whose display name is not just the key: the detector's "animal" next to the vision
 # model's free-text "animals" would read as the same thing twice
-KEY_LABELS = {"animal": "Species"}
+KEY_LABELS = {"animal": "Species", "nsfw": "NSFW"}
 
 
 def label_text(key: str) -> str:
@@ -178,6 +179,7 @@ def pretty(value: object, key: str | None = None) -> str:
 
 # display names of internal identifiers (badges, the activity indicator); unknown ones as they are
 STAGE_TITLES = {
+    "nsfw": N_("NSFW check"),
     "visual": N_("Visual search"),
     "faces": N_("Faces"),
     "ages": N_("Face ages"),
@@ -296,4 +298,5 @@ templates.env.globals.update(
     pull_phase=phase_text,
     update_offer=update_offer,
     update_error=update_error,
+    **NSFW_GLOBALS,
 )

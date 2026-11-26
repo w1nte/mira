@@ -12,17 +12,22 @@ from .versions import (
     animals_stage_version,
     embed_stage_version,
     faces_stage_version,
+    nsfw_stage_version,
     visual_stage_version,
     vlm_stage_version,
 )
 
-STAGE_NAMES = ("visual", "faces", "ages", "animals", "vlm", "embed")
+STAGE_NAMES = ("nsfw", "visual", "faces", "ages", "animals", "vlm", "embed")
 
 
 def default_stage_factory(db: Database, settings: Settings) -> Callable[[str], Stage]:
     """Create stages lazily (heavy imports only when a stage actually runs)."""
 
     def factory(name: str) -> Stage:
+        if name == "nsfw":
+            from .nsfw import NsfwStage
+
+            return NsfwStage(db, settings)
         if name == "visual":
             from .visual import VisualStage
 
@@ -55,6 +60,7 @@ def default_stage_factory(db: Database, settings: Settings) -> Callable[[str], S
 def stage_versions(settings: Settings) -> dict[str, str]:
     """Current version string per stage, without loading any model."""
     return {
+        "nsfw": nsfw_stage_version(settings),
         "visual": visual_stage_version(settings),
         "faces": faces_stage_version(settings),
         "ages": ages_stage_version(settings),

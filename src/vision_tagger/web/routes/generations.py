@@ -19,6 +19,7 @@ from ...faces.generations import (
 )
 from ...i18n import _
 from ..common import ctx, redirect, render
+from ..nsfw import covered_ids
 
 router = APIRouter()
 MEANINGFUL_SIMILARITY = 0.2
@@ -72,6 +73,9 @@ def person_view(request: Request, person_id: int, compare: int | None = None) ->
         return redirect(request, "/generations", err=_("Person not found."))
     frames_of = _frames_of(request)
     frames = frames_of(person_id)
+    covered = set(covered_ids(request, [f.image_id for f in frames]))
+    if covered:  # faces from NSFW photos stay out of the grow-up viewer
+        frames = [f for f in frames if f.image_id not in covered]
     looks_like = c.cache.get(
         ("resemblance", person_id), lambda s: resemblance(s, person_id, frames_of)
     )[:5]

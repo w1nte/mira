@@ -20,7 +20,7 @@
       <tr><th style="width:2.5rem"><span class="sr-only">{{ _('Select') }}</span></th><th>{{ _('Value') }}</th><th class="num">{{ _('Images') }}</th><th>{{ _('Examples') }}</th></tr>
       {% for v, n in values %}
       <tr>
-        <td><input class="pick" type="checkbox" name="values" value="{{ v }}" aria-label="{{ _('Select %(name)s', name=v | pretty(key)) }}"></td>
+        <td>{% if not managed %}<input class="pick" type="checkbox" name="values" value="{{ v }}" aria-label="{{ _('Select %(name)s', name=v | pretty(key)) }}">{% endif %}</td>
         <td style="white-space:nowrap">
           <a class="ink" href="/images?{{ f.query_string(props=f.props + [(key, v)]) }}"><b>{{ v | pretty(key) }}</b></a><br>
           <small><a class="subtle" href="/images?{{ f.query_string(exclude_props=f.exclude_props + [(key, v)]) }}">{{ _('exclude') }}</a></small>
@@ -28,7 +28,7 @@
         <td class="num">{{ n }}</td>
         <td style="width:65%">
           <div class="strip">
-            {% for iid in samples.get(v, []) %}<a class="thumb" href="/images/{{ iid }}"><img loading="lazy" src="/media/thumb/{{ iid }}?size=160" alt=""></a>{% endfor %}
+            {% for iid in samples.get(v, []) %}<a class="thumb" href="/images/{{ iid }}">{{ thumb(iid, 160) }}</a>{% endfor %}
           </div>
         </td>
       </tr>
@@ -36,6 +36,7 @@
     </table></div>
   </section>
   <datalist id="values-list">{% for v, n in values %}<option value="{{ v }}">{% endfor %}</datalist>
+  {% if managed %}<p class="muted">{{ _('Mark photos as NSFW or not NSFW on the photo page, or tick them in the gallery (Select).') }}</p>{% else %}
   <div class="actionbar" x-show="n > 0" x-cloak>
     <b x-text="vtT('%(n)s selected', { n: vtNum(n) })"></b>
     <input type="text" name="target" list="values-list" placeholder="{{ _('merge into / rename to…') }}" style="width:16rem" aria-label="{{ _('Merge into or rename to') }}">
@@ -43,7 +44,7 @@
     <button class="danger" formaction="/properties/{{ key }}/delete" data-confirm="{{ _('Delete the selected values from all images and future results?') }}">{{ icon('trash', 'sm') }}{{ _('Delete values') }}</button>
     <small class="muted">{{ _('Merges are remembered and applied to future VLM results.') }}</small>
     <button type="button" class="icon-btn" @click="vt.toggleAll($root, false); n = 0" aria-label="{{ _('Clear selection') }}" title="{{ _('Clear selection') }}">{{ icon('x') }}</button>
-  </div>
+  </div>{% endif %}
 </form>
 
 {% if aliases %}

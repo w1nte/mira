@@ -10,7 +10,7 @@
   <div class="faces animals">
     {% for a in animals %}
     <label class="face" title="{{ a.species | pretty('animal') }} · {{ _('score %(value)s', value='%.2f' | format(a.score)) }}">
-      <img loading="lazy" src="/media/animal/{{ a.id }}" alt="">
+      {{ animal_img(a.id) }}
       <input class="pick" type="checkbox" name="animal_ids" value="{{ a.id }}" aria-label="{{ _('Select animal #%(id)s', id=a.id) }}">
       {% if not a.groupable %}<span class="lq badge warn" title="{{ _('Small or uncertain – not used for grouping') }}">{{ _('lq') }}</span>{% endif %}
       <a class="open" href="/images/{{ a.image_id }}" title="{{ _('Open photo') }}" aria-label="{{ _('Open photo') }}">{{ icon('external') }}</a>

@@ -825,6 +825,7 @@ WORD_TERMS: dict[str, tuple[str, str]] = {
     "draußen": ("setting", "outdoor"),
     "food": ("composition", "food"),
     "essen": ("composition", "food"),
+    "nsfw": ("nsfw", "yes"),
 }
 _CJK = "぀-ヿ㐀-䶿一-鿿豈-﫿ｦ-ﾟ"
 _HAS_CJK = re.compile(f"[{_CJK}]")

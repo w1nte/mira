@@ -247,6 +247,29 @@ document.addEventListener(
   true
 );
 
+// "Show NSFW photos without asking" (web/nsfw.py): a cookie of this browser, read by the
+// server, which then leaves the black covers out of the pages.
+document.addEventListener("change", function (ev) {
+  const box = ev.target.closest && ev.target.closest("input[data-nsfw-show]");
+  if (!box) return;
+  document.cookie = box.checked ? "vt_nsfw=show; path=/; max-age=31536000; SameSite=Lax" : "vt_nsfw=; path=/; max-age=0; SameSite=Lax";
+  window.vtLoading.start();
+  window.location.reload();
+});
+
+// Gallery selection: while photos are ticked (or after "Select"), a click on a photo ticks it
+// instead of opening it.
+document.addEventListener("click", function (ev) {
+  if (ev.button !== 0 || !ev.target.closest) return;
+  const tile = ev.target.closest(".tile");
+  if (!tile || ev.target.closest("input")) return;
+  const scope = tile.closest("[data-select-scope]");
+  const box = tile.querySelector("input.pick");
+  if (!scope || !box || !(scope.classList.contains("selecting") || scope.querySelector("input.pick:checked"))) return;
+  ev.preventDefault();
+  box.click();
+});
+
 // Helpers used from Alpine components.
 window.vt = {
   count(scope) {

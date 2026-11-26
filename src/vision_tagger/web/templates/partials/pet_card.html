@@ -2,7 +2,7 @@
 {% set n = photos.get(p.id, 0) %}
 <div class="cluster-card pet-card" id="pet-{{ p.id }}">
   <a class="cover" href="/pets/{{ p.id }}" aria-label="{{ ngettext('%(name)s: %(num)d photo', '%(name)s: %(num)d photos', n, name=pet_label(p)) }}">
-    {% if p.cover_animal_id %}<img loading="lazy" src="/media/animal/{{ p.cover_animal_id }}" alt="">{% endif %}
+    {% if p.cover_animal_id %}{{ animal_img(p.cover_animal_id) }}{% endif %}
     <span class="count" title="{{ ngettext('%(num)d photo', '%(num)d photos', n) }}">{{ n }}</span>
     {% if p.locked %}<span class="lock" title="{{ _('Edited by you – kept when the animals are grouped again') }}">{{ icon('lock') }}</span>{% endif %}
   </a>

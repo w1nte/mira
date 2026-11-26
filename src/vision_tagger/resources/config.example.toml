@@ -24,7 +24,7 @@ batch_size = 16                     # images claimed per batch
 max_attempts = 3                    # automatic retries per image and stage
 # Default: every stage, including ones added by later versions. List them only to turn some
 # off ("ages" is added automatically with "faces").
-# stages = ["visual", "faces", "ages", "animals", "vlm", "embed"]
+# stages = ["nsfw", "visual", "faces", "ages", "animals", "vlm", "embed"]
 resume_on_start = true              # closing the app pauses a run; the next start continues it
 
 [faces]
@@ -58,6 +58,12 @@ cluster_eps = 0.3                   # DBSCAN cosine distance; lower = stricter g
 cluster_min_samples = 2             # photos needed to form a group
 assign_threshold = 0.7              # similarity to join an existing (named) pet
 species_pools = [["cat", "dog", "bear", "sheep"]]   # species grouped together (the detector mixes them up)
+
+# [nsfw]
+# Stage "nsfw": a local classifier (ViT, Apache-2.0, 172 MB, downloaded once; runs on
+# [faces].providers) covers photos that are not safe for work. Your own marks always win.
+# model_dir = 'D:\Models\nsfw'     # default: <faces.model_root or ~/.insightface>/models/nsfw
+# threshold = 0.7                   # photos scoring at least this (0..1) are covered; lower = more
 
 # [visual]
 # Stage "visual": SigLIP 2 (Google, Apache-2.0) turns every photo into a vector, so the search

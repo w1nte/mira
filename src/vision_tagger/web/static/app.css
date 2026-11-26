@@ -652,6 +652,24 @@ td > input.pick:checked { border-color: var(--accent); background-color: var(--a
 .thumb .tag { position: absolute; top: 6px; right: 6px; z-index: 1; }
 .thumb .rank { position: absolute; z-index: 1; top: 6px; left: 6px; padding: 3px 7px; border-radius: 5px; background: rgb(0 0 0 / .6); color: #fff; font-size: .78rem; font-weight: 600; font-variant-numeric: tabular-nums; }
 .thumb .scorebar { position: absolute; z-index: 1; left: 0; bottom: 0; height: 3px; background: var(--accent); }
+/* gallery selection: a round check on each photo (on hover, after "Select", or once one is ticked) */
+.tile { position: relative; }
+.tile > input.pick { position: absolute; top: 6px; left: 6px; z-index: 2; opacity: 0; }
+.tile:hover > input.pick, .tile > input.pick:focus-visible, .tile > input.pick:checked,
+.selecting .tile > input.pick, [data-select-scope]:has(input.pick:checked) .tile > input.pick { opacity: 1; }
+.tile:has(input.pick:checked) .thumb { outline: 3px solid var(--accent); outline-offset: -3px; }
+.tile:has(input.pick:checked) .thumb img { transform: scale(.92); }
+.selecting .tile .thumb { cursor: pointer; }
+
+/* NSFW covers (web/nsfw.py): a black tile in lists; its link opens the photo page */
+img[data-nsfw] { object-fit: contain !important; background: #000; transform: none !important; }
+.nsfw-link { display: contents; } /* a cover's own link: the picture keeps its place in the layout */
+.nsfw-note { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--text-2); font-size: .9rem; }
+.nsfw-show { white-space: normal; margin-top: 10px; }
+.nsfw-filter small { display: block; margin-top: 4px; }
+.nsfw-panel p { display: flex; gap: 6px; align-items: baseline; margin: 0 0 10px; }
+.nsfw-panel .row { gap: 6px; }
+
 .strip { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 3px; }
 .strip .thumb { border-radius: 3px; }
 .result { display: flex; flex-direction: column; gap: 6px; }

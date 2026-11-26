@@ -111,6 +111,12 @@ NOTES: dict[str, str] = {
     "Not this one": "Button: take the selected photos out of this animal's group.",
     "Change": "Button: change the species of an animal group.",
     "Boxes": "Checkbox under a photo: show the boxes around faces and animals.",
+    "NSFW": (
+        "'Not safe for work': photos with nudity, sexual content, violence or gore. Property "
+        "name; keep the abbreviation NSFW unless your language has a well-known short one."
+    ),
+    "Automatic": "Button: forget the user's NSFW choice for the photos; the checks decide again.",
+    "First · ViT classifier": "Pipeline page: the NSFW check runs before stage 1 (faces).",
     "orientation|landscape": "Property value: picture orientation, wider than high.",
     "orientation|portrait": "Property value: picture orientation, higher than wide.",
     "orientation|square": "Property value: picture orientation.",

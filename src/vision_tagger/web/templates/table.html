@@ -34,7 +34,7 @@
     </tr>
     {% for img, faces, fst, vst in rows %}
     <tr>
-      <td style="width:56px"><a class="thumb" href="/images/{{ img.id }}" style="width:44px"><img loading="lazy" src="/media/thumb/{{ img.id }}?size=96" alt=""></a></td>
+      <td style="width:56px"><a class="thumb" href="/images/{{ img.id }}" style="width:44px">{{ thumb(img.id, 96) }}</a></td>
       <td><a href="/images/{{ img.id }}">{{ img.filename }}</a>{% if img.missing %} <span class="badge err">{{ _('missing') }}</span>{% endif %}</td>
       <td><small>{{ img.folder }}</small></td>
       <td style="white-space:nowrap">{{ img.recorded_at | dt }}</td>

@@ -64,9 +64,10 @@ class IndexConfig(BaseModel):
     thumbnails: bool = True
 
 
-#: every stage, in pipeline order (``pipeline.stages`` defaults to all of them). "visual" comes
-#: first: it is the fastest stage and makes the search find photos by what they show soonest.
-DEFAULT_STAGES = ("visual", "faces", "ages", "animals", "vlm", "embed")
+#: every stage, in pipeline order (``pipeline.stages`` defaults to all of them). The fast NSFW
+#: check comes first, so new photos get their cover before anyone browses them; then "visual",
+#: the next fastest, which makes the search find photos by what they show soonest.
+DEFAULT_STAGES = ("nsfw", "visual", "faces", "ages", "animals", "vlm", "embed")
 
 
 class PipelineConfig(BaseModel):
@@ -151,6 +152,18 @@ class VisualConfig(BaseModel):
     model_dir: Path | None = None  # defaults to <faces.model_root>/models/visual
     providers: list[str] | None = None  # defaults to faces.providers (CUDA, else CPU)
     batch_size: int = 16  # photos per model call
+
+
+class NsfwConfig(BaseModel):
+    """The NSFW check (see ``nsfw``): a local image classifier on ``faces.providers``.
+
+    The threshold was chosen on safe photos (objects, pets and people); see the README section
+    "Not safe for work (NSFW)".
+    """
+
+    model_dir: Path | None = None  # defaults to <faces.model_root>/models/nsfw
+    # photos the classifier scores at least this high (0..1) are covered; lower: more covers
+    threshold: float = Field(default=0.7, ge=0.0, le=1.0)
 
 
 class VlmConfig(BaseModel):
@@ -329,6 +342,7 @@ class Settings(BaseSettings):
     faces: FacesConfig = Field(default_factory=FacesConfig)
     animals: AnimalsConfig = Field(default_factory=AnimalsConfig)
     visual: VisualConfig = Field(default_factory=VisualConfig)
+    nsfw: NsfwConfig = Field(default_factory=NsfwConfig)
     vlm: VlmConfig = Field(default_factory=VlmConfig)
     derived: DerivedConfig = Field(default_factory=DerivedConfig)
     search: SearchConfig = Field(default_factory=SearchConfig)

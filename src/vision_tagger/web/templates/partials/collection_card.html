@@ -1,7 +1,7 @@
 {# One collection as a card with a 2x2 cover mosaic. Expects `c` (library.CollectionView). #}
 <a class="coll-card" href="/images{{ '?' ~ c.query if c.query }}">
   <div class="coll-cover n{{ [c.covers | length, 4] | min }}">
-    {% for image_id in c.covers[:4] %}<img loading="lazy" src="/media/thumb/{{ image_id }}" alt="">{% else %}<span class="coll-empty">{{ icon(c.icon or 'image', 'lg') }}</span>{% endfor %}
+    {% for image_id in safe_first(c.covers)[:4] %}{{ thumb(image_id) }}{% else %}<span class="coll-empty">{{ icon(c.icon or 'image', 'lg') }}</span>{% endfor %}
   </div>
   <div class="coll-meta">
     <b>{{ c.display_name }}</b>

@@ -215,4 +215,4 @@ def test_pipeline_page_offers_stages_the_config_turns_off(settings):
     boxes = dict(re.findall(r'name="stages" value="(\w+)"( checked)?', page))
     assert set(boxes) == set(DEFAULT_STAGES)  # every stage is listed
     assert {s for s, on in boxes.items() if on} == {"faces", "ages", "vlm"}
-    assert page.count("off in config.toml") == 3  # visual search, animals, the search index
+    assert page.count("off in config.toml") == 4  # NSFW, visual search, animals, search index

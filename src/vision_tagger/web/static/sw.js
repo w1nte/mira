@@ -12,6 +12,7 @@ const MAX_THUMBS = 3000;
 const SHELL_FILES = [
   "/static/app.css", "/static/app.js", "/static/htmx.min.js", "/static/alpine.min.js",
   "/static/favicon.svg", "/static/offline.html", "/static/icons/icon-192.png",
+  "/static/nsfw.svg", // the cover of NSFW photos (their thumbnails are only asked for on a click)
 ];
 
 self.addEventListener("install", (event) => {

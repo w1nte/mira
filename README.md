@@ -39,6 +39,10 @@ are never moved or modified.
   - Errors are retried automatically up to `max_attempts`.
   - Results produced with an older model, prompt or vocabulary show up as *outdated* and can be
     re-queued.
+- **Not safe for work.** A small local classifier checks every photo first (fast, long before
+  the vision model got there), and the vision model also answers it. NSFW photos show as a black
+  "NSFW" tile until you open them; mark photos yourself, and your choice always wins. See
+  [Not safe for work (NSFW)](#not-safe-for-work-nsfw).
 - **Stage 1: faces.** InsightFace (`buffalo_l`) detection plus 512-d embeddings. Clustering uses
   DBSCAN (cosine distance) and **keeps your manual work**:
   - Clusters you named, merged or split are locked and never dissolved by re-clustering.
@@ -413,8 +417,8 @@ prefer it.
 | **Animals** | Pet groups with picture and number of photos, by species. Name a group inline (typing another group's name merges the two), tick several to **merge**. Per group: all its photos to **move** to a pet (by name) or a new group, **take out** ("Not this one") or **remove**, similar groups with one-click merge, and the species (correct it when the detector took a dog for a bear). Views for ungrouped and removed animals. |
 | **Persons** | Named persons. Rename (renaming to an existing name merges), merge, delete, manage references. Images with *all* / *any* of the selected persons. Per person: birth year (set or estimated), age today, a "through the years" face timeline, and photos with a doubtful date with suggested fixes. |
 | **Properties** | Every extracted property grouped by topic, with counts. Tick values and show images with **all** / **any** of them (*any* keeps the other filters: "summer and (beach or mountains)"). Per property: sample images per value, **merge / rename / delete** values (remembered for future results). |
-| **Images** | **Timeline slider** above the gallery: photos per month; click the first month, then the last, drag the band or its edges, or sweep across the bars (arrow keys move the handles). Gallery with infinite scroll and a filter builder: persons and pets (AND/OR, NOT), properties (AND/OR, NOT), date range, folder, camera, faces, text search, sort. Facets refine the current result; their **or** switch (or Ctrl+click / ⌘+click on a value) adds a value as an alternative, e.g. "beach or mountains" (see [Alternatives](#alternatives-or)). **Export** the result, with XMP metadata for other apps. Filters are part of the URL, so they can be bookmarked. |
-| **Image** | Full image with face and animal boxes and names, all properties with source and confidence, metadata, duplicates, raw VLM JSON, per-stage status and re-run buttons. `←` / `→` open the previous / next photo of the current filter. |
+| **Images** | **Timeline slider** above the gallery: photos per month; click the first month, then the last, drag the band or its edges, or sweep across the bars (arrow keys move the handles). Gallery with infinite scroll and a filter builder: persons and pets (AND/OR, NOT), properties (AND/OR, NOT), date range, folder, camera, faces, text search, sort. Facets refine the current result; their **or** switch (or Ctrl+click / ⌘+click on a value) adds a value as an alternative, e.g. "beach or mountains" (see [Alternatives](#alternatives-or)). **Export** the result, with XMP metadata for other apps. **Select** to tick photos and mark them as NSFW or not NSFW. Filters are part of the URL, so they can be bookmarked. |
+| **Image** | Full image with face and animal boxes and names, all properties with source and confidence, the NSFW verdict (mark the photo as NSFW or not NSFW), metadata, duplicates, raw VLM JSON, per-stage status and re-run buttons. `←` / `→` open the previous / next photo of the current filter. |
 | **Quiz** | "Who's that?": name the largest unnamed clusters with one click (suggestions from references and look-alikes), or play the face quiz with score, streaks and "you vs. the AI"; wrong answers can fix misfiled faces. Keys 1–4 and Enter. |
 | **Generations** | Every person with photos from different ages. Per person: a grow-up timelapse (play, scrub, download as animated WebP), "looks most like…" ranking, and a same-age comparison with any other person. |
 | **Search** | Search box in the top bar on every page (`/` focuses it). Shows how the request was understood (persons, pets, required / preferred / excluded properties, alternatives such as "Anna or Ben", dates, keywords), ranks the results and, with **Deep search**, gives the LLM's reason for each. "Open in filter builder" turns the strict part into a gallery filter; results can be exported. |
@@ -628,6 +632,56 @@ The animals stage runs by default. A `config.toml` written by an earlier version
 on the next start (see [Configuration](#configuration)); only a stage list you changed
 yourself stays as it is, so add `"animals"` there if you want it.
 
+## Not safe for work (NSFW)
+
+Photos with nudity, sexual content, graphic violence or gore get the property `nsfw = yes`.
+Wherever such a photo appears in a list (gallery, search results, Home, collections, map popups,
+the person, cluster, faces, pet, quiz and generations pages, property examples, the table) it is
+a **black tile with "NSFW"**, and so are face and animal pictures cut from it. A click on the
+tile opens the photo page, and that page shows the photo, with an *NSFW* note next to it: you
+chose to open it (← / → then go to the neighbouring photos, which show as well). Back in the
+list, the tiles are black again. The pictures behind the tiles are never loaded into a list, so
+a slow connection or a screenshot never shows them. In the face and animal grids, a click selects
+a tile as before; its *Open photo* button leads to the photo.
+
+- **Where the verdict comes from.**
+  - **The NSFW check** (stage `nsfw`, the first stage of the pipeline): the
+    [Falconsai/nsfw_image_detection](https://huggingface.co/Falconsai/nsfw_image_detection)
+    classifier (a ViT-base/16 fine-tuned on 80,000 photos, two classes "normal" / "nsfw";
+    Apache-2.0), in half precision as ONNX from `onnx-community/nsfw_image_detection-ONNX`.
+    It scores a photo from 0 to 1; from `nsfw.threshold` (0.7) on, the photo is NSFW. About
+    0.2 s per photo on a 4-core CPU, a few milliseconds on a GPU. It mainly recognises nudity
+    and sexual content.
+  - **The vision model** answers the question for every photo it analyses (field `nsfw` of the
+    vocabulary: nudity, sexual content, graphic violence or gore). Photos analysed before this
+    version show up as *outdated* on the Pipeline page; *Re-queue outdated* lets the vision
+    model look at them again. That's your choice: the NSFW check covers the whole library
+    anyway, and the vision model is slow.
+  - A photo is NSFW when either of them says so.
+- **Your choice wins.** On the photo page: **Mark as NSFW** / **Not NSFW**; in the gallery:
+  **Select**, tick photos and use the bar at the bottom. A photo you marked keeps your verdict
+  when the classifier or the vision model look at it again, and when the file changes.
+  **Automatic** forgets your choice. The source (`manual`, `classifier` or `vlm`) and the
+  classifier's score are shown on the photo page.
+- **Filters.** The gallery's *NSFW* section has **Hide NSFW photos** (`xt=nsfw:yes`) and
+  **Only NSFW photos** (`t=nsfw:yes`); both work like any property, also with "or" and in
+  collections, and the search knows "nsfw" ("summer without nsfw").
+- **Show NSFW photos without asking** (gallery and photo page) turns the covers off in this
+  browser only (cookie `vt_nsfw`), so the library can stay covered on another device.
+- **How the threshold was chosen.** On 32 clearly safe photos (28 objects and pets from the
+  [DreamBooth dataset](https://github.com/google/dreambooth) and 4 photos of people that come
+  with InsightFace) the median score was 0.0002 and all but one stayed below 0.01; the highest
+  was 0.34 (pink sunglasses on white bed sheets: skin-like colours). 0.7 leaves twice that
+  margin, while the model gives clear cases scores near 1. The 8-bit versions of the model
+  scored that photo 0.65 and 0.80, so the half-precision model (172 MB, the same scores as the
+  full one) is used. Lower `nsfw.threshold` for more covers, raise it for fewer; the results of
+  the NSFW check then show up as outdated, and re-running them takes minutes.
+- **Privacy and download.** The model (172 MB) is downloaded once into
+  `<faces.model_root>/models/nsfw` (or `nsfw.model_dir`) from Hugging Face, pinned to one
+  commit and checked against its SHA-256 checksum. Without internet the run stops with a message
+  that names the URL and the place for the file. It runs locally on onnxruntime (CUDA or CPU,
+  `faces.providers`); no photo leaves the computer.
+
 ## Using the results in other applications
 
 Exports carry what Mira found as **XMP**, the metadata standard photo applications
@@ -836,6 +890,8 @@ Important knobs:
   or assigned.
 - `animals.cluster_eps` / `assign_threshold` / `min_score`: how strict pet grouping and animal
   detection are (see [Animals and pets](#animals-and-pets)).
+- `nsfw.threshold` (0.7): from which classifier score a photo is covered as NSFW (see
+  [Not safe for work](#not-safe-for-work-nsfw)).
 - `visual.model`, `visual.providers`, `visual.batch_size`: the visual search model and where it
   runs (see [Visual search](#visual-search)).
 - `search.weights`: how much the visual, semantic, property and keyword signals count.

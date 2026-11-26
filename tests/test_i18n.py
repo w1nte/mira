@@ -18,6 +18,7 @@ from vision_tagger.pipeline.stages.ages import AgesStage
 from vision_tagger.pipeline.stages.animals import AnimalsStage
 from vision_tagger.pipeline.stages.embed import EmbedStage
 from vision_tagger.pipeline.stages.faces import FacesStage
+from vision_tagger.pipeline.stages.nsfw import NsfwStage
 from vision_tagger.pipeline.stages.visual import VisualStage
 from vision_tagger.pipeline.stages.vlm import VlmStage
 from vision_tagger.vlm.backend import FakeBackend
@@ -30,6 +31,7 @@ from .conftest import make_image
 from .helpers import (
     FakeAgeEstimator,
     FakeAnimalAnalyzer,
+    FakeNsfwClassifier,
     FakeVisualEncoder,
     add_face,
     add_image,
@@ -74,6 +76,7 @@ def web(settings, photos):
             ),
             "ages": AgesStage(ctx.db, settings, estimator=FakeAgeEstimator()),
             "animals": AnimalsStage(ctx.db, settings, analyzer=FakeAnimalAnalyzer()),
+            "nsfw": NsfwStage(ctx.db, settings, classifier=FakeNsfwClassifier()),
             "vlm": VlmStage(ctx.db, settings, backend=FakeBackend(Vocabulary.load())),
             "embed": EmbedStage(ctx.db, settings, backend=FakeBackend(Vocabulary.load())),
         }
