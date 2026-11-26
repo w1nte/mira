@@ -66,6 +66,18 @@ work_maybe_threshold = 0.35
 [export]
 mode = "copy"                       # copy | hardlink | symlink (symlinks need Developer Mode on Windows)
 
+[geo]
+auto = true                         # find places at the end of every scan
+cluster_km = 0.75                   # photos closer than this form one place
+max_place_km = 5.0                  # larger groups are split
+download_gazetteer = true           # offline place names (GeoNames, 3 MB, downloaded once)
+# cities_file = 'D:\GeoNames\cities500.zip'   # or an official GeoNames dump
+nominatim = false                   # OpenStreetMap names; sends place positions to the server
+# nominatim_url = "https://nominatim.openstreetmap.org"
+language = "en"
+tile_url = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"   # "" = no tile requests
+# tile_attribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+
 [web]
 host = "127.0.0.1"
 port = 8765
