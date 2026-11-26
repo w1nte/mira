@@ -28,7 +28,7 @@ from ..db.models import Control, Image, Run, StageStatus, Status, utcnow
 from ..db.session import Database
 from . import control
 from .control import PAUSED, PULL_PROGRESS, RUNNING, STOPPED, RunnerBusyError
-from .stages.base import Stage, StageAbort, StageInterrupted
+from .stages.base import Stage, StageAbort, StageInterrupted, StageUnavailable
 
 log = logging.getLogger(__name__)
 
@@ -386,10 +386,16 @@ class PipelineRunner:
         self._mark(stage, image_id, run_id, None)
         return True
 
-    def _process_batch(self, stage: Stage, image_ids: list[int], run_id: int) -> int:
-        """Process images with one ``process_batch`` call; returns the number of failures."""
+    def _process_batch(
+        self, stage: Stage, image_ids: list[int], run_id: int, prefetch: _Prefetcher | None = None
+    ) -> int:
+        """Process images with one ``process_batch`` (or, with prefetched inputs,
+        ``process_prepared_batch``) call; returns the number of failures."""
         try:
-            errors = stage.process_batch(image_ids)
+            if prefetch is None:
+                errors = stage.process_batch(image_ids)
+            else:
+                errors = stage.process_prepared_batch(image_ids, prefetch.take_many(image_ids))
         except StageAbort:
             raise
         except Exception as exc:
@@ -409,13 +415,15 @@ class PipelineRunner:
         name: str,
         run_id: int,
         room: int | None,
+        ahead: int | None = None,
     ) -> list[int] | None:
         """Start preparing the images after ``ids[pos]``, into the next batch if needed.
 
         ``room``: how many more images the run may claim after this batch (``None`` = no
-        limit). Returns the (cached) guess of the next batch.
+        limit); ``ahead``: how many images after ``ids[pos]`` (default: ``stage.prefetch``).
+        Returns the (cached) guess of the next batch.
         """
-        k = prefetch.stage.prefetch
+        k = prefetch.stage.prefetch if ahead is None else ahead
         window = ids[pos : pos + 1 + k]
         more = 1 + k - len(window)
         if more > 0 and (room is None or room > 0):
@@ -440,6 +448,10 @@ class PipelineRunner:
         stopped = False
         done = 0
         prefetch = _Prefetcher(stage) if stage.prefetch > 0 and stage.concurrency <= 1 else None
+        if stage.redo_outdated:  # results of another model version are of no use
+            requeued = control.requeue_outdated(self.db, name, stage.version)
+            if requeued:
+                log.info("%s: %d outdated results queued again", name, requeued)
         try:
             while limit is None or done < limit:
                 n = batch_size if limit is None else min(batch_size, limit - done)
@@ -448,7 +460,14 @@ class PipelineRunner:
                     break
                 if not set_up:
                     log.info("setting up stage %s", name)
-                    if not self._setup(stage, run_id, name):
+                    try:
+                        ready = self._setup(stage, run_id, name)
+                    except StageUnavailable as exc:  # skip this stage, run the others
+                        log.warning("%s skipped: %s", name, exc)
+                        summary.messages.append(f"{name} skipped: {exc}")
+                        self._release(name, ids)
+                        break
+                    if not ready:
                         stopped = True
                         self._release(name, ids)
                         break
@@ -468,12 +487,25 @@ class PipelineRunner:
                         summary.failed[name] += 0 if ok else 1
                     done += len(ids)
                 elif stage.batch > 1:
+                    room = None if limit is None else limit - done - len(ids)
+                    upcoming = None
                     while remaining:
                         if self._wait_if_paused(run_id, name) == STOPPED:
                             stopped = True
                             break
                         chunk = remaining[: stage.batch]
-                        failed = self._process_batch(stage, chunk, run_id)
+                        if prefetch is not None:  # this chunk and the next one, meanwhile
+                            upcoming = self._prefetch_window(
+                                prefetch,
+                                remaining,
+                                0,
+                                upcoming,
+                                name,
+                                run_id,
+                                room,
+                                ahead=2 * stage.batch - 1,
+                            )
+                        failed = self._process_batch(stage, chunk, run_id, prefetch)
                         del remaining[: len(chunk)]
                         summary.processed[name] += len(chunk)
                         summary.failed[name] += failed
@@ -549,6 +581,18 @@ class _Prefetcher:
         if future is None:
             return self.stage.prepare(image_id)
         return future.result()
+
+    def take_many(self, image_ids: Iterable[int]) -> dict[int, Any]:
+        """The prepared inputs by image id; what ``prepare`` raised is the value instead."""
+        out: dict[int, Any] = {}
+        for image_id in image_ids:
+            try:
+                out[image_id] = self.take(image_id)
+            except StageAbort:
+                raise
+            except Exception as exc:
+                out[image_id] = exc
+        return out
 
     def close(self) -> None:
         for future in self.futures.values():

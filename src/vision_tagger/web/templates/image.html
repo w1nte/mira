@@ -15,6 +15,7 @@
     {% else %}<span class="btn" aria-disabled="true">{{ icon('chevron-left', 'sm') }}{{ _('Previous') }}</span>{% endif %}
     {% if next_id %}<a class="btn" href="/images/{{ next_id }}{{ '?' ~ qs if qs }}" data-hotkey="ArrowRight" title="{{ _('Next photo (→)') }}" aria-keyshortcuts="ArrowRight">{{ _('Next') }}{{ icon('chevron-right', 'sm') }}</a>
     {% else %}<span class="btn" aria-disabled="true">{{ _('Next') }}{{ icon('chevron-right', 'sm') }}</span>{% endif %}
+    <a class="btn" href="/search?similar={{ img.id }}" title="{{ _('Photos that look like this one') }}">{{ icon('layers', 'sm') }}{{ _('Similar photos') }}</a>
     <a class="btn" href="/media/image/{{ img.id }}" target="_blank" rel="noopener">{{ icon('external', 'sm') }}{{ _('Open original') }}</a>
   </div>
 </div>

@@ -435,3 +435,26 @@ class ImageEmbedding(Base):
     vector: Mapped[bytes] = mapped_column(LargeBinary)  # float16, L2-normalised
     doc_hash: Mapped[str] = mapped_column(String(40))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+
+class VisualEmbedding(Base):
+    """Embedding of the photo itself in a shared image-text space (see ``visual``).
+
+    Search compares it with the embedding of the query text, and "Similar photos" with the
+    ones of other photos. ``model`` names the vector space (only vectors of the configured
+    model are searched); ``stage_version`` the exact model files and preprocessing, so a change
+    re-embeds the photos.
+    """
+
+    __tablename__ = "visual_embeddings"
+    # the search index loads and checks one model's rows without reading the vectors
+    __table_args__ = (Index("ix_visual_embeddings_model_created", "model", "created_at"),)
+
+    image_id: Mapped[int] = mapped_column(
+        ForeignKey("images.id", ondelete="CASCADE"), primary_key=True
+    )
+    model: Mapped[str] = mapped_column(String(64))
+    stage_version: Mapped[str] = mapped_column(String(64))
+    dim: Mapped[int] = mapped_column(Integer)
+    vector: Mapped[bytes] = mapped_column(LargeBinary)  # float16, L2-normalised
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

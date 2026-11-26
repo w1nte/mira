@@ -180,6 +180,7 @@ def pretty(value: object, key: str | None = None) -> str:
 # display names of internal identifiers (badges, the activity indicator); unknown ones as they are
 STAGE_TITLES = {
     "nsfw": N_("NSFW check"),
+    "visual": N_("Visual search"),
     "faces": N_("Faces"),
     "ages": N_("Face ages"),
     "animals": N_("Animals"),

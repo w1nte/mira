@@ -48,3 +48,9 @@ def embed_stage_version(settings: Settings, fake: bool | None = None) -> str:
         fake = settings.vlm.backend == "fake"
     model = "fake" if fake else settings.search.embed_model
     return f"{model}|doc{DOC_VERSION}"
+
+
+def visual_stage_version(settings: Settings) -> str:
+    from ...visual.models import visual_version
+
+    return visual_version(settings)

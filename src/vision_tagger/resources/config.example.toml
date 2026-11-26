@@ -24,7 +24,7 @@ batch_size = 16                     # images claimed per batch
 max_attempts = 3                    # automatic retries per image and stage
 # Default: every stage, including ones added by later versions. List them only to turn some
 # off ("ages" is added automatically with "faces").
-# stages = ["nsfw", "faces", "ages", "animals", "vlm", "embed"]
+# stages = ["nsfw", "visual", "faces", "ages", "animals", "vlm", "embed"]
 resume_on_start = true              # closing the app pauses a run; the next start continues it
 
 [faces]
@@ -65,6 +65,14 @@ species_pools = [["cat", "dog", "bear", "sheep"]]   # species grouped together (
 # model_dir = 'D:\Models\nsfw'     # default: <faces.model_root or ~/.insightface>/models/nsfw
 # threshold = 0.7                   # photos scoring at least this (0..1) are covered; lower = more
 
+# [visual]
+# Stage "visual": SigLIP 2 (Google, Apache-2.0) turns every photo into a vector, so the search
+# finds photos by what they show, in any language, and "Similar photos" works. The models
+# (970 MB) are downloaded once; runs on [faces].providers.
+# model = "siglip2-base"            # "siglip2-base-fast": 3x as fast on the CPU, finds a little less
+# model_dir = 'D:\Models\visual'   # default: <faces.model_root or ~/.insightface>/models/visual
+# batch_size = 16                   # photos per model call
+
 [vlm]
 backend = "ollama"                  # "ollama" or "fake" (no model, for trying the UI)
 base_url = "http://localhost:11434"
@@ -87,7 +95,7 @@ query_prefix = "search_query: "     # nomic expects these prefixes; use "" for e
 document_prefix = "search_document: "
 result_limit = 200
 rerank_top = 40                     # how many results Deep search lets the LLM judge
-# weights = { semantic = 0.55, properties = 0.35, keywords = 0.10 }
+# weights = { visual = 0.45, semantic = 0.25, properties = 0.20, keywords = 0.10 }
 
 [derived]
 work_path_keywords = ["screenshot", "bildschirmfoto", "scan", "work", "arbeit", "office", "invoice", "rechnung", "receipt", "whiteboard"]

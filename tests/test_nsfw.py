@@ -44,6 +44,7 @@ from vision_tagger.pipeline.stages.base import StageAbort
 from vision_tagger.pipeline.stages.embed import EmbedStage
 from vision_tagger.pipeline.stages.faces import FacesStage
 from vision_tagger.pipeline.stages.nsfw import NsfwStage
+from vision_tagger.pipeline.stages.visual import VisualStage
 from vision_tagger.pipeline.stages.vlm import VlmStage, build_properties
 from vision_tagger.query import ImageFilter, count_images
 from vision_tagger.search.document import build_document
@@ -55,7 +56,13 @@ from vision_tagger.vlm.schema import Vocabulary
 from vision_tagger.web.app import create_app
 
 from .conftest import make_image
-from .helpers import FakeAgeEstimator, FakeAnimalAnalyzer, FakeNsfwClassifier, add_image
+from .helpers import (
+    FakeAgeEstimator,
+    FakeAnimalAnalyzer,
+    FakeNsfwClassifier,
+    FakeVisualEncoder,
+    add_image,
+)
 from .test_faces_stage import FakeAnalyzer
 
 DE = {"Accept-Language": "de"}
@@ -372,6 +379,7 @@ def _library(settings, photos, nsfw_all: bool):
     scorer = (lambda im: 0.99) if nsfw_all else (lambda im: 0.99 if im.width == 300 else 0.02)
     stages = {
         "nsfw": NsfwStage(ctx.db, settings, classifier=FakeNsfwClassifier(scorer)),
+        "visual": VisualStage(ctx.db, settings, encoder=FakeVisualEncoder()),
         "faces": FacesStage(
             ctx.db, settings, analyzer=FakeAnalyzer(), age_estimator=FakeAgeEstimator()
         ),
@@ -381,6 +389,7 @@ def _library(settings, photos, nsfw_all: bool):
         "embed": EmbedStage(ctx.db, settings, backend=FakeBackend(Vocabulary.load())),
     }
     assert PipelineRunner(ctx.db, settings, stages.__getitem__).run().status == "completed"
+    ctx.search.text_encoder = FakeVisualEncoder()  # search pages without the real model
     with ctx.db.write() as s:
         clusters = s.scalars(select(Cluster.id).order_by(Cluster.id)).all()
         C.name_cluster(s, clusters[0], "Anna")

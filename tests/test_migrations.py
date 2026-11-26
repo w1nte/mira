@@ -446,3 +446,49 @@ def test_0007_animals_and_pets_with_data(tmp_path):
     con.execute("DELETE FROM images WHERE id = 1")  # ON DELETE CASCADE
     assert con.execute("SELECT count(*) FROM animals").fetchone() == (0,)
     con.close()
+
+
+VISUAL_ROW = (
+    "INSERT INTO visual_embeddings (image_id, model, stage_version, dim, vector, created_at)"
+    " VALUES (1, 'siglip2', 'siglip2-v1', 2, x'003c0000', '2024-01-01 00:00:00')"
+)
+
+
+def test_0008_visual_embeddings_with_data(tmp_path):
+    """0008 adds the visual search table without touching existing rows; vectors go with their
+    image; the downgrade removes the table and the stage rows, so the stage runs again."""
+    from vision_tagger.db.migrate import downgrade
+
+    path = tmp_path / "v7.sqlite3"
+    build_at(path, "0007")
+    fill_first_version(path)
+    before = counts(path)
+    upgrade(url_of(path), backup=False)
+    assert counts(path) == before
+    con = sqlite3.connect(path)
+    con.execute(VISUAL_ROW)
+    con.execute(
+        "INSERT INTO stage_status (image_id, stage, status, attempts)"
+        " VALUES (1, 'visual', 'done', 0)"
+    )
+    con.commit()
+    indexes = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='index'")}
+    assert "ix_visual_embeddings_model_created" in indexes
+    con.close()
+
+    downgrade(url_of(path), "0007", backup=False)
+    con = sqlite3.connect(path)
+    tables = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    assert "visual_embeddings" not in tables
+    stages = con.execute("SELECT count(*) FROM stage_status WHERE stage = 'visual'")
+    assert stages.fetchone() == (0,)  # the stage runs again after an upgrade
+    con.close()
+    assert counts(path) == before
+
+    upgrade(url_of(path), backup=False)
+    con = sqlite3.connect(path)
+    con.execute("PRAGMA foreign_keys=ON")
+    con.execute(VISUAL_ROW)
+    con.execute("DELETE FROM images WHERE id = 1")  # ON DELETE CASCADE
+    assert con.execute("SELECT count(*) FROM visual_embeddings").fetchone() == (0,)
+    con.close()

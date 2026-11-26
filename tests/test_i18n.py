@@ -19,6 +19,7 @@ from vision_tagger.pipeline.stages.animals import AnimalsStage
 from vision_tagger.pipeline.stages.embed import EmbedStage
 from vision_tagger.pipeline.stages.faces import FacesStage
 from vision_tagger.pipeline.stages.nsfw import NsfwStage
+from vision_tagger.pipeline.stages.visual import VisualStage
 from vision_tagger.pipeline.stages.vlm import VlmStage
 from vision_tagger.vlm.backend import FakeBackend
 from vision_tagger.vlm.schema import Vocabulary
@@ -31,6 +32,7 @@ from .helpers import (
     FakeAgeEstimator,
     FakeAnimalAnalyzer,
     FakeNsfwClassifier,
+    FakeVisualEncoder,
     add_face,
     add_image,
     person_centers,
@@ -68,6 +70,7 @@ def web(settings, photos):
         ctx = app.state.ctx
         Indexer(ctx.db, settings).run()
         stages = {
+            "visual": VisualStage(ctx.db, settings, encoder=FakeVisualEncoder()),
             "faces": FacesStage(
                 ctx.db, settings, analyzer=FakeAnalyzer(), age_estimator=FakeAgeEstimator()
             ),
@@ -78,6 +81,7 @@ def web(settings, photos):
             "embed": EmbedStage(ctx.db, settings, backend=FakeBackend(Vocabulary.load())),
         }
         PipelineRunner(ctx.db, settings, stages.__getitem__).run()
+        ctx.search.text_encoder = FakeVisualEncoder()
         c.ctx = ctx
         yield c
 

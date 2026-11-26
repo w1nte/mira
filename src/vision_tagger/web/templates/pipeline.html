@@ -19,7 +19,7 @@
             {% for st in stages %}
             {% set on = st in enabled_stages %}
             <label><input type="checkbox" name="stages" value="{{ st }}"{{ ' checked' if on }}>
-              {{ {'nsfw': _('NSFW check (ViT classifier)'), 'faces': _('Faces (InsightFace + clustering)'), 'ages': _('Ages (AgeNet + InsightFace)'), 'animals': _('Animals (YOLOX + DINOv2 + grouping)'), 'vlm':_('Properties (%(model)s)', model=settings.vlm.model), 'embed': _('Search index (%(model)s)', model=settings.search.embed_model)}.get(st, st) }}
+              {{ {'nsfw': _('NSFW check (ViT classifier)'), 'visual': _('Visual search (%(model)s)', model=settings.visual.model), 'faces': _('Faces (InsightFace + clustering)'), 'ages': _('Ages (AgeNet + InsightFace)'), 'animals': _('Animals (YOLOX + DINOv2 + grouping)'), 'vlm':_('Properties (%(model)s)', model=settings.vlm.model), 'embed': _('Search index (%(model)s)', model=settings.search.embed_model)}.get(st, st) }}
               {%- if not on %} <small class="muted">{{ _('off in config.toml') }}</small>{% endif %}</label>
             {% endfor %}
           </div>

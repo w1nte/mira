@@ -38,9 +38,18 @@ only what will matter again, and delete what no longer holds. Rules live in `CLA
   step in docs.
 - The update check uses the GitHub releases API of `w1nte/mira`, once a day, and is on by
   default only in the frozen app. Release notes from GitHub are linked, never rendered.
-- Search is a hybrid of LLM interpretation, text-document embeddings, properties and keywords.
+- Search is a hybrid of LLM interpretation, visual similarity (SigLIP 2, stage `visual`),
+  text-document embeddings, properties and keywords.
   - "or": alternatives inside a group are OR-ed, groups are AND-ed, exclusions stay strict.
   - URL `t=k:v|k:v` is one OR group; a repeated `t` is still AND, for old links.
+  - Visual model choice (README table): SigLIP 2 B/16 with the fp32 image and fp16 text file.
+    Its int8 files lose too much (int8 image vectors: cosine 0.8 to fp32), fp16 image is 2x
+    slower on the CPU, nomic-embed-vision is English-only. Re-measure before switching.
+  - The visual score is calibrated (`VisualModel.low/high`), not min-max: a request nothing
+    matches must not push unrelated photos up. Vector cosine can't tell copies from similar
+    shots; "Similar photos" uses the pHash for copies.
+  - numpy converts float16 slowly: the visual matrix is float32 in memory (154 MB at 50k).
+    onnxruntime keeps fp16 weights as fp32 on the CPU (text encoder ~0.8 GB; idle unload).
 - Docker: the instructions say `cp .env.example .env`, because PowerShell 5.1's `echo > .env`
   writes UTF-16.
 

@@ -503,7 +503,15 @@ def test_stage_runs_in_the_runner_and_keeps_names(db, settings, photos):
 
 def test_stage_registry_and_config():
     assert STAGE_NAMES.index("animals") == STAGE_NAMES.index("ages") + 1
-    assert Settings().pipeline.stages == ["nsfw", "faces", "ages", "animals", "vlm", "embed"]
+    assert Settings().pipeline.stages == [
+        "nsfw",
+        "visual",
+        "faces",
+        "ages",
+        "animals",
+        "vlm",
+        "embed",
+    ]
     assert PipelineConfig(stages=["animals"]).stages == ["animals"]
     version = stage_versions(Settings())["animals"]
     assert version.startswith("yolox_s:c5c2d13e+dinov2s:f22797ea")
