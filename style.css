@@ -828,11 +828,6 @@ body {
   margin: 10px 0 0;
 }
 
-/* .bin hint of the Mira 1.2.1 gpu setup; remove with the win_bin_old texts */
-.systems dd .win-bin-old {
-  margin-top: 4px;
-}
-
 .card-note {
   margin: 20px 0 0;
   padding-top: 16px;

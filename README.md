@@ -37,9 +37,3 @@ English is written in `index.html` and repeated in the `en` table in `site.js`; 
 languages are only in `site.js`. When you change a text, change it in both places and in every
 language. An element with `data-i18n="key"` gets its text from the table, `data-i18n-alt` its
 `alt` text and `data-i18n-value` its value. Texts are inserted as plain text, never as HTML.
-
-**Hint for an older release.** `win_bin_old` (keep the `.bin` file next to the gpu setup) only
-matters for the split Windows gpu setups of Mira 1.2.1 and 1.3. Once the single-file gpu setup
-is the latest release, delete it completely; no other text refers to it: the
-`<p class="win-bin-old">` in `index.html`, the `win_bin_old` key in all 11 tables in `site.js`,
-and the `.win-bin-old` rule in `style.css`.
