@@ -3,7 +3,7 @@
    linked (they are text from the internet). #}
 <div class="update-status" id="update-status">
   <div class="row">
-    <span>{{ app_name }} {{ up.current }}</span>
+    <a href="/changelog" title="{{ _('What’s new') }}">{{ app_name }} {{ up.current }}</a>
     {% if up.offer %}<span class="badge accent">{{ _('Update available') }}</span>
     {% elif up.up_to_date %}<span class="badge ok">{{ _('up to date') }}</span>{% endif %}
   </div>

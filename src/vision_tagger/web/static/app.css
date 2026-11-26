@@ -988,6 +988,11 @@ details.more > summary { font-weight: 500; }
 .lang-switch select:hover { border-color: var(--line-2); }
 .install-btn { justify-content: flex-start; width: 100%; height: auto; min-height: 26px; padding-block: 5px; white-space: normal; text-align: start; line-height: 1.25; }
 .install-btn .i { flex: none; }
+.foot-link { display: flex; align-items: center; gap: 8px; min-height: 26px; padding: 0 10px; color: var(--text-2); font-size: .93rem; }
+.foot-link:hover, .foot-link.active { color: var(--text); text-decoration: none; }
+.foot-link .i { flex: none; color: var(--text-3); }
+.foot-link span { min-width: 0; }
+.foot-link small { margin-left: auto; padding-left: 8px; color: var(--text-3); font-size: .86rem; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ---------- import */
 .roots { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 6px; }
@@ -1058,3 +1063,18 @@ label.check { display: flex; gap: 9px; align-items: center; }
 .missing-thumb .thumb { width: 44px; }
 .missing-folder .mono { overflow-wrap: anywhere; color: var(--text-2); }
 .card.empty > .i { color: var(--ok); }
+
+/* ------------------------------------------------------------------ what's new (changelog) */
+.changelog { display: grid; gap: 16px; max-width: 860px; }
+.changelog-release { scroll-margin-top: calc(var(--topbar-h) + 16px); }
+.changelog-release.current { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.changelog-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-bottom: 12px; }
+.changelog-head h2 { margin: 0; font-size: 1.3rem; }
+.changelog-head time, .changelog-head .muted { color: var(--text-2); font-size: .93rem; }
+.changelog-head .badge { align-self: center; }
+.changelog-kind { margin: 16px 0 6px; font-size: .8rem; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--text-2); }
+.changelog-head + .changelog-kind { margin-top: 0; }
+.changelog-items { margin: 0; padding-left: 1.25em; }
+.changelog-items li { overflow-wrap: anywhere; }
+.changelog-items li + li { margin-top: 5px; }
+.changelog-items li::marker { color: var(--text-3); }

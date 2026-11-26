@@ -173,6 +173,8 @@ paused and continues on the next start), the program files are replaced, and you
 kept and its database migrated to the new version (a backup copy is made first,
 `vision_tagger.sqlite3.bak-<version>-<time>`). If the migration fails, the installation is kept
 and Mira tries again when it starts; the details are in `logs/migrate.log` in the data folder.
+What changed in each version is in the [changelog](CHANGELOG.md), and in the app under
+*What's new* (sidebar).
 
 Where things are:
 
@@ -792,14 +794,18 @@ See [CLAUDE.md](CLAUDE.md#database-migrations-mandatory) for the workflow.
 
 Publishing a GitHub release builds the desktop apps and attaches them to it, in about an hour:
 
-1. On GitHub, *Releases → Draft a new release*, create a tag `vX.Y.Z` (pre-releases:
+1. In the [changelog](CHANGELOG.md), rename `## Unreleased` to `## X.Y.Z - <today>` (the
+   version of the tag in step 2), add an empty `## Unreleased` above it and commit that to
+   `main` (see [CLAUDE.md](CLAUDE.md#changelog-mandatory)).
+2. On GitHub, *Releases → Draft a new release*, create a tag `vX.Y.Z` (pre-releases:
    `vX.Y.Z-rc.1`, `-beta.2`, `-alpha.1`) on `main`, and publish it (a pre-release counts too;
-   a draft does not).
-2. [`.github/workflows/desktop.yml`](.github/workflows/desktop.yml) builds Windows (cpu, gpu),
+   a draft does not). Leave the notes empty to get the changelog's section as notes.
+3. [`.github/workflows/desktop.yml`](.github/workflows/desktop.yml) builds Windows (cpu, gpu),
    Linux (cpu, gpu) and macOS (Apple silicon) with the tag as the version
    ([`packaging/version.py`](packaging/version.py): `v1.2.3-rc.1` → `1.2.3rc1`), runs each
-   app's self-test, packs the installers and uploads them to the release.
-3. If a build fails, re-run the failed jobs; the upload replaces files of the same name.
+   app's self-test, packs the installers and uploads them to the release. A release without
+   notes gets the changelog's section for the tag ([`packaging/changelog.py`](packaging/changelog.py)).
+4. If a build fails, re-run the failed jobs; the upload replaces files of the same name.
 
 The version in `pyproject.toml` is only used for builds without a release (manual runs of the
 workflow, and the cpu builds it makes as a check on pull requests and pushes to `main` that touch

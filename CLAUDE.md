@@ -119,6 +119,47 @@ files.
 - Prefer leaving settings out of the example config (commented out) when their default may
   change; then nothing needs migrating.
 
+## Changelog (mandatory)
+
+The changelog is [`src/vision_tagger/resources/CHANGELOG.md`](src/vision_tagger/resources/CHANGELOG.md)
+(the root `CHANGELOG.md` only points there: the file ships with the app). Mira shows it on its
+"What's new" page (`/changelog`), and the desktop workflow uses it as GitHub release notes.
+
+**Every user-visible change adds one short English line under `## Unreleased` in the same
+commit**: a new feature under `### New`, a change in behaviour under `### Changed`, a bug fix
+under `### Fixed`. Internal refactors, tests, CI-only and documentation-only changes don't get an
+entry. A change that spans several commits gets one entry, not one per commit.
+
+Format (`changelog.validate()` enforces it):
+- `# Changelog`, an introduction, then `## Unreleased` (always first, possibly empty), then the
+  releases newest first as `## <tag> - <YYYY-MM-DD>`, e.g. `## 1.2.1 - 2026-11-26`. The tag is a
+  release tag as `packaging/version.py` accepts it (`1.3`, `v1.3`, `1.4-rc.1`).
+- Only the sections `### New`, `### Changed` and `### Fixed`, in that order, each optional, never
+  empty.
+- One line per item, `- text`, at most 160 characters. Inline code and `[text](https://…)` links
+  are the only markup; no HTML, no nested lists, no line continuations.
+
+Style: write for users, not developers. Say what they can do or notice now, in the present
+tense, and name the place in the UI or the command. Leave out internals (modules, tables, PR
+numbers).
+- Good: ``- Mira downloads the AI models it needs itself (Home → Download now); no `ollama pull` needed.``
+- Good: `- The sidebar no longer scrolls sideways when a job shows a long file path.`
+- Bad: `- Add vlm/models.py with pull_missing() and a models job` (internal, not what users see).
+- Bad: `- Fixed bug` (which one?), `- Refactor clustering` (not user-visible: no entry).
+
+Releasing:
+1. Just before publishing a GitHub release, rename `## Unreleased` to `## <tag> - <date>` (the
+   tag you are about to create, today's date) and add a fresh, empty `## Unreleased` above it.
+   Commit that to `main`.
+2. Publish the release with that tag on that commit. When its notes are left empty, the publish
+   job of `.github/workflows/desktop.yml` fills them with the tag's section
+   (`python packaging/changelog.py notes <tag>`). Notes written on GitHub are kept as they are.
+   Without a section for the tag it takes `Unreleased` and warns in the job log.
+
+`tests/test_changelog.py` validates the file (a broken format fails CI) and tests the parser,
+the notes script, the page and the workflow step. Check the file locally with
+`python packaging/changelog.py check`.
+
 ## Code conventions
 
 - Names: users see "Mira" (`vision_tagger.APP_NAME`, `app_name` in templates). Technical names

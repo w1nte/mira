@@ -60,6 +60,7 @@
       {% endif %}
       <div id="activity" hx-get="/partials/activity" hx-trigger="load, every 5s [document.visibilityState === 'visible']"></div>
       <button type="button" class="install-btn ghost small" data-install hidden>{{ icon('smartphone', 'sm') }}{{ _('Install app') }}</button>
+      <a class="foot-link{{ ' active' if path == '/changelog' }}" href="/changelog"{% if path == '/changelog' %} aria-current="page"{% endif %}>{{ icon('sparkle', 'sm') }}<span>{{ _('What’s new') }}</span><small>{{ app_version }}</small></a>
       <label class="lang-switch" title="{{ _('Language') }}">{{ icon('globe', 'sm') }}
         <select data-lang-switch aria-label="{{ _('Language') }}">
           {% for code, name in languages.items() %}<option value="{{ code }}" {{ 'selected' if code == current_lang() }}>{{ name }}</option>{% endfor %}

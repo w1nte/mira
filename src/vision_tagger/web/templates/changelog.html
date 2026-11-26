@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}{{ _('What’s new') }}{% endblock %}
+{% block content %}
+{# the entries are English (resources/CHANGELOG.md); only the page around them is translated #}
+{% set titles = {'New': pgettext('changelog', 'New'), 'Changed': pgettext('changelog', 'Changed'), 'Fixed': pgettext('changelog', 'Fixed')} %}
+<div class="page-head">
+  <div>
+    <h1>{{ _('What’s new') }}</h1>
+    <p class="muted">{{ _('You are using %(app)s %(version)s.', app=app_name, version=version) }}</p>
+  </div>
+</div>
+
+<div class="changelog">
+  {% for r in releases %}
+  {% set is_current = current is not none and r.version == current.version %}
+  {% set anchor = 'unreleased' if r.unreleased else 'v' ~ r.version %}
+  <section class="card changelog-release{{ ' current' if is_current }}" id="{{ anchor }}" aria-labelledby="{{ anchor }}-title">
+    <header class="changelog-head">
+      <h2 id="{{ anchor }}-title">{{ _('Unreleased') if r.unreleased else r.version }}</h2>
+      {% if r.date %}<time datetime="{{ r.date.isoformat() }}">{{ r.date.isoformat() }}</time>{% endif %}
+      {% if r.unreleased %}<span class="muted">{{ _('Not in a release yet') }}</span>{% endif %}
+      {% if is_current %}<span class="badge accent">{{ icon('check', 'sm') }}{{ _('Current version') }}</span>{% endif %}
+    </header>
+    {% for kind in kinds if r.sections.get(kind) %}
+    <h3 class="changelog-kind">{{ titles[kind] }}</h3>
+    <ul class="changelog-items" lang="en">
+      {% for text in r.sections[kind] %}<li>{{ item(text) }}</li>
+      {% endfor %}
+    </ul>
+    {% endfor %}
+  </section>
+  {% else %}
+  <section class="card empty"><p>{{ _('No changes listed yet.') }}</p></section>
+  {% endfor %}
+</div>
+{% endblock %}
