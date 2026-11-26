@@ -164,3 +164,76 @@ def add_animal(s, image_id: int, emb: np.ndarray, **kw):
     s.add(animal)
     s.flush()
     return animal
+
+
+# --------------------------------------------------------------------------- visual search
+VISUAL_DIM = 8
+#: colour words the fake text encoder understands (English and German), by RGB channel
+COLOUR_WORDS = {
+    "red": 0,
+    "rot": 0,
+    "rote": 0,
+    "roten": 0,
+    "green": 1,
+    "grün": 1,
+    "grüne": 1,
+    "blue": 2,
+    "blau": 2,
+    "blaue": 2,
+}
+
+
+class FakeVisualEncoder:
+    """Stands in for both visual encoders (no model download, no onnxruntime).
+
+    A photo's vector is its mean colour (dimensions 0-2); a text's vector points to the colour
+    words in it ("red" / "rot": the red channel), other words to dimensions no photo has. So
+    "red" finds the reddest photos, in English and German, and an unknown word finds nothing.
+    ``embed`` takes pixels (the image encoder) or a list of texts (the text encoder).
+    """
+
+    model = "fake-visual"
+    version = "fake-visual-v1"
+    size = 16
+    low, high = 0.2, 0.8
+
+    def __init__(self, on_embed=None):
+        self.providers = ["CPUExecutionProvider"]
+        self.using_gpu = False
+        self.loaded = False
+        self.embedded = 0
+        self.texts: list[str] = []
+        self.on_embed = on_embed
+
+    def load(self, interrupted=None, report=None):
+        self.loaded = True
+
+    def unload(self):
+        self.loaded = False
+
+    def preprocess(self, image):
+        arr = np.asarray(image.convert("RGB").resize((self.size, self.size)), dtype=np.float32)
+        return np.ascontiguousarray((arr / 255.0).transpose(2, 0, 1))
+
+    def embed(self, data):
+        if isinstance(data, list):
+            return self._texts(data)
+        if self.on_embed is not None:
+            self.on_embed(len(data))
+        self.embedded += len(data)
+        out = np.zeros((len(data), VISUAL_DIM), dtype=np.float32)
+        out[:, :3] = data.mean(axis=(2, 3)) + 1e-3
+        return out / np.linalg.norm(out, axis=1, keepdims=True)
+
+    def _texts(self, texts):
+        import zlib
+
+        out = np.zeros((len(texts), VISUAL_DIM), dtype=np.float32)
+        for row, text in enumerate(texts):
+            self.texts.append(text)
+            for word in text.casefold().split():
+                if word in COLOUR_WORDS:
+                    out[row, COLOUR_WORDS[word]] += 1.0
+                else:
+                    out[row, 3 + zlib.crc32(word.encode()) % (VISUAL_DIM - 3)] += 0.1
+        return out / np.maximum(np.linalg.norm(out, axis=1, keepdims=True), 1e-9)

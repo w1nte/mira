@@ -1,4 +1,5 @@
-"""Natural-language search page (LLM interpretation + semantic index + deep re-ranking)."""
+"""Natural-language search page (visual search + LLM interpretation + semantic index + deep
+re-ranking) and "Similar photos"."""
 
 from __future__ import annotations
 
@@ -31,25 +32,34 @@ EXAMPLES = [
 
 
 @router.get("/search")
-def search_page(request: Request, q: str = "", deep: int = 0) -> Response:
+def search_page(request: Request, q: str = "", deep: int = 0, similar: int = 0) -> Response:
     q = " ".join(q.split())
+    source = None
+    if similar:
+        with ctx(request).db.session() as s:
+            source = s.get(Image, similar)
+        if source is None:
+            raise HTTPException(404)
+        q = ""
+    params = {"similar": similar} if source is not None else {"q": q, "deep": int(bool(deep))}
     return render(
         request,
         "search.html",
         q=q,
         deep=bool(deep),
+        similar=source,
         examples=[_(example) for example in EXAMPLES],
-        results_url="/search/results?" + urlencode({"q": q, "deep": int(bool(deep))}),
+        results_url="/search/results?" + urlencode(params),
     )
 
 
 @router.get("/search/results")
-def search_results(request: Request, q: str = "", deep: int = 0) -> Response:
+def search_results(request: Request, q: str = "", deep: int = 0, similar: int = 0) -> Response:
     q = " ".join(q.split())
-    if not q:
+    if not q and not similar:
         return Response("")
     c = ctx(request)
-    result = c.search.search(q, deep=bool(deep))
+    result = c.search.similar(similar) if similar else c.search.search(q, deep=bool(deep))
     images: dict[int, Image] = {}
     ids = [h.image_id for h in result.hits]
     with c.db.session() as s:

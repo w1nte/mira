@@ -8,9 +8,12 @@ Mira shows them on its "What's new" page, and each GitHub release uses its secti
 ### New
 - Search understands "or": "Anna or Ben at the beach", "dogs or cats", "photos from 2019 or 2021", in every UI language, also without an LLM.
 - Gallery filters take alternatives: a filter section's "or" switch (or Ctrl+click on a value) gives "beach or mountains"; collections keep them.
+- Search finds photos by what they show, in any language and right after the import, without Ollama: the new "Visual search" stage (SigLIP 2).
+- "Similar photos" on a photo's page lists the photos that look like it; also `vision-tagger similar <id>`.
 
 ### Changed
 - Properties page: "Images with any selected" keeps the other filters, e.g. summer and (beach or mountains).
+- Search ranks by what photos show first, then their descriptions, properties and words; results that match nothing are left out.
 
 ## 1.4 - 2026-11-26
 

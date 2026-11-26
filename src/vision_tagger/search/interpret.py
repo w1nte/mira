@@ -75,8 +75,11 @@ class Interpretation:
     date_to: str | None = None
     dates: list[DateRange] = field(default_factory=list)  # alternative ranges ("2019 or 2021")
     semantic_query: str = ""
+    #: what the photos should show, for the image-text model: without names, places, dates and
+    #: excluded things (it can't tell "no dogs" from "dogs"); "" = nothing to look for
+    visual_query: str = ""
     keywords: list[str] = field(default_factory=list)
-    mode: str = "llm"  # "llm" or "basic"
+    mode: str = "llm"  # "llm", "basic" or "similar"
     # shown in the UI; interpretations are cached for every language, so notes are Lazy
     notes: list[str | Lazy] = field(default_factory=list)
 
@@ -405,8 +408,17 @@ def validate(raw: dict, ctx: SearchContext, query: str) -> Interpretation:
     it.should = _dedup_terms(t for t in it.should if (t.key, t.value) not in required)
     it.must = _dedup_terms(it.must)
     it.semantic_query = str(raw.get("semantic_query") or "").strip() or query
+    it.visual_query = str(raw.get("semantic_query") or "").strip() or _drop_names(
+        query, [name for _id, name in [*it.persons, *it.pets]]
+    )
     it.keywords = _dedup_words(keywords)
     return it
+
+
+def _drop_names(text: str, names: Iterable[str]) -> str:
+    for name in sorted(names, key=len, reverse=True):
+        text = re.sub(_word(name.casefold()), _NAME, text, flags=re.IGNORECASE)
+    return _trim(_without_names(text))
 
 
 def _items(value: object) -> list:
@@ -1018,6 +1030,7 @@ class KeywordInterpreter:
             and len(t) > 2
         )
         it.semantic_query = _without_names(semantic) or query
+        it.visual_query = _visual_text(lowered, found)
         return it
 
     @staticmethod
@@ -1154,6 +1167,37 @@ def _without_names(text: str) -> str:
         )
     ]
     return " ".join(kept)
+
+
+def _trim(text: str) -> str:
+    """Without function words at either end ("dogs in" -> "dogs"); "" if nothing else."""
+    words = text.split()
+    while words and words[0].casefold().strip(",;.") in _FUNCTION_WORDS:
+        words.pop(0)
+    while words and words[-1].casefold().strip(",;.") in _FUNCTION_WORDS:
+        words.pop()
+    return " ".join(words)
+
+
+def _visual_text(lowered: str, found: list[_Match]) -> str:
+    """What the photos should show: the request without what the filters take care of
+    (persons, pets, places, dates) and without the excluded things ("no dogs", "ohne Hund"):
+    the image-text model would look for them instead."""
+    covered = [False] * len(lowered)
+    spans = [(f.start, f.end) for f in found if f.family in ("who", "place", "date") or f.negated]
+    for m in re.finditer(r"\w+", lowered):  # a negation and the word after it
+        if m.group(0) in NEGATIONS:
+            nxt = re.match(r"\W*\w+", lowered[m.end() :])
+            spans.append((m.start(), m.end() + (nxt.end() if nxt else 0)))
+    for start, end in spans:
+        covered[start:end] = [True] * (end - start)
+    out: list[str] = []
+    for i, ch in enumerate(lowered):
+        if not covered[i]:
+            out.append(ch)
+        elif i == 0 or not covered[i - 1]:
+            out.append(f" {_NAME} ")
+    return _trim(_without_names("".join(out)))
 
 
 def _negated(prefix: str) -> bool:

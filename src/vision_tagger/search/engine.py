@@ -1,24 +1,35 @@
-"""Hybrid search: structured filters + property matches + keywords + semantic similarity.
+"""Hybrid search: structured filters + what photos show + their descriptions + properties.
 
 1. The query is interpreted (LLM, or keyword fallback) into persons, pets, dates, required /
-   preferred / excluded properties, keywords and an English "semantic" rewrite. Alternatives
-   ("Anna or Ben", "beach or mountains", "2019 or 2021") are OR groups; groups are AND-ed.
+   preferred / excluded properties, keywords, an English "semantic" rewrite and the text that
+   describes what the photos should show. Alternatives ("Anna or Ben", "beach or mountains",
+   "2019 or 2021") are OR groups; groups are AND-ed.
 2. The strict part (persons, pets, required properties and their alternatives, exclusions,
-   dates) selects candidates via the normal gallery filter (``query.conditions``). If nothing
-   matches, required properties are relaxed into preferences.
-3. Candidates are scored by: semantic similarity of the rewrite to each image's document
+   dates) selects candidates via the normal gallery filter (``query.conditions``). Photos the
+   vision model has not described yet can't have the required properties; they stay candidates
+   (by what they show) as long as everything else matches. If nothing matches, required
+   properties are relaxed into preferences. Without a strict part, every photo is a candidate.
+3. Candidates are scored by: the visual similarity of the request to each photo (image-text
+   embeddings, see ``visual``), the semantic similarity of the rewrite to each image's document
    embedding, how many preferred properties / persons they have, and keyword hits in captions,
-   visible text, property values and file names.
-4. Deep search (optional): the LLM re-ranks the best candidates and explains each choice.
+   visible text, property values and file names. A photo is scored by the parts it has: one
+   without a description yet is ranked by the others. Photos without any evidence are left out.
+4. Deep search (optional): the LLM re-ranks the best described candidates and explains each
+   choice.
+
+"Similar photos" ranks the library by the visual similarity to one photo.
 """
 
 from __future__ import annotations
 
+import contextlib
 import logging
+import math
 import string
 import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
+from typing import Any
 
 from sqlalchemy import and_, func, or_, select
 
@@ -31,12 +42,14 @@ from ..db.models import (
     Image,
     ImageEmbedding,
     ImageProperty,
+    VisualEmbedding,
     VlmResult,
 )
 from ..db.session import Database
 from ..db.util import chunked, like_escape
+from ..geo.places import PLACE_KEYS
 from ..i18n import Lazy
-from ..query import all_image_ids, property_counts
+from ..query import ImageFilter, all_image_ids, property_counts
 from ..vlm.backend import VlmBackend, VlmError, make_backend
 from ..vlm.schema import Vocabulary, default_synonyms_path
 from .index import EmbeddingMatrix
@@ -53,6 +66,16 @@ from .rerank import describe, rerank
 log = logging.getLogger(__name__)
 
 
+#: property keys known right after indexing or from other stages; the other keys come from
+#: the vision model, so photos it has not described yet can't have them
+_KNOWN_WITHOUT_VLM = {"year", "orientation", "capture_device", "has_gps", "animal", "pet"} | set(
+    PLACE_KEYS
+)
+#: "Similar photos": pHashes this close (of 64 bits) are copies of one photo (re-encoded,
+#: resized); the indexer merges only identical pHashes
+COPY_PHASH_BITS = 4
+
+
 @dataclass
 class SearchHit:
     image_id: int
@@ -60,6 +83,7 @@ class SearchHit:
     semantic: float | None = None
     properties: float | None = None
     keywords: float | None = None
+    visual: float | None = None
     rerank: float | None = None
     reason: str | None = None
 
@@ -72,6 +96,10 @@ class SearchResult:
     relaxed: bool = False
     semantic_used: bool = False
     semantic_coverage: float = 0.0
+    visual_used: bool = False
+    visual_coverage: float = 0.0
+    #: "Similar photos": the photo the others are similar to
+    similar_to: int | None = None
     deep: bool = False
     notes: list[str | Lazy] = field(default_factory=list)  # shown in the UI: Lazy
     seconds: float = 0.0
@@ -85,13 +113,37 @@ def _ascii_lower(text: str) -> str:
     return text.translate(_ASCII_LOWER)
 
 
+def visual_score(cos: float, low: float, high: float) -> float:
+    """Cosine similarity of a request and a photo -> 0..1.
+
+    0 up to ``low`` (photos that don't show it), 0.75 at ``high`` (a clear match), approaching
+    1 above, so clear matches keep their order. Absolute, not relative to the candidates: a
+    request nothing matches gets low scores, and the other parts decide.
+    """
+    z = (cos - low) / max(high - low, 1e-6)
+    return 0.0 if z <= 0 else 1.0 - math.exp(-z * math.log(4.0))
+
+
 class SearchEngine:
-    def __init__(self, db: Database, settings: Settings, backend: VlmBackend | None = None) -> None:
+    def __init__(
+        self,
+        db: Database,
+        settings: Settings,
+        backend: VlmBackend | None = None,
+        text_encoder: Any = None,
+    ) -> None:
         self.db = db
         self.settings = settings
         self.vocab = Vocabulary.load(settings.vlm.vocabulary_file)
         self.backend = backend or make_backend(settings.vlm, self.vocab)
         self.index = EmbeddingMatrix(db)
+        self.visual = EmbeddingMatrix(db, VisualEmbedding)
+        if text_encoder is None:
+            from ..visual.encoder import TextEncoder
+
+            text_encoder = TextEncoder(settings)
+        #: turns requests into vectors of the visual space (tests replace it with a fake)
+        self.text_encoder = text_encoder
         self.cache = VersionedCache(db)
         self._cache: OrderedDict[tuple[str, str], Interpretation] = OrderedDict()
         self._ctx: tuple[float, SearchContext] | None = None
@@ -267,6 +319,68 @@ class SearchEngine:
         span = hi - lo
         return {i: (v - lo) / span if span > 1e-6 else 1.0 for i, v in sims.items()}
 
+    @property
+    def visual_model(self) -> str:
+        """The vector space searched (``visual_embeddings.model``)."""
+        return self.text_encoder.model
+
+    def _visual_ready(self) -> bool:
+        """Load the visual vectors of the current model; ``False`` if there are none."""
+        try:
+            self.visual.ensure(self.visual_model)
+        except Exception as exc:  # pragma: no cover - defensive
+            log.warning("visual index unavailable: %s", exc)
+            return False
+        return self.visual.count > 0
+
+    def _visual_scores(
+        self, it: Interpretation, candidates: list[int], notes: list[str | Lazy]
+    ) -> dict[int, float] | None:
+        text = it.visual_query.strip()
+        if not text or not self._visual_ready():
+            return None
+        try:
+            q = self.text_encoder.embed([text])[0]
+        except Exception as exc:  # model files missing, onnxruntime errors
+            log.warning("visual search unavailable: %s", exc)
+            notes.append(Lazy("visual search unavailable (%(error)s)", error=str(exc)))
+            return None
+        low, high = self.text_encoder.low, self.text_encoder.high
+        sims = self.visual.similarities(q, candidates)
+        return {i: visual_score(v, low, high) for i, v in sims.items()}
+
+    def _described(self, image_ids: list[int]) -> set[int]:
+        """The photos among ``image_ids`` the vision model has described."""
+        out: set[int] = set()
+        with self.db.session() as s:
+            for part in chunked(image_ids):
+                out.update(
+                    s.scalars(select(VlmResult.image_id).where(VlmResult.image_id.in_(part)))
+                )
+        return out
+
+    def _undescribed(self, s, it: Interpretation, strict: list[int]) -> list[int]:
+        """The candidates plus the photos without a description yet (no answer of the vision
+        model) that match everything else: they can't have the required properties yet, but
+        may show them. ``strict`` itself if there are none."""
+        f = it.hard_filter()
+        props = [p for p in f.props if p[0] in _KNOWN_WITHOUT_VLM]
+        groups = [g for g in f.prop_groups if all(k in _KNOWN_WITHOUT_VLM for k, _ in g)]
+        if len(props) == len(f.props) and len(groups) == len(f.prop_groups):
+            return strict
+        wider = all_image_ids(s, f.copy(props=props, prop_groups=groups))
+        strict_set = set(strict)
+        others = [i for i in wider if i not in strict_set and self.visual.has(i)]
+        described: set[int] = set()
+        for part in chunked(others):
+            described.update(
+                s.scalars(select(VlmResult.image_id).where(VlmResult.image_id.in_(part)))
+            )
+        extra = {i for i in others if i not in described}
+        if not extra:
+            return strict
+        return [i for i in wider if i in strict_set or i in extra]  # newest first
+
     # ------------------------------------------------------------------ public
     def search(self, query: str, *, deep: bool = False, limit: int | None = None) -> SearchResult:
         started = time.monotonic()
@@ -274,10 +388,29 @@ class SearchEngine:
         limit = limit or self.settings.search.result_limit
         it = self.interpret(query)
         result = SearchResult(interpretation=it, hits=[], notes=list(it.notes))
+        visual_ready = self._visual_ready()
+        widened = False
+        hard = it.hard_filter()
+        # no strict part: every photo is a candidate, and only photos that match something
+        # about the request are results (strict candidates are results anyway)
+        open_search = hard.is_empty
         with self.db.session() as s:
-            candidates = all_image_ids(s, it.hard_filter())
-            if not candidates and it.required:
+            candidates = all_image_ids(s, hard)
+            strict = set(candidates)
+            if it.required and visual_ready and it.visual_query:
+                candidates = self._undescribed(s, it, candidates)
+                widened = len(candidates) > len(strict)
+                if widened:
+                    result.notes.append(
+                        Lazy(
+                            "%(num)s photos without a description yet are included by what "
+                            "they show",
+                            num=len(candidates) - len(strict),
+                        )
+                    )
+            if not candidates and it.required:  # the closest matches, all of them ranked
                 candidates = all_image_ids(s, it.hard_filter(relaxed=True))
+                strict, open_search = set(candidates), False
                 result.relaxed = bool(candidates)
             total = s.scalar(
                 select(func.count()).select_from(Image).where(Image.missing.is_(False))
@@ -289,34 +422,70 @@ class SearchEngine:
             )
         result.candidates = len(candidates)
         result.semantic_coverage = (embedded or 0) / total if total else 0.0
+        result.visual_coverage = min(1.0, self.visual.count / total) if total else 0.0
         if not candidates:
             result.seconds = time.monotonic() - started
             return result
 
         cand_set = set(candidates)
         w = self.settings.search.weights
-        parts: list[tuple[float, dict[int, float]]] = []
+        visual = self._visual_scores(it, candidates, result.notes)
+        result.visual_used = visual is not None
+        if visual is not None and result.visual_coverage < 0.995:
+            result.notes.append(
+                Lazy(
+                    "%(percent)s%% of the photos can be found by what they show so far; the "
+                    "“Visual search” stage embeds the others",
+                    percent=f"{result.visual_coverage * 100:.0f}",
+                )
+            )
         semantic = self._semantic_scores(it, candidates, result.notes)
         result.semantic_used = semantic is not None
-        props = self._property_scores(it.soft_terms(result.relaxed), it, cand_set)
+        terms = it.soft_terms(result.relaxed or widened)
+        props = self._property_scores(terms, it, cand_set)
         words = self._keyword_scores(it.keywords, cand_set)
-        for weight, scores in ((w.semantic, semantic), (w.properties, props), (w.keywords, words)):
-            if scores is not None and weight > 0:
-                parts.append((weight, scores))
-        weight_sum = sum(p[0] for p in parts) or 1.0
+        # properties only the vision model gives count for the photos it has described: the
+        # others can't have them yet (they are ranked by what they show)
+        props_for: set[int] | None = None
+        vlm_only = all(t.key not in _KNOWN_WITHOUT_VLM for t in terms) and not it.who_any
+        if props is not None and visual is not None and vlm_only:
+            props_for = self._described(candidates)
+        # (weight, scores, the photos the part counts for; None: every photo)
+        parts: list[tuple[float, dict[int, float], set[int] | dict[int, float] | None]] = [
+            (weight, scores, applies)
+            for weight, scores, applies in (
+                (w.visual, visual, visual),  # photos with a vector
+                (w.semantic, semantic, semantic),  # photos with a document embedding
+                (w.properties, props, props_for),
+                (w.keywords, words, None),
+            )
+            if scores is not None and weight > 0
+        ]
 
         ranked: list[tuple[float, int, int]] = []  # (-score, newest-first rank, image id)
         for rank, image_id in enumerate(candidates):  # candidates come newest first
-            score = sum(weight * scores.get(image_id, 0.0) for weight, scores in parts) / weight_sum
+            weight_sum, score = 0.0, 0.0
+            for weight, scores, applies in parts:
+                if applies is None or image_id in applies:
+                    score += weight * scores.get(image_id, 0.0)
+                    weight_sum += weight
+            score = score / weight_sum if weight_sum else 0.0
+            if parts and score <= 0.0 and (open_search or image_id not in strict):
+                continue  # nothing about this photo matches the request
             ranked.append((-score, rank, image_id))
         ranked.sort()
+
+        def part(scores: dict[int, float] | None, image_id: int) -> float | None:
+            return None if scores is None else round(scores.get(image_id, 0.0), 3)
+
         hits = [
             SearchHit(
                 image_id=image_id,
                 score=round(-neg_score, 4),
-                semantic=None if semantic is None else round(semantic.get(image_id, 0.0), 3),
-                properties=None if props is None else round(props.get(image_id, 0.0), 3),
-                keywords=None if words is None else round(words.get(image_id, 0.0), 3),
+                semantic=part(semantic, image_id),
+                properties=part(props, image_id),
+                keywords=part(words, image_id),
+                visual=part(visual, image_id),
             )
             for neg_score, _rank, image_id in ranked[:limit]
         ]
@@ -327,10 +496,79 @@ class SearchEngine:
         result.seconds = round(time.monotonic() - started, 2)
         return result
 
+    def similar(self, image_id: int, *, limit: int | None = None) -> SearchResult:
+        """The photos that look most like ``image_id`` (visual similarity), without the photo
+        itself and copies of a photo already listed.
+
+        A copy (re-encoded, resized) has nearly the same pHash. Vectors can't tell: the same
+        photo re-encoded has a cosine of 0.88-0.99, two shots of the same scene up to 0.99.
+        """
+        started = time.monotonic()
+        limit = limit or self.settings.search.result_limit
+        it = Interpretation(query="", mode="similar")
+        result = SearchResult(interpretation=it, hits=[], similar_to=image_id)
+        vector = self.visual.vector(image_id) if self._visual_ready() else None
+        if vector is None:
+            result.notes.append(
+                Lazy(
+                    "This photo has no visual vector yet; the “Visual search” stage on the "
+                    "Pipeline page embeds it"
+                )
+            )
+            result.seconds = round(time.monotonic() - started, 2)
+            return result
+        with self.db.session() as s:
+            candidates = all_image_ids(s, ImageFilter())
+            total = len(candidates)
+            sims = self.visual.similarities(vector, candidates)
+            ranked = sorted(
+                ((sim, i) for i, sim in sims.items() if i != image_id),
+                key=lambda t: (-t[0], t[1]),
+            )
+            # pHashes of the photo and of enough neighbours to fill the list without copies
+            wanted = [image_id] + [i for _sim, i in ranked[: 2 * limit + 50]]
+            hashes: dict[int, int] = {}
+            for part in chunked(wanted):
+                for i, value in s.execute(select(Image.id, Image.phash).where(Image.id.in_(part))):
+                    with contextlib.suppress(TypeError, ValueError):
+                        hashes[i] = int(value, 16)
+        result.visual_used = True
+        result.visual_coverage = min(1.0, self.visual.count / total) if total else 0.0
+        result.candidates = len(ranked)
+        shown: list[int] = [hashes[image_id]] if image_id in hashes else []
+        for sim, i in ranked:
+            if len(result.hits) >= limit:
+                break
+            h = hashes.get(i)
+            if h is not None:
+                if any((h ^ other).bit_count() <= COPY_PHASH_BITS for other in shown):
+                    continue  # a copy of the photo or of one listed already
+                shown.append(h)
+            result.hits.append(
+                SearchHit(image_id=i, score=round(max(0.0, sim), 4), visual=round(sim, 3))
+            )
+        result.seconds = round(time.monotonic() - started, 2)
+        return result
+
     def _deep(self, query: str, hits: list[SearchHit], result: SearchResult) -> None:
+        """The LLM judges the best matches it can read about (photos with a description);
+        photos without one keep their place."""
         top = hits[: self.settings.search.rerank_top]
         with self.db.session() as s:
-            descriptions = describe(s, [h.image_id for h in top])
+            ids = [h.image_id for h in top]
+            described = set(
+                s.scalars(select(VlmResult.image_id).where(VlmResult.image_id.in_(ids)))
+            ) | set(
+                s.scalars(
+                    select(ImageProperty.image_id).where(
+                        ImageProperty.image_id.in_(ids), ImageProperty.source == "vlm"
+                    )
+                )
+            )
+            descriptions = describe(s, [i for i in ids if i in described])
+        if not descriptions:
+            result.notes.append(Lazy("deep search needs descriptions from the vision model"))
+            return
         try:
             judged = rerank(
                 self.backend, self.llm_model, query, descriptions, self.settings.search.rerank_batch
@@ -343,6 +581,12 @@ class SearchEngine:
             if j is not None:
                 h.rerank, h.reason = j.score, j.reason
         order = {h.image_id: i for i, h in enumerate(top)}
-        top.sort(key=lambda h: (-(h.rerank if h.rerank is not None else -1), order[h.image_id]))
+        slots = [n for n, h in enumerate(top) if h.image_id in descriptions]
+        judged_hits = sorted(
+            (top[n] for n in slots),
+            key=lambda h: (-(h.rerank if h.rerank is not None else -1), order[h.image_id]),
+        )
+        for n, h in zip(slots, judged_hits, strict=True):
+            top[n] = h
         hits[: len(top)] = top
         result.deep = bool(judged)

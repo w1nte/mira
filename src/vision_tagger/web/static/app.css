@@ -808,6 +808,7 @@ details.more > summary { font-weight: 500; }
 .searchbox button { height: 46px; padding: 0 20px; border-radius: 10px; }
 .interpretation { padding-bottom: 16px; margin-bottom: 16px; border-bottom: 1px solid var(--line); }
 #results.results { margin-top: 24px; }
+.similar-source img { display: block; max-width: min(320px, 100%); max-height: 240px; border-radius: 12px; background: var(--sunken); }
 
 /* ------------------------------------------------------------------ quiz */
 .scoreboard { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; color: var(--text-2); font-variant-numeric: tabular-nums; }

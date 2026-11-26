@@ -1,16 +1,22 @@
 <section class="interpretation">
   <div class="row spread">
     <div class="row">
+      {% if result.similar_to is none %}
       {% if it.mode == 'llm' %}<span class="badge ok" title="{{ _('Interpreted by the local LLM') }}">LLM</span>
       {% else %}<span class="badge warn" title="{{ _('No LLM available: dictionary-based interpretation') }}">{{ _('basic mode') }}</span>{% endif %}
+      {% endif %}
+      {% if result.visual_used %}<span class="badge accent" title="{{ _('Photos found by what they show') }}">{{ _('visual · %(percent)s%% indexed', percent='%.0f' | format(result.visual_coverage * 100)) }}</span>
+      {% elif result.visual_coverage == 0 %}<span class="badge" title="{{ _('Run the “Visual search” stage on the Pipeline page') }}">{{ _('no visual index') }}</span>{% endif %}
+      {% if result.similar_to is none %}
       {% if result.semantic_used %}<span class="badge accent">{{ _('semantic · %(percent)s%% indexed', percent='%.0f' | format(result.semantic_coverage * 100)) }}</span>
       {% else %}<span class="badge" title="{{ _("Run the 'Search index' stage on the dashboard") }}">{{ _('no semantic index') }}</span>{% endif %}
+      {% endif %}
       {% if result.deep %}<span class="badge ok">{{ _('deep') }}</span>{% endif %}
       {% if result.relaxed %}<span class="badge warn" title="{{ _('Nothing matched all required properties; they were treated as preferences') }}">{{ _('relaxed') }}</span>{% endif %}
       <small class="muted">{{ ngettext('%(hits)s of %(num)d candidate · %(seconds)s s', '%(hits)s of %(num)d candidates · %(seconds)s s', result.candidates, hits=result.hits | length, seconds=result.seconds) }}</small>
     </div>
     <div class="row">
-      <a class="btn small" href="/images?{{ filter_qs }}" title="{{ _('The strict part (persons, pets, required / excluded properties, dates, alternatives) as a gallery filter') }}">{{ _('Open in filter builder') }}</a>
+      {% if result.similar_to is none %}<a class="btn small" href="/images?{{ filter_qs }}" title="{{ _('The strict part (persons, pets, required / excluded properties, dates, alternatives) as a gallery filter') }}">{{ _('Open in filter builder') }}</a>{% endif %}
       {% if result.hits %}
       <details class="dropdown">
         <summary class="btn small">{{ icon('download', 'sm') }}{{ _('Export') }}</summary>
@@ -45,6 +51,7 @@
     </div>
   </div>
   {% macro or_sep() %}<span class="or">{{ _('or') }}</span>{% endmacro %}
+  {% if result.similar_to is none %}
   <div class="chips" style="margin-top:12px">
     {% if it.who_any %}{# "Anna or Ben": one chip, one of them is enough #}
     <span class="chip active alternatives" title="{{ _('one of them') }}">
@@ -72,7 +79,9 @@
     </span>{% endif %}
     {% for k in it.keywords %}<span class="chip soft" title="{{ _('free-text keyword') }}">“{{ k }}”</span>{% endfor %}
   </div>
-  {% if it.semantic_query and it.semantic_query != q %}<p class="muted hint">{{ _('Looking for: %(query)s', query='<i>' | safe ~ it.semantic_query ~ '</i>' | safe) }}</p>{% endif %}
+  {% set looking = it.visual_query if result.visual_used and it.visual_query else it.semantic_query %}
+  {% if looking and looking != q %}<p class="muted hint">{{ _('Looking for: %(query)s', query='<i>' | safe ~ looking ~ '</i>' | safe) }}</p>{% endif %}
+  {% endif %}
   {% for note in result.notes %}<p class="note">{{ icon('info', 'sm') }}<small>{{ note }}</small></p>{% endfor %}
 </section>
 
@@ -82,7 +91,7 @@
   {% set img = images.get(h.image_id) %}
   {% if img %}
   <div class="result">
-    <a class="thumb" href="/images/{{ img.id }}" title="{{ img.rel_path }} · {{ _('score %(value)s', value='%.2f' | format(h.score)) }}{% if h.semantic is not none %} · {{ _('semantic %(value)s', value='%.2f' | format(h.semantic)) }}{% endif %}{% if h.properties is not none %} · {{ _('properties %(value)s', value='%.2f' | format(h.properties)) }}{% endif %}{% if h.keywords is not none %} · {{ _('keywords %(value)s', value='%.2f' | format(h.keywords)) }}{% endif %}">
+    <a class="thumb" href="/images/{{ img.id }}" title="{{ img.rel_path }} · {{ _('score %(value)s', value='%.2f' | format(h.score)) }}{% if h.visual is not none %} · {{ _('visual %(value)s', value='%.2f' | format(h.visual)) }}{% endif %}{% if h.semantic is not none %} · {{ _('semantic %(value)s', value='%.2f' | format(h.semantic)) }}{% endif %}{% if h.properties is not none %} · {{ _('properties %(value)s', value='%.2f' | format(h.properties)) }}{% endif %}{% if h.keywords is not none %} · {{ _('keywords %(value)s', value='%.2f' | format(h.keywords)) }}{% endif %}">
       <img loading="lazy" src="/media/thumb/{{ img.id }}" alt="">
       <span class="rank">{{ loop.index }}{% if h.rerank is not none %} · {{ '%.0f' | format(h.rerank) }}/10{% endif %}</span>
       <span class="scorebar" style="width: {{ (h.score * 100) | round(0) }}%"></span>

@@ -64,8 +64,9 @@ class IndexConfig(BaseModel):
     thumbnails: bool = True
 
 
-#: every stage, in pipeline order (``pipeline.stages`` defaults to all of them)
-DEFAULT_STAGES = ("faces", "ages", "animals", "vlm", "embed")
+#: every stage, in pipeline order (``pipeline.stages`` defaults to all of them). "visual" comes
+#: first: it is the fastest stage and makes the search find photos by what they show soonest.
+DEFAULT_STAGES = ("visual", "faces", "ages", "animals", "vlm", "embed")
 
 
 class PipelineConfig(BaseModel):
@@ -141,6 +142,17 @@ class AnimalsConfig(BaseModel):
     crop_margin: float = 0.1
 
 
+class VisualConfig(BaseModel):
+    """Visual search (see ``visual``): the ``visual`` stage embeds every photo, the search
+    compares the request with it. SigLIP 2 (Apache-2.0), downloaded once (970 MB)."""
+
+    # "siglip2-base-fast": three times as fast on the CPU, finds a little less
+    model: Literal["siglip2-base", "siglip2-base-fast"] = "siglip2-base"
+    model_dir: Path | None = None  # defaults to <faces.model_root>/models/visual
+    providers: list[str] | None = None  # defaults to faces.providers (CUDA, else CPU)
+    batch_size: int = 16  # photos per model call
+
+
 class VlmConfig(BaseModel):
     backend: Literal["ollama", "fake"] = "ollama"
     base_url: str = "http://localhost:11434"
@@ -163,8 +175,11 @@ class VlmConfig(BaseModel):
 
 
 class SearchWeights(BaseModel):
-    semantic: float = 0.55
-    properties: float = 0.35
+    # what the photo shows (visual stage), its description (search index), the properties and
+    # literal words; a photo is scored by the parts it has (no description yet: the others)
+    visual: float = 0.45
+    semantic: float = 0.25
+    properties: float = 0.20
     keywords: float = 0.10
 
 
@@ -313,6 +328,7 @@ class Settings(BaseSettings):
     pipeline: PipelineConfig = Field(default_factory=PipelineConfig)
     faces: FacesConfig = Field(default_factory=FacesConfig)
     animals: AnimalsConfig = Field(default_factory=AnimalsConfig)
+    visual: VisualConfig = Field(default_factory=VisualConfig)
     vlm: VlmConfig = Field(default_factory=VlmConfig)
     derived: DerivedConfig = Field(default_factory=DerivedConfig)
     search: SearchConfig = Field(default_factory=SearchConfig)

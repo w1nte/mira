@@ -1,13 +1,17 @@
 {% extends "base.html" %}
-{% block title %}{{ _('Search: %(query)s', query=q) if q else _('Search') }}{% endblock %}
+{% block title %}{% if similar %}{{ _('Similar photos') }}{% else %}{{ _('Search: %(query)s', query=q) if q else _('Search') }}{% endif %}{% endblock %}
 {% block content %}
 <div class="page-head">
   <div>
-    <h1>{{ _('Search') }}</h1>
-    <small>{{ _('Describe what you are looking for, in any language. The local LLM interprets the request, the search index finds images with similar content, and %(deep)s lets the LLM double-check the best matches and explain them.', deep='<b>' | safe ~ _('Deep search') ~ '</b>' | safe) }}</small>
+    <h1>{{ _('Similar photos') if similar else _('Search') }}</h1>
+    <small>{% if similar %}{{ _('Photos that look like %(name)s, most similar first.', name=similar.filename) }}{% else %}{{ _('Describe what you are looking for, in any language. Mira compares the request with what the photos show and with their descriptions, the local LLM (if available) understands persons, places and dates, and %(deep)s lets the LLM double-check the best matches and explain them.', deep='<b>' | safe ~ _('Deep search') ~ '</b>' | safe) }}{% endif %}</small>
   </div>
+  {% if similar %}<a class="btn" href="/images/{{ similar.id }}">{{ icon('chevron-left', 'sm') }}{{ _('Back to the photo') }}</a>{% endif %}
 </div>
 
+{% if similar %}
+  <a class="similar-source" href="/images/{{ similar.id }}"><img src="/media/thumb/{{ similar.id }}" alt="{{ similar.filename }}"></a>
+{% else %}
 <form class="searchbox" method="get" action="/search" role="search">
   <input type="search" name="q" value="{{ q }}" {{ 'autofocus' if not q }} aria-label="{{ _('Search request') }}"
          placeholder="{{ _('e.g. “Anna and Ben at the beach in summer 2021, no work photos”') }}">
@@ -15,8 +19,9 @@
     <input type="checkbox" name="deep" value="1" {{ 'checked' if deep }}> {{ _('Deep search') }}</label>
   <button class="primary">{{ icon('search', 'sm') }}{{ _('Search') }}</button>
 </form>
+{% endif %}
 
-{% if not q %}
+{% if not q and not similar %}
   <div class="chips examples">
     <small class="muted">{{ _('Try:') }}</small>
     {% for ex in examples %}<a class="chip" href="/search?q={{ ex | urlencode }}">{{ ex }}</a>{% endfor %}
@@ -24,7 +29,7 @@
 {% else %}
   <div id="results" class="results" hx-get="{{ results_url }}" hx-trigger="load" hx-swap="innerHTML">
     <div class="card empty"><span class="spinner"></span>
-      {% if deep %}{{ _('Interpreting your request, ranking and asking the LLM about the best matches…') }}{% else %}{{ _('Interpreting your request…') }}{% endif %}</div>
+      {% if similar %}{{ _('Looking for similar photos…') }}{% elif deep %}{{ _('Interpreting your request, ranking and asking the LLM about the best matches…') }}{% else %}{{ _('Interpreting your request…') }}{% endif %}</div>
   </div>
 {% endif %}
 {% endblock %}

@@ -48,6 +48,8 @@ datas += collect_data_files("insightface", includes=["**/*.pkl", "**/*.npy", "**
 hiddenimports = []
 hiddenimports += collect_submodules("vision_tagger")
 hiddenimports += collect_submodules("uvicorn")  # protocols and loops are imported by name
+# visual search: the tokenizer of the text encoder (a compiled module, imported when needed)
+hiddenimports += collect_submodules("tokenizers")
 
 a = Analysis(
     [str(HERE / "entry_app.py"), str(HERE / "entry_cli.py")],

@@ -760,16 +760,17 @@ def search(
     deep: Annotated[bool, typer.Option("--deep", help="Let the LLM re-rank and explain.")] = False,
     limit: Annotated[int, typer.Option("--limit", "-n")] = 20,
 ) -> None:
-    """Natural-language image search (LLM interpretation + semantic index)."""
-    from sqlalchemy import select
-
-    from .db.models import Image
+    """Natural-language image search (what photos show + LLM interpretation + semantic index)."""
     from .search.engine import SearchEngine
 
     db = _db()
     result = SearchEngine(db, _settings()).search(query, deep=deep, limit=limit)
     it = result.interpretation
-    parts = [f"mode={it.mode}", f"semantic={'on' if result.semantic_used else 'off'}"]
+    parts = [
+        f"mode={it.mode}",
+        f"visual={'on' if result.visual_used else 'off'}",
+        f"semantic={'on' if result.semantic_used else 'off'}",
+    ]
     who = [n for _, n in [*it.persons, *it.pets]]
     if who:
         parts.append("persons=" + ("|" if it.who_any else ",").join(who))
@@ -783,16 +784,24 @@ def search(
         parts.append(f"dates={it.date_from or ''}..{it.date_to or ''}")
     if it.dates:
         parts.append("dates=" + "|".join(f"{a or ''}..{b or ''}" for a, b in it.dates))
+    if it.visual_query and result.visual_used:
+        parts.append(f"looking for={it.visual_query!r}")
     typer.echo(" ".join(parts))
+    _print_hits(db, result)
+
+
+def _print_hits(db, result) -> None:
+    from sqlalchemy import select
+
+    from .db.models import Image
+    from .db.util import chunked
+
     for note in result.notes:
         typer.echo(f"  note: {note}")
+    paths: dict[int, str] = {}
     with db.session() as s:
-        paths = {
-            image_id: path
-            for image_id, path in s.execute(
-                select(Image.id, Image.path).where(Image.id.in_([h.image_id for h in result.hits]))
-            )
-        }
+        for part in chunked([h.image_id for h in result.hits]):
+            paths.update(s.execute(select(Image.id, Image.path).where(Image.id.in_(part))).all())
     for rank, h in enumerate(result.hits, 1):
         line = f"{rank:>3}. {h.score:.2f}  {paths.get(h.image_id, h.image_id)}"
         if h.reason:
@@ -800,6 +809,30 @@ def search(
         typer.echo(line)
     if not result.hits:
         typer.echo("no matches")
+
+
+@app.command()
+def similar(
+    image: Annotated[str, typer.Argument(help="Image id, or the path of an indexed photo.")],
+    limit: Annotated[int, typer.Option("--limit", "-n")] = 20,
+) -> None:
+    """Photos that look like the given one (visual search; run the 'visual' stage first)."""
+    from sqlalchemy import select
+
+    from .db.models import Image
+    from .indexer import path_key
+    from .search.engine import SearchEngine
+
+    db = _db()
+    with db.session() as s:
+        image_id = int(image) if image.isdigit() else None
+        if image_id is None:
+            image_id = s.scalar(select(Image.id).where(Image.path_key == path_key(image)))
+        if image_id is None or s.get(Image, image_id) is None:
+            typer.echo(f"no indexed photo {image!r}", err=True)
+            raise typer.Exit(1)
+    result = SearchEngine(db, _settings()).similar(image_id, limit=limit)
+    _print_hits(db, result)
 
 
 @app.command()

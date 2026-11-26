@@ -28,6 +28,15 @@ class StageInterrupted(RuntimeError):
     """
 
 
+class StageUnavailable(RuntimeError):
+    """Raised by :meth:`Stage.setup` when the stage can't run now but the others can (e.g. its
+    model can't be downloaded without internet).
+
+    The runner releases the claimed images without counting an attempt, notes the message and
+    goes on with the next stage; the next run tries again.
+    """
+
+
 class Stage(ABC):
     """A unit of per-image work.
 
@@ -42,7 +51,12 @@ class Stage(ABC):
     #: processed, so the GPU or the VLM server does not wait for decoding (0 = off).
     prefetch: int = 0
     #: Images handed to :meth:`process_batch` at once (1 = one :meth:`process` call each).
+    #: With ``prefetch`` too, :meth:`prepare` runs ahead for this batch and the next one, and
+    #: :meth:`process_prepared_batch` gets the results.
     batch: int = 1
+    #: Results of another :attr:`version` are queued again whenever the stage runs (they are
+    #: of no use, e.g. vectors of another model), instead of waiting for "re-queue outdated".
+    redo_outdated: ClassVar[bool] = False
 
     def __init__(self, db: Database, settings: Settings) -> None:
         self.db = db
@@ -86,6 +100,25 @@ class Stage(ABC):
         for image_id in image_ids:
             try:
                 self.process(image_id)
+            except StageAbort:
+                raise
+            except Exception as exc:
+                errors[image_id] = exc
+        return errors
+
+    def process_prepared_batch(
+        self, image_ids: list[int], prepared: dict[int, Any]
+    ) -> dict[int, Exception]:
+        """Process several images with the results of :meth:`prepare` (an exception that
+        ``prepare`` raised is the value instead); returns the errors by image id."""
+        errors: dict[int, Exception] = {}
+        for image_id in image_ids:
+            value = prepared.get(image_id)
+            if isinstance(value, Exception):
+                errors[image_id] = value
+                continue
+            try:
+                self.process_prepared(image_id, value)
             except StageAbort:
                 raise
             except Exception as exc:
