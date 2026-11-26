@@ -108,6 +108,31 @@
   </aside>
 
   <div class="results">
+    {% if timeline %}
+    <script type="application/json" id="timeline-data">{{ timeline | tojson }}</script>
+    <section class="timeline" x-data="vtTimeline('timeline-data')" aria-label="Timeline" @keydown.escape.window="cancel()">
+      <div class="tl-head">
+        <span class="tl-range" x-text="summary"></span>
+        <span class="tl-hint muted" x-text="hint"></span>
+        <button type="button" class="ghost small" x-show="hasSel" x-cloak @click="clear()">All time</button>
+      </div>
+      <div class="tl-track" x-ref="track" @pointerdown="down($event)" @pointermove="move($event)" @pointerup="up($event)" @pointerleave="hover = null" @pointercancel="drag = null">
+        <div class="tl-bars">
+          <template x-for="(n, k) in counts" :key="k">
+            <span class="tl-bar" :class="inSel(k) ? 'on' : ''" :style="'height:' + barHeight(n) + '%'"></span>
+          </template>
+        </div>
+        <div class="tl-sel" x-show="band" x-cloak :class="pending !== null ? 'preview' : ''" :style="band ? 'left:' + band.left + '%;width:' + band.width + '%' : ''">
+          <span class="tl-handle start" data-handle="start" role="slider" tabindex="0" aria-label="Start month" :aria-valuemin="0" :aria-valuemax="n - 1" :aria-valuenow="start" :aria-valuetext="start !== null ? label(start) : ''" @keydown="key($event, 'start')" x-show="pending === null"></span>
+          <span class="tl-handle end" data-handle="end" role="slider" tabindex="0" aria-label="End month" :aria-valuemin="0" :aria-valuemax="n - 1" :aria-valuenow="end" :aria-valuetext="end !== null ? label(end) : ''" @keydown="key($event, 'end')" x-show="pending === null"></span>
+        </div>
+        <div class="tl-tip" x-show="hover !== null && !drag" x-cloak :style="'left:' + pos(hover) + '%'" x-text="hover !== null ? label(hover) + ' · ' + counts[hover] : ''"></div>
+      </div>
+      <div class="tl-axis" aria-hidden="true">
+        <template x-for="t in ticks" :key="t.i"><span :style="'left:' + pos(t.i, 0) + '%'" x-text="t.year"></span></template>
+      </div>
+    </section>
+    {% endif %}
     {% include "partials/filter_summary.html" %}
     {% if images %}
       <div class="thumbs" id="grid">
