@@ -2,7 +2,9 @@
 
 A local pipeline that indexes a large photo collection, finds and clusters faces, and extracts
 stable, filterable properties with a local vision-language model (Qwen2.5-VL via Ollama). You
-start and control it from a local web UI. Originals are never moved or modified.
+start and control it from a web UI that runs on your computer, or on a server where you upload
+your photos (**remote mode**, with a Docker image). The UI can be installed as an app. Originals
+are never moved or modified.
 
 ```
             ┌──────────────┐   ┌─────────────────────────────┐   ┌──────────────────────────┐
@@ -12,7 +14,7 @@ start and control it from a local web UI. Originals are never moved or modified.
             └──────┬───────┘   └──────────────┬──────────────┘   └────────────┬─────────────┘
                    └──────────── SQLite (state per image & stage) ────────────┘
                                               │
-                         Web UI: dashboard · faces · persons · properties · images · overview
+               Web UI: home · import · faces · persons · properties · images · pipeline
 ```
 
 ## Features
@@ -154,16 +156,21 @@ uv run vision-tagger migrate          # upgrades the database schema; writes a b
 uv run vision-tagger serve --open          # or: .\start.ps1
 ```
 
-On the **Dashboard**:
-
-1. Enter your photo folder(s) and click **Scan & index**.
+1. Open **Import** (sidebar, *System*). Add your photo folders with **Add a folder…** (a folder
+   browser; you can also paste a path) and click **Scan now**. With *Analyse new photos right
+   away* ticked, the pipeline runs afterwards: faces, ages, properties and the search index.
 2. Optionally put reference portraits into `references\<Person Name>\` and click
-   **Import references**.
-3. Choose the stages, a batch size and an optional limit, then click **Start**. **Pause**,
-   **Resume** and **Stop** work at any time. Progress, throughput, ETA and errors update live.
+   **Import references** on the **Pipeline** page.
+3. **Pipeline** shows the progress per stage, throughput, ETA and errors. There you can also
+   choose the stages, a batch size and an optional limit, and **Pause**, **Resume** or **Stop**
+   at any time.
 
 Then name and clean up clusters under **Faces**, explore **Properties**, and filter or export in
-**Images**.
+**Images**. **Home** shows what is in your library and your collections.
+
+**Closing the app pauses a running pipeline** after the current image. The next start continues
+it where it stopped, with the same stages and settings. Turn this off with
+`pipeline.resume_on_start = false`.
 
 Everything also works headless:
 
@@ -189,7 +196,10 @@ uv run vision-tagger growup "Anna" anna-growing-up.webp  # grow-up animation
 
 | Page | What you can do |
 |---|---|
-| **Dashboard** | Index folders, start/pause/resume/stop runs (stages, batch size, limit), per-stage progress, ETA, errors (retry/skip), outdated results, jobs, environment check (CUDA, Ollama, model). |
+| **Home** | Your library at a glance: number of photos, people, places and years, *On this day* memories, recently added photos, and collections. Nudges you when face groups still need a name. |
+| **Collections** | A collection is a saved filter: it stays up to date as new photos arrive. Suggested ones (people, places, events, this year) appear by themselves; **Save as collection** in *Images* adds your own. Rename, reorder and delete them here. |
+| **Import** | Local mode: your photo folders, with a folder browser, and **Scan now**. Remote mode: upload photos, folders or ZIP files (see [Remote mode](#remote-mode-and-docker)). Shows what is being indexed and analysed right now. |
+| **Pipeline** | The technical part: start/pause/resume/stop runs (stages, batch size, limit), per-stage progress, ETA, errors (retry/skip), outdated results, jobs, recent runs, environment check (CUDA, Ollama, model). |
 | **Faces** | All clusters with cover face and size. Name inline (autocomplete), accept reference suggestions, select several to **merge**. Views for unclustered and ignored faces. |
 | **Cluster** | All faces of a cluster. Select faces to **split** into a new cluster, **assign to a person**, **move** to another cluster, or **remove**. **Auto-split** mixed clusters. Similar clusters with one-click merge. |
 | **Persons** | Named persons. Rename (renaming to an existing name merges), merge, delete, manage references. Images with *all* / *any* of the selected persons. Per person: birth year (set or estimated), age today, a "through the years" face timeline, and photos with a doubtful date with suggested fixes. |
@@ -201,12 +211,75 @@ uv run vision-tagger growup "Anna" anna-growing-up.webp  # grow-up animation
 | **Search** | Search box in the top bar on every page (`/` focuses it). Shows how the request was understood (persons, required / preferred / excluded properties, dates, keywords), ranks the results and, with **Deep search**, gives the LLM's reason for each. "Open in filter builder" turns the strict part into a gallery filter; results can be exported. |
 | **Overview** | Timeline (year → month → day), breakdowns by folder, camera, file type, date reliability, work/personal, orientation, and a sortable metadata table. |
 
-The sidebar groups the pages into *Library*, *People* and *Organize* and shows what the pipeline
-is doing right now. On small screens it folds away behind the menu button.
+The sidebar groups the pages into *Library*, *People*, *Organize* and *System* and shows what
+the pipeline is doing right now. On small screens it folds away behind the menu button.
 
 **Light and dark mode.** The switch at the bottom of the sidebar picks the theme: *System*
 (follows your operating system), *Light* or *Dark*. The choice is kept in a cookie (`vt_theme`),
 so every page is rendered in the right theme from the start, without flashing.
+
+**Install as an app.** vision-tagger is a Progressive Web App. In Chrome or Edge, click
+**Install app** in the sidebar (or the install icon in the address bar); on Android use *Add to
+home screen*, on iOS *Share → Add to Home Screen*. It then opens in its own window, with its own
+icon. Browsers allow this on `localhost` and over HTTPS, so a server needs HTTPS (see below).
+Without a connection the app shows an offline page instead of a browser error.
+
+## Remote mode and Docker
+
+In **remote mode** vision-tagger runs on a server (a NAS, a home server, a cloud machine) and
+you upload your photos through the web UI. Uploaded photos are indexed and analysed
+automatically.
+
+- **Uploads** on the *Import* page: drop photos, whole folders or ZIP files, or pick them. Big
+  files are sent in 8 MB pieces, and an interrupted upload continues where it stopped.
+- **Nothing gets lost when you close the page.** The queue is kept in the browser (IndexedDB).
+  Open the page again, in the same browser, and the remaining uploads continue.
+- Folder structure is kept: uploaded folders and ZIP contents land under the upload folder with
+  their own paths, single photos in a folder named after the day. Files with the same name are
+  never overwritten.
+- ZIP files are unpacked on the server. Entries can't escape the upload folder (`../` paths are
+  placed inside it), "ZIP bombs" are rejected, and non-photo files are skipped.
+- *Images → Download ZIP* replaces the folder export: you get the photos with XMP sidecars and
+  the index files as one ZIP, streamed while it is created.
+- In remote mode the UI never shows or browses the server's own folders.
+
+### Docker
+
+```bash
+echo "VT_PASSWORD=choose-a-good-one" > .env
+docker compose up -d
+docker compose exec ollama ollama pull qwen2.5vl:7b
+docker compose exec ollama ollama pull nomic-embed-text
+```
+
+Then open `http://<server>:8765`, log in and upload photos on the *Import* page.
+
+- [`docker-compose.yml`](docker-compose.yml) starts vision-tagger and Ollama. The volumes
+  `vt-data` (database, thumbnails, models) and `vt-photos` (the uploaded photos) keep your data.
+  To use a host folder, replace `vt-photos:/photos` with e.g. `./photos:/photos`.
+- NVIDIA GPU: build with `EXTRA: gpu` and uncomment the two `deploy` sections (needs the NVIDIA
+  Container Toolkit).
+- The container upgrades its database on start (`serve --migrate`, with a backup) and pauses a
+  running pipeline when it is stopped; it continues after the next start.
+- Without Docker: `vision-tagger serve --remote --upload-dir /srv/photos --host 0.0.0.0`, or set
+  `mode = "remote"` and `remote.upload_dir` in `config.toml`.
+
+### Password and HTTPS
+
+Set a password with the environment variable `VT_WEB__PASSWORD` (the compose file requires one).
+Every page then asks for it; a login lasts 30 days. After 10 wrong passwords an address is
+blocked for 5 minutes.
+
+Put the server behind a reverse proxy with HTTPS (Caddy, Traefik, nginx), for example with Caddy:
+
+```
+photos.example.com {
+    reverse_proxy localhost:8765
+}
+```
+
+HTTPS protects the password on the way and lets browsers install the app. Allow uploads of any
+size in the proxy (`client_max_body_size 0;` in nginx); each request is at most one 8 MB piece.
 
 ## Using the results in other applications
 
@@ -291,6 +364,9 @@ set with an environment variable, for example `VT_VLM__MODEL=qwen3-vl:8b` or
 
 Important knobs:
 
+- `mode`: `local` (scan folders on this computer) or `remote` (uploads, with `remote.upload_dir`).
+- `web.password` (better: `VT_WEB__PASSWORD`): login password, meant for remote mode.
+- `pipeline.resume_on_start`: continue a pipeline that was paused when the app was closed.
 - `faces.cluster_eps` / `cluster_min_samples`: how strict face clustering is.
 - `faces.reference_threshold` / `auto_accept_threshold`: when reference matches are suggested
   or assigned.
@@ -312,9 +388,12 @@ Everything lives in `data/`:
     of decoding 12 megapixels).
   - Turn this off with `index.thumbnails = false`.
 
+- `uploads/`: unfinished uploads (remote mode); finished ones are moved into the upload folder.
+- `secret.key`: the key that signs login cookies. Delete it to log everyone out.
+
 Main tables: `images` (+ `metadata` JSON), `duplicate_files`, `stage_status`, `runs`, `faces`,
 `clusters`, `persons`, `person_references`, `image_properties`, `property_aliases`,
-`vlm_results`.
+`vlm_results`, `collections`.
 
 ## Development
 
@@ -340,10 +419,15 @@ See [CLAUDE.md](CLAUDE.md#database-migrations-mandatory) for the workflow.
 
 ## Security
 
-The UI is meant for your own machine. It listens on `127.0.0.1`, only answers requests whose
-`Host` is this machine (blocks DNS rebinding) and rejects form submissions coming from other
-websites (CSRF). If you expose it on your network (`web.host = "0.0.0.0"`), add the machine's
-name to `web.allowed_hosts`. There is no login, so only do that on a trusted network.
+In local mode the UI is meant for your own machine. It listens on `127.0.0.1`, only answers
+requests whose `Host` is this machine (blocks DNS rebinding) and rejects form submissions coming
+from other websites (CSRF). If you expose it on your network (`web.host = "0.0.0.0"`), add the
+machine's name to `web.allowed_hosts` and set a password.
+
+In remote mode any host name is accepted (it runs behind your own domain or proxy), while
+cross-site form submissions are still rejected. Set a password and use HTTPS (see
+[Password and HTTPS](#password-and-https)). Login cookies are `HttpOnly`, `SameSite=Lax` and
+signed with a key stored in the data folder.
 
 ## Notes and limitations
 
