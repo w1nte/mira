@@ -16,6 +16,10 @@ every photo (``Indexer.check_locations``). Photos that are not where the other c
 are flagged as missing; a scan of the folder where they are now re-links them by perceptual hash
 and keeps their faces, names and properties.
 
+**Clearing** the library (:func:`clear_library`) uses the same machinery: it imports a new, empty
+database. The backup of the previous one is ``vision_tagger.sqlite3.bak-clear-<time>``; the
+library folders are kept, so a scan builds the library again.
+
 Messages are :class:`~vision_tagger.i18n.Lazy`: the web UI shows them in the viewer's language,
 the command line in English.
 """
@@ -25,6 +29,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import os
+import re
 import shutil
 import sqlite3
 import time
@@ -87,6 +92,13 @@ class ImportResult:
     roots: list[str] = field(default_factory=list)
 
 
+@dataclass
+class ClearResult:
+    images: int  # photos in the library before it was cleared
+    backup: Path | None
+    roots: list[str] | None  # the library folders kept (None: none were saved, config applies)
+
+
 # --------------------------------------------------------------------------- paths
 def database_file(db: Database) -> Path:
     database = make_url(db.url).database
@@ -108,7 +120,7 @@ def transfer_dir(settings: Settings) -> Path:
 
 
 def temp_file(settings: Settings, kind: str) -> Path:
-    """A new, unique temporary file name (``kind``: ``export`` or ``import``)."""
+    """A new, unique temporary file name (``kind``: ``export``, ``import`` or ``clear``)."""
     folder = transfer_dir(settings)
     remove_stale(folder)
     return folder / f"{kind}-{uuid.uuid4().hex}.sqlite3"
@@ -307,14 +319,17 @@ def merge_roots(imported: Any, previous: list[str]) -> list[str]:
     return out
 
 
-def replace_database(db: Database, source: Path, *, backup: bool = True) -> Path | None:
+def replace_database(
+    db: Database, source: Path, *, backup: bool = True, label: str = "import"
+) -> Path | None:
     """Copy ``source`` (prepared, same page size) into the live database of ``db``.
 
     Uses SQLite's backup API: other connections may stay open, readers see the old data until
-    the copy is committed in one transaction. Returns the backup of the previous database.
+    the copy is committed in one transaction. Returns the backup of the previous database
+    (``<name>.bak-<label>-<time>``).
     """
     live = database_file(db)
-    backup_path = migrate.backup_database(live, "import") if backup and live.exists() else None
+    backup_path = migrate.backup_database(live, label) if backup and live.exists() else None
     db.dispose()
     src = sqlite3.connect(source, timeout=60)
     dst = sqlite3.connect(live, timeout=60)
@@ -378,9 +393,8 @@ def import_database(
     library folders are merged, and the id-keyed caches on disk are cleared. The caller still
     has to clear in-memory caches and check the photo locations.
     """
-    from ..indexer import ROOTS_KEY, ensure_stage_rows, stored_roots
-    from ..pipeline.stages import STAGE_NAMES
-    from .models import AppSetting, Control
+    from ..indexer import ROOTS_KEY, stored_roots
+    from .models import AppSetting
 
     report = progress or (lambda _m: None)
     live = database_file(db)
@@ -392,18 +406,7 @@ def import_database(
         before_replace()
     report(Lazy("Replacing the library…"))
     backup_path = replace_database(db, source)
-    db.create_all()  # schema check; the control row if the file had none
-    from ..pipeline import control
-
-    # no "running" items, runs or runner from the other computer
-    control.recover_stale(db)
-    with db.write() as s:
-        ctrl = s.get(Control, 1)
-        if ctrl is not None:
-            ctrl.heartbeat_at = None
-            ctrl.message = None
-            ctrl.progress = {}
-    ensure_stage_rows(db, settings.pipeline.stages or list(STAGE_NAMES))
+    _reset_pipeline_state(db, settings)  # nothing "running" from the other computer
     roots = merge_roots(imported_roots, previous_roots)
     with db.write() as s:
         if roots:
@@ -414,15 +417,160 @@ def import_database(
                 s.delete(stored)
         s.merge(AppSetting(key=LIBRARY_ID_KEY, value=uuid.uuid4().hex))
     report(Lazy("Clearing thumbnails…"))
-    clear_cache_dirs(settings)
-    from ..faces import ages
-
-    ages._CALIBRATION_CACHE.clear()
+    _clear_caches(settings)
     return ImportResult(images=info.images, revision=info.revision, backup=backup_path, roots=roots)
 
 
+def _reset_pipeline_state(db: Database, settings: Settings) -> None:
+    """After the live data was replaced: no "running" items, runs or runner of the old data."""
+    from ..indexer import ensure_stage_rows
+    from ..pipeline import control
+    from ..pipeline.stages import STAGE_NAMES
+    from .models import Control
+
+    db.create_all()  # schema check; the control row if the file had none
+    control.recover_stale(db)
+    with db.write() as s:
+        ctrl = s.get(Control, 1)
+        if ctrl is not None:
+            ctrl.heartbeat_at = None
+            ctrl.message = None
+            ctrl.progress = {}
+    ensure_stage_rows(db, settings.pipeline.stages or list(STAGE_NAMES))
+
+
+def _clear_caches(settings: Settings) -> None:
+    """The caches on disk and in this process that are keyed by ids of the old data."""
+    from ..faces import ages
+
+    clear_cache_dirs(settings)
+    ages._CALIBRATION_CACHE.clear()
+
+
+def new_library_id(db: Database) -> str:
+    """Give the library a new id: browsers drop the thumbnails they cached under the old ids
+    (see ``web.routes.database.library_cookie`` and the service worker)."""
+    from .models import AppSetting
+
+    value = uuid.uuid4().hex
+    with db.write() as s:
+        s.merge(AppSetting(key=LIBRARY_ID_KEY, value=value))
+    return value
+
+
+# --------------------------------------------------------------------------- clear
+#: group separators people type in numbers ("12 345", "12.345", "12,345", "12'345")
+_SEPARATORS = re.compile("[\\s.,'\\u2019_]")  # u+2019: typographic apostrophe
+
+
+def typed_number(text: str | None) -> str:
+    """The number someone typed to confirm clearing, without group separators."""
+    return _SEPARATORS.sub("", text or "")
+
+
+def library_contents(db: Database) -> dict[str, int]:
+    """What :func:`clear_library` deletes, counted (for the confirmation)."""
+    from sqlalchemy import func, select
+
+    from .models import (
+        Animal,
+        Cluster,
+        Collection,
+        Face,
+        Image,
+        ImageEmbedding,
+        ImageProperty,
+        Person,
+        Pet,
+        Place,
+        Run,
+        VisualEmbedding,
+    )
+
+    def count(model: Any, *where: Any) -> int:
+        return s.scalar(select(func.count()).select_from(model).where(*where)) or 0
+
+    with db.session() as s:
+        return {
+            "images": count(Image),
+            "faces": count(Face),
+            "clusters": count(Cluster),
+            "persons": count(Person),
+            "animals": count(Animal),
+            "pets": count(Pet, Pet.name.is_not(None)),
+            "properties": count(ImageProperty),
+            "collections": count(Collection),
+            "places": count(Place),
+            "search": count(ImageEmbedding) + count(VisualEmbedding),
+            "runs": count(Run),
+        }
+
+
+def create_empty(path: Path, page_size: int) -> Path:
+    """A new, empty library database at ``path`` (current schema), ready for
+    :func:`replace_database`: one file in rollback-journal mode with ``page_size``."""
+    from .session import Database
+
+    empty = Database(path)
+    try:
+        empty.create_all()
+    finally:
+        empty.dispose()
+    prepare_file(path, page_size)
+    return path
+
+
+def clear_library(
+    db: Database,
+    settings: Settings,
+    *,
+    before_replace: Callable[[], None] | None = None,
+    progress: Callable[[Lazy], None] | None = None,
+) -> ClearResult:
+    """Empty the library of ``db``: every photo's data, faces, persons, pets, properties,
+    collections, places, the search index and the history.
+
+    Works like an import of an empty database: the previous database is backed up first
+    (``vision_tagger.sqlite3.bak-clear-<time>``), the pipeline state is reset and the caches
+    keyed by ids are cleared. Kept: the library folders saved in the web UI (a scan builds the
+    library again) and the photo files, which are never touched. ``before_replace`` runs right
+    before the data is replaced and may raise :class:`TransferError`. The caller still has to
+    clear in-memory caches (``AppContext.forget_library``).
+    """
+    from sqlalchemy import func, select
+
+    from ..indexer import ROOTS_KEY
+    from .models import AppSetting, Image
+
+    report = progress or (lambda _m: None)
+    live = database_file(db)
+    with db.session() as s:
+        images = s.scalar(select(func.count()).select_from(Image)) or 0
+        stored = s.get(AppSetting, ROOTS_KEY)
+        roots = None if stored is None or stored.value is None else [str(r) for r in stored.value]
+    report(Lazy("Preparing an empty database…"))
+    source = temp_file(settings, "clear")
+    try:
+        create_empty(source, _page_size(live))
+        if before_replace is not None:
+            before_replace()
+        report(Lazy("Writing a backup and clearing the library…"))
+        backup_path = replace_database(db, source, label="clear")
+    finally:
+        remove_file(source)
+    _reset_pipeline_state(db, settings)
+    with db.write() as s:
+        if roots is not None:
+            s.merge(AppSetting(key=ROOTS_KEY, value=roots))
+        s.merge(AppSetting(key=LIBRARY_ID_KEY, value=uuid.uuid4().hex))
+    report(Lazy("Clearing thumbnails…"))
+    _clear_caches(settings)
+    return ClearResult(images=images, backup=backup_path, roots=roots)
+
+
 def library_id(db: Database) -> str:
-    """Changes with every import (``"0"`` before the first one)."""
+    """Changes with every import or clearing, and when removed photos may let ids be used
+    again (``"0"`` before the first change)."""
     from .models import AppSetting
 
     with db.session() as s:
@@ -433,8 +581,8 @@ def library_id(db: Database) -> str:
 def busy_reason(
     db: Database, *, runner_running: bool = False, jobs_busy: bool = False
 ) -> Lazy | None:
-    """Why an import must wait, or ``None``: a job, or a pipeline (running or paused, in this
-    or another process)."""
+    """Why an import (also clearing the library, or removing photos) must wait, or ``None``:
+    a job, or a pipeline (running or paused, in this or another process)."""
     from ..pipeline import control
 
     if jobs_busy:

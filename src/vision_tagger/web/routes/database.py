@@ -1,4 +1,5 @@
-"""Database page: export and import the whole library, list and re-check missing files."""
+"""Database page: export and import the whole library, list, re-check and remove missing
+files, and clear the library (two confirmations)."""
 
 from __future__ import annotations
 
@@ -8,15 +9,16 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import FileResponse, Response
 from sqlalchemy import func, select
 from starlette.background import BackgroundTask
 from starlette.concurrency import run_in_threadpool
 
+from ... import removal
 from ...db import transfer
 from ...db.models import Cluster, Face, Image, Person
-from ...i18n import Lazy, _
+from ...i18n import Lazy, LazyJoin, _, _n
 from ...indexer import Indexer, stored_roots
 from ..common import back, ctx, redirect, render
 from ..context import AppContext, Job
@@ -28,7 +30,7 @@ except ModuleNotFoundError:  # pragma: no cover - python-multipart < 0.0.13
 
 router = APIRouter()
 
-JOBS = ("import", "locations")
+JOBS = ("import", "locations", "clear", "remove-missing")
 PER_PAGE = 100
 #: cookie with the library id a browser last saw (see ``library_cookie``)
 LIBRARY_COOKIE = "vt_lib"
@@ -73,6 +75,7 @@ def database_page(request: Request) -> Response:
         "database.html",
         counts=_counts(c),
         db_size=_db_size(c),
+        db_file=str(c.settings.db_path),
         busy=str(busy) if busy else None,
         remote=c.settings.remote_mode,
         roots=stored_roots(c.db, c.settings),
@@ -323,6 +326,7 @@ def missing_page(request: Request, page: int = 1) -> Response:
         }
         for row in images
     ]
+    busy = _busy(c)
     return render(
         request,
         "missing.html",
@@ -331,6 +335,7 @@ def missing_page(request: Request, page: int = 1) -> Response:
         page=page,
         pages=pages,
         remote=c.settings.remote_mode,
+        busy=str(busy) if busy else None,
         **_job_context(c),
     )
 
@@ -338,6 +343,207 @@ def missing_page(request: Request, page: int = 1) -> Response:
 def _folder(path: str, filename: str) -> str:
     """The folder part of a stored path, also for paths of another OS (``D:\\Photos\\a.jpg``)."""
     return path[: -len(filename)].rstrip("\\/") if filename and path.endswith(filename) else path
+
+
+# --------------------------------------------------------------------------- remove missing
+def _removal_summary(result: removal.RemovalResult) -> Lazy:
+    """Result of removing missing photos (made in a job thread: translated when shown)."""
+    parts: list[Lazy] = [Lazy("Missing photos removed: %(num)s", num=result.removed)]
+    if result.found:
+        parts.append(Lazy("skipped because their file is there again: %(num)s", num=result.found))
+    if result.stopped:
+        parts.append(Lazy("stopped"))
+    return LazyJoin("; ", parts)
+
+
+def _runner_check(c: AppContext) -> Callable[[], None]:
+    """Raises while a pipeline runs (started meanwhile, e.g. from the command line)."""
+
+    def check() -> None:
+        reason = transfer.busy_reason(c.db, runner_running=c.runner.running)
+        if reason is not None:
+            raise transfer.TransferError(reason)
+
+    return check
+
+
+@router.post("/database/missing/remove")
+def remove_missing_photo(request: Request, image_id: int = Form(..., alias="id")) -> Response:
+    """Remove one missing photo (Missing files page, or the photo's own page)."""
+    c = ctx(request)
+    url = back(request, "/database/missing")
+    if url.split("?")[0] == f"/images/{image_id}":  # that page is gone afterwards
+        url = "/database/missing"
+    busy = _busy(c)
+    if busy is not None:
+        return redirect(request, url, err=str(busy))
+    with c.db.session() as s:
+        img = s.get(Image, image_id)
+        if img is None:
+            return redirect(request, url, err=_("Photo not found."))
+        name, missing = img.filename, img.missing
+    if not missing:
+        return redirect(
+            request,
+            url,
+            err=_("%(name)s is not missing. Only missing photos can be removed here.", name=name),
+        )
+    result: list[removal.RemovalResult] = []
+
+    def job(_j: Job) -> Lazy:
+        result.append(removal.remove_missing(c.db, c.settings, [image_id], check=_runner_check(c)))
+        return _removal_summary(result[0])
+
+    try:
+        started = c.jobs.run_now("remove-missing", job)
+    except transfer.TransferError as exc:
+        return redirect(request, url, err=str(exc))
+    if started is None:
+        return redirect(request, url, err=_("Another job is running."))
+    c.forget_library()
+    if not result[0].removed:
+        return redirect(
+            request,
+            url,
+            err=_("%(name)s was not removed: its file is there again.", name=name),
+        )
+    return redirect(request, url, msg=_("%(name)s was removed from the library.", name=name))
+
+
+@router.post("/database/missing/remove-all")
+def remove_all_missing(request: Request, expected: int = Form(-1)) -> Response:
+    """Remove every missing photo, as a job (thousands of photos take a while)."""
+    c = ctx(request)
+    url = "/database/missing"
+    busy = _busy(c)
+    if busy is not None:
+        return redirect(request, url, err=str(busy))
+    with c.db.session() as s:
+        total = s.scalar(select(func.count()).select_from(Image).where(Image.missing)) or 0
+    if total == 0:
+        return redirect(
+            request, url, msg=_("No missing files. Every photo is where Mira expects it.")
+        )
+    if expected != total:  # the user confirmed another number
+        return redirect(
+            request, url, err=_("The list of missing files has changed. Check it and try again.")
+        )
+
+    def job(j: Job) -> Lazy:
+        def progress(done: int, todo: int) -> None:  # job thread: translated when shown
+            j.progress = {
+                "processed": done,
+                "candidates": todo,
+                "current": {"percent": round(100 * done / todo) if todo else 100},
+            }
+            j.message = Lazy("%(done)s/%(total)s missing photos checked", done=done, total=todo)
+
+        j.message = Lazy("Checking the missing photos once more…")
+        try:
+            result = removal.remove_missing(
+                c.db,
+                c.settings,
+                progress=progress,
+                should_stop=lambda: j.stop_requested,
+                check=_runner_check(c),
+            )
+        finally:
+            c.forget_library()
+        return _removal_summary(result)
+
+    if not c.jobs.start("remove-missing", job):
+        return redirect(request, url, err=_("Another job is running."))
+    return redirect(
+        request,
+        url,
+        msg=_n("Removing %(num)d missing photo…", "Removing %(num)d missing photos…", total),
+    )
+
+
+# --------------------------------------------------------------------------- clear
+def _backup_hint(c: AppContext) -> str:
+    name = f"{c.settings.db_path.name}.bak-clear-…"
+    return name if c.settings.remote_mode else str(c.settings.db_path.with_name(name))
+
+
+@router.get("/database/clear")
+def clear_page(request: Request, step: int = 1, understood: str = "") -> Response:
+    """The two confirmations: what is deleted and kept (tick a box), then type the number of
+    photos. The final POST checks both again."""
+    c = ctx(request)
+    err = request.query_params.get("err")
+    if step == 2 and understood != "yes":
+        step = 1
+        err = _("Tick the box to confirm that you understand what is deleted.")
+    busy = _busy(c)
+    contents = transfer.library_contents(c.db)
+    return render(
+        request,
+        "database_clear.html",
+        step=2 if step == 2 else 1,
+        contents=contents,
+        busy=str(busy) if busy else None,
+        remote=c.settings.remote_mode,
+        roots=stored_roots(c.db, c.settings),
+        backup=_backup_hint(c),
+        err=err,
+    )
+
+
+def _clear_job(c: AppContext) -> Callable[[Job], Lazy]:
+    def job(j: Job) -> Lazy:
+        def report(message: Lazy) -> None:
+            j.message = message
+
+        try:
+            result = transfer.clear_library(
+                c.db, c.settings, before_replace=_runner_check(c), progress=report
+            )
+        finally:
+            c.forget_library()
+        return Lazy(
+            "Library cleared: %(num)s photos removed from Mira, no file was touched. The old "
+            "database is kept as a backup: %(path)s",
+            num=result.images,
+            path=str(result.backup),
+        )
+
+    return job
+
+
+@router.post("/database/clear")
+def clear_library(request: Request, understood: str = Form(""), photos: str = Form("")) -> Response:
+    """Clear the library. Both confirmations are checked here too: the ticked box and the
+    number of photos, which must still be the number in the library."""
+    c = ctx(request)
+    if understood != "yes":
+        return redirect(
+            request,
+            "/database/clear",
+            err=_("Tick the box to confirm that you understand what is deleted."),
+        )
+    with c.db.session() as s:
+        images = s.scalar(select(func.count()).select_from(Image)) or 0
+    if transfer.typed_number(photos) != str(images):
+        return redirect(
+            request,
+            "/database/clear?step=2&understood=yes",
+            err=_(
+                "The number does not match. Type the number of photos in the library, %(num)s, "
+                "to clear it.",
+                num=images,
+            ),
+        )
+    busy = _busy(c)
+    if busy is not None:
+        return redirect(request, "/database/clear", err=str(busy))
+    if not c.jobs.start("clear", _clear_job(c)):
+        return redirect(request, "/database/clear", err=_("Another job is running."))
+    return redirect(
+        request,
+        "/database",
+        msg=_("Clearing the library. A backup of the database is written first."),
+    )
 
 
 # --------------------------------------------------------------------------- browser caches

@@ -52,6 +52,12 @@ only what will matter again, and delete what no longer holds. Rules live in `CLA
     onnxruntime keeps fp16 weights as fp32 on the CPU (text encoder ~0.8 GB; idle unload).
 - Docker: the instructions say `cp .env.example .env`, because PowerShell 5.1's `echo > .env`
   writes UTF-16.
+- Library tools (Database page): clearing imports an empty database through `db.transfer`
+  (backup `bak-clear-*`, library folders kept); its second confirmation is the number of
+  photos, typed. Removing missing photos and clearing are refused while a pipeline runs or is
+  paused, like an import: clustering works on a snapshot and would bring back deleted faces.
+- "Show in folder" (`reveal.py`) is offered only in local mode to a request from this computer
+  (loopback client, local Host, no proxy headers) and never takes a path from the request.
 
 ## Pitfalls we hit
 - Windows: `socket.shutdown()` from another thread doesn't wake a blocked `recv`. Read in a
@@ -66,3 +72,8 @@ only what will matter again, and delete what no longer holds. Rules live in `CLA
 - Playwright `page.route` pauses the page's timers during a navigation. Test loading states
   through a real delaying proxy.
 - Parallel agents share this machine: kill servers by PID, never `pkill -f` by name.
+- Importing OpenCV prepends its bundled libraries to `LD_LIBRARY_PATH`, also in a source
+  install, and child processes inherit it. Programs Mira starts get a cleaned environment
+  (`desktop.child_environment`, `reveal.environment`).
+- SQLite reuses the highest id after a delete: caches keyed by ids (thumbnails, browser cache)
+  must be cleared for deleted rows (`removal.py` renews the library id when that happens).

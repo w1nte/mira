@@ -19,10 +19,12 @@ from .. import APP_NAME, __version__, i18n, updates
 from ..i18n import N_, _
 from ..imaging import PREVIEW_SIZE
 from ..query import ImageFilter, property_counts
+from ..reveal import has_desktop
 from ..updates import Offer
 from ..vlm.models import phase_text, pull_message
 from .context import AppContext
 from .nsfw import GLOBALS as NSFW_GLOBALS
+from .security import from_this_computer
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 STATIC_DIR = Path(__file__).parent / "static"
@@ -211,6 +213,8 @@ JOB_TITLES = {
     "models": N_("Downloading AI models"),
     "import": N_("Database import"),
     "locations": N_("Location check"),
+    "clear": N_("Clearing the library"),
+    "remove-missing": N_("Removing missing photos"),
 }
 
 
@@ -253,6 +257,16 @@ def update_offer(request: Request) -> Offer | None:
     """
     c: AppContext | None = getattr(request.app.state, "ctx", None)
     return c.updates.offer() if c is not None else None
+
+
+def can_reveal(request: Request) -> bool:
+    """Whether to offer "Show in folder" (Explorer, Finder): only when the server runs on the
+    computer in front of the user. That is local mode (remote mode is a server elsewhere), a
+    desktop that can show a file manager, and a request from this very computer."""
+    c: AppContext | None = getattr(request.app.state, "ctx", None)
+    if c is None or c.settings.remote_mode or not has_desktop():
+        return False
+    return from_this_computer(request)
 
 
 #: why an update check failed (``updates.NETWORK`` ...), translated when shown
@@ -300,5 +314,6 @@ templates.env.globals.update(
     pull_phase=phase_text,
     update_offer=update_offer,
     update_error=update_error,
+    can_reveal=can_reveal,
     **NSFW_GLOBALS,
 )

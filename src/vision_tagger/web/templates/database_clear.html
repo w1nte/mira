@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Clear the library') }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <nav class="crumbs" aria-label="{{ _('Breadcrumb') }}"><a href="/database">{{ _('Database') }}</a></nav>
+    <h1>{{ _('Clear the library') }}</h1>
+    <small>{{ _('Step %(step)s of %(steps)s', step=step, steps=2) }}</small>
+  </div>
+</div>
+
+{% if busy %}<div class="flash err" role="alert">{{ icon('alert') }}<span>{{ busy }}</span></div>{% endif %}
+
+{% if step == 1 %}
+<section class="card clear-card">
+  <div class="db-warning danger" role="note">
+    {{ icon('alert', 'sm') }}
+    <p><b>{{ _('This deletes everything Mira knows about your photos.') }}</b> {{ _('Mira cannot undo it. Only importing the backup on the Database page brings the library back.') }}</p>
+  </div>
+
+  <h2>{{ _('What is deleted') }}</h2>
+  <table class="compact clear-list">
+    {% for label, num, note in [
+      (_('Photos'), contents.images, _('the photo index with dates, places, duplicates and every analysis result')),
+      (_('Faces'), contents.faces, _('the faces found in the photos')),
+      (_('Clusters'), contents.clusters, _('the groups of similar faces')),
+      (_('Persons'), contents.persons, _('the names you gave, with birth years and reference faces')),
+      (_('Animals'), contents.animals, _('the animals found in the photos')),
+      (_('Pets'), contents.pets, _('the names of your pets')),
+      (_('Properties'), contents.properties, _('what the AI models found in the photos')),
+      (_('Collections'), contents.collections, _('the collections you saved')),
+      (_('Places'), contents.places, _('the places and the names you gave them')),
+      (_('Search index'), contents.search, _('the text and visual search data')),
+      (_('Runs'), contents.runs, _('the history of the pipeline')),
+    ] %}
+    <tr><th scope="row">{{ label }}</th><td class="num">{{ num }}</td><td class="muted">{{ note }}</td></tr>
+    {% endfor %}
+  </table>
+  <p class="muted"><small>{{ _('Also deleted: property values you merged or renamed, cached place names and the progress of the pipeline.') }}</small></p>
+
+  <h2>{{ _('What is kept') }}</h2>
+  <ul class="kept">
+    {% if remote %}
+    <li>{{ icon('check', 'sm') }}<span>{{ _('The uploaded photo files in the upload folder on the server. Mira adds them again the next time it scans the upload folder, for example after the next upload.') }}</span></li>
+    {% else %}
+    <li>{{ icon('check', 'sm') }}<span>{{ _('Your photo files: Mira never deletes, moves or changes them.') }}</span></li>
+    {% endif %}
+    <li>{{ icon('check', 'sm') }}<span>{{ _('A backup of the current database, written first:') }} <span class="mono">{{ backup }}</span></span></li>
+    {% if not remote and roots %}
+    <li>{{ icon('check', 'sm') }}<span>{{ _('Library folders:') }} {% for r in roots %}<span class="mono">{{ r }}</span>{{ ', ' if not loop.last }}{% endfor %}. {{ _('Scan now on the Import page builds the library again; the photos are analysed again from the start.') }}</span></li>
+    {% endif %}
+    <li>{{ icon('check', 'sm') }}<span>{{ _('Your settings (config.toml), the language and the theme.') }}</span></li>
+  </ul>
+
+  <form method="get" action="/database/clear" class="clear-form">
+    <input type="hidden" name="step" value="2">
+    <label class="check"><input type="checkbox" name="understood" value="yes" required {{ 'disabled' if busy }}> {{ _('I understand that everything listed above is deleted from Mira.') }}</label>
+    <div class="row">
+      <a class="btn" href="/database">{{ _('Cancel') }}</a>
+      <button class="danger" {{ 'disabled' if busy }}>{{ _('Continue') }}{{ icon('arrow-right', 'sm') }}</button>
+    </div>
+  </form>
+</section>
+{% else %}
+<section class="card clear-card">
+  <div class="db-warning danger" role="note">
+    {{ icon('alert', 'sm') }}
+    <p><b>{{ _('Last step.') }}</b> {{ ngettext('%(num)d photo is removed from Mira, with all faces, names, properties, collections and places.', '%(num)d photos are removed from Mira, with all faces, names, properties, collections and places.', contents.images) }} {{ _('A backup is written first:') }} <span class="mono">{{ backup }}</span></p>
+  </div>
+  <form method="post" action="/database/clear" class="clear-form" x-data="{ typed: '' }" data-expected="{{ contents.images }}">
+    <input type="hidden" name="understood" value="yes">
+    <label class="field"><span>{{ _('To confirm, type the number of photos in the library: %(num)s', num=('<b class="clear-expected">' | safe) ~ contents.images ~ ('</b>' | safe)) }}</span>
+      <input type="text" name="photos" x-model="typed" inputmode="numeric" autocomplete="off" spellcheck="false" required class="clear-number" {{ 'disabled' if busy }}></label>
+    <div class="row">
+      <a class="btn" href="/database">{{ _('Cancel') }}</a>
+      <a class="btn ghost" href="/database/clear">{{ icon('chevron-left', 'sm') }}{{ _('Back') }}</a>
+      <button class="danger solid" {% if busy %}disabled{% else %}:disabled="typed.replace(/[\s.,'’_]/g, '') !== $el.form.dataset.expected"{% endif %}>{{ icon('trash', 'sm') }}{{ _('Clear the library now') }}</button>
+    </div>
+  </form>
+</section>
+{% endif %}
+{% endblock %}

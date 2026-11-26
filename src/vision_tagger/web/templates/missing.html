@@ -7,10 +7,20 @@
     <nav class="crumbs" aria-label="{{ _('Breadcrumb') }}"><a href="/database">{{ _('Database') }}</a></nav>
     <h1>{{ _('Missing files') }} <small>{{ ngettext('%(num)d photo', '%(num)d photos', total) }}</small></h1>
   </div>
-  <form method="post" action="/database/check"><button {{ 'disabled' if running }}>{{ icon('refresh', 'sm') }}{{ _('Check again') }}</button></form>
+  <div class="row">
+    <form method="post" action="/database/check"><button {{ 'disabled' if running }}>{{ icon('refresh', 'sm') }}{{ _('Check again') }}</button></form>
+    {% if total %}
+    <form method="post" action="/database/missing/remove-all"
+          data-confirm="{{ ngettext('Remove %(num)d missing photo from Mira? Its faces, properties and search data are deleted from the library; persons and pets keep their names. No file is deleted, and a photo whose file is there again is skipped.', 'Remove all %(num)d missing photos from Mira? Their faces, properties and search data are deleted from the library; persons and pets keep their names. No file is deleted, and photos whose file is there again are skipped.', total) }}">
+      <input type="hidden" name="expected" value="{{ total }}">
+      <button class="danger" {{ 'disabled' if busy }}{% if busy %} title="{{ busy }}"{% endif %}>{{ icon('trash', 'sm') }}{{ _('Remove all missing photos (%(num)s)', num=total) }}</button>
+    </form>
+    {% endif %}
+  </div>
 </div>
 
 <div id="db-status">{% include "partials/database_status.html" %}</div>
+{% if busy and total %}<div class="note warn">{{ icon('alert', 'sm') }}<small>{{ busy }}</small></div>{% endif %}
 
 {% if rows %}
 <section class="card db-hint">
@@ -22,6 +32,7 @@
     {% else %}
     <p>{{ _('Add or scan the folder where the photos are now: Mira recognises them by their content (perceptual hash) and links them again, with all faces, names and properties.') }} <a href="/import">{{ _('Import photos') }}{{ icon('arrow-right', 'sm') }}</a></p>
     {% endif %}
+    <p>{{ _('Photos that are gone for good can be removed from the library. Mira checks once more that the file is really missing; no file is deleted.') }}</p>
   </div>
 </section>
 
@@ -33,6 +44,7 @@
       <th>{{ _('Folder') }}</th>
       <th>{{ _('Recorded') }}</th>
       <th>{{ _('Faces') }}</th>
+      <th><span class="sr-only">{{ _('Actions') }}</span></th>
     </tr>
     {% for r in rows %}
     <tr>
@@ -41,6 +53,7 @@
       <td class="missing-folder"><span class="mono" title="{{ r.path }}">{{ r.folder }}</span></td>
       <td class="nowrap">{{ r.date | dt('%Y-%m-%d') }}</td>
       <td>{% if r.faces %}{{ ngettext('%(num)d face', '%(num)d faces', r.faces) }}{% if r.persons %} · {{ r.persons | join(', ') }}{% endif %}{% else %}<span class="muted">–</span>{% endif %}</td>
+      <td class="num"><form method="post" action="/database/missing/remove" data-confirm="{{ _('Remove %(name)s from Mira? Its faces, properties and search data are deleted from the library; persons and pets keep their names. No file is deleted.', name=r.filename) }}"><input type="hidden" name="id" value="{{ r.id }}"><button class="small danger" {{ 'disabled' if busy }} title="{{ busy if busy else _('Remove from library') }}">{{ icon('trash', 'sm') }}{{ _('Remove') }}</button></form></td>
     </tr>
     {% endfor %}
   </table></div>

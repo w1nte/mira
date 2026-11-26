@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "partials/reveal.html" import reveal_button with context %}
 {% block title %}{{ img.filename }}{% endblock %}
 {% block main_class %}wide{% endblock %}
 {% block content %}
@@ -17,8 +18,19 @@
     {% else %}<span class="btn" aria-disabled="true">{{ _('Next') }}{{ icon('chevron-right', 'sm') }}</span>{% endif %}
     <a class="btn" href="/search?similar={{ img.id }}" title="{{ _('Photos that look like this one') }}">{{ icon('layers', 'sm') }}{{ _('Similar photos') }}</a>
     <a class="btn" href="/media/image/{{ img.id }}" target="_blank" rel="noopener">{{ icon('external', 'sm') }}{{ _('Open original') }}</a>
+    {{ reveal_button('image', img.id, _('Show in folder'), disabled_title=_('The file is not there, so it cannot be shown in its folder.') if img.missing else none) }}
   </div>
 </div>
+{% if img.missing %}
+<section class="card missing-note">
+  {{ icon('alert') }}
+  <p>{{ _('The file of this photo is missing: it is not where Mira last saw it.') }} <a href="/database/missing">{{ _('Missing files') }}{{ icon('arrow-right', 'sm') }}</a></p>
+  <form method="post" action="/database/missing/remove" data-confirm="{{ _('Remove %(name)s from Mira? Its faces, properties and search data are deleted from the library; persons and pets keep their names. No file is deleted.', name=img.filename) }}">
+    <input type="hidden" name="id" value="{{ img.id }}">
+    <button class="small danger" {{ 'disabled' if busy }}{% if busy %} title="{{ busy }}"{% endif %}>{{ icon('trash', 'sm') }}{{ _('Remove from library') }}</button>
+  </form>
+</section>
+{% endif %}
 
 <div class="sidebar-layout" style="grid-template-columns:minmax(0,1fr) 380px">
   <div class="viewer-wrap" x-data="{ boxes: true }">

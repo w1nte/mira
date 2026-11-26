@@ -47,6 +47,7 @@ from .routes import (
     properties,
     pwa,
     quiz,
+    reveal,
     search,
     updates,
 )
@@ -114,6 +115,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         models,
         importing,
         database,
+        reveal,
         faces,
         persons,
         animals,
@@ -261,7 +263,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             buf = io.BytesIO()
             load_image(source, max_px=320).save(buf, "WEBP", quality=80)
             return Response(buf.getvalue(), media_type="image/webp")
-        raise HTTPException(404)
+        return _unavailable()  # e.g. cut from a photo that was removed from the library
 
     return app
 

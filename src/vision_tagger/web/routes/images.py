@@ -7,6 +7,7 @@ from fastapi.responses import Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
+from ...db import transfer
 from ...db.models import Animal, Cluster, Face, Image, ImageProperty, Person, Pet, Place, VlmResult
 from ...db.util import chunked
 from ...export import METADATA, ExportStats, export_images, write_sidecars_in_place
@@ -348,9 +349,13 @@ def image_detail(request: Request, image_id: int) -> Response:
         face_ages = {
             fid: age_label(info, date_check.suspicious) for fid, info in date_check.faces.items()
         }
+    busy = None
+    if img.missing:  # why "Remove from library" has to wait (like the Missing files page)
+        busy = transfer.busy_reason(c.db, runner_running=c.runner.running, jobs_busy=c.jobs.busy)
     return render(
         request,
         "image.html",
+        busy=str(busy) if busy else None,
         img=img,
         vlm=vlm,
         props=props,
