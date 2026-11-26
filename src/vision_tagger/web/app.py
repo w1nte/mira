@@ -41,6 +41,7 @@ from .routes import (
     overview,
     persons,
     properties,
+    pwa,
     quiz,
     search,
 )
@@ -101,6 +102,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
     for module in (
         auth_routes,
+        pwa,
         home,
         dashboard,
         importing,
