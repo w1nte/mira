@@ -84,6 +84,8 @@ class AppContext:
         self.cache = VersionedCache(self.db)
         ensure_stage_rows(self.db, settings.pipeline.stages or list(STAGE_NAMES))
         stale_after = max(30.0, settings.pipeline.heartbeat_seconds * 6)
+        # read before the recovery below, which resets the desired state
+        was_paused = control.desired_state(self.db) == control.PAUSED
         # atomic: does nothing while another process (e.g. a CLI run) sends heartbeats
         recovered = control.recover_stale(self.db, stale_after=stale_after)
         if recovered:
@@ -92,6 +94,8 @@ class AppContext:
             PipelineRunner(self.db, settings, default_stage_factory(self.db, settings))
         )
         self.jobs = JobManager()
+        if was_paused:
+            self._resume_paused()
         self.uploads: Any = None
         self.ingest: Any = None
         if settings.remote_mode:
@@ -105,6 +109,29 @@ class AppContext:
         self._versions: tuple[float, dict[str, str]] = (-1.0, {})
         self._search: Any = None
         self._search_lock = threading.Lock()
+
+    def _resume_paused(self) -> None:
+        """Continue the pipeline that was paused when the app last closed."""
+        if not self.settings.pipeline.resume_on_start or self.runner.running:
+            return
+        if control.is_runner_alive(self.db):
+            return  # another process (e.g. a CLI run) holds the pipeline
+        last = next(iter(control.latest_runs(self.db, limit=1)), None)
+        stages = [st for st in (last.stages or "").split(",") if st] if last else None
+        log.info("continuing the paused pipeline")
+        self.runner.start(
+            stages or None,
+            batch_size=last.batch_size if last else None,
+            limit=last.limit if last else None,
+        )
+
+    def shutdown_pipeline(self, timeout: float = 60.0) -> None:
+        """Application exit: pause a running pipeline (it continues on the next start)."""
+        if not self.runner.running:
+            return
+        control.request_state(self.db, control.PAUSED)
+        self.runner.runner.shutdown()
+        self.runner.join(timeout)  # lets the current image finish
 
     @property
     def search(self) -> Any:

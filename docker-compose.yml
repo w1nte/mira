@@ -1,0 +1,48 @@
+# vision-tagger (remote mode) with Ollama for the vision model.
+#
+#   1. echo "VT_PASSWORD=choose-a-good-one" > .env
+#   2. docker compose up -d
+#   3. docker compose exec ollama ollama pull qwen2.5vl:7b
+#      docker compose exec ollama ollama pull nomic-embed-text
+#   4. open http://<server>:8765 and upload photos on the Import page
+#
+# For "Install app" on phones and other computers, put it behind HTTPS (see the README).
+services:
+  vision-tagger:
+    build:
+      context: .
+      args:
+        EXTRA: cpu # gpu: NVIDIA GPU, then also uncomment the deploy section below
+    image: vision-tagger:latest
+    ports:
+      - "8765:8765"
+    environment:
+      VT_WEB__PASSWORD: ${VT_PASSWORD:?set VT_PASSWORD in the .env file}
+    volumes:
+      - vt-data:/data # database, thumbnails, face crops, models
+      - vt-photos:/photos # the uploaded photos (a host folder works too: ./photos:/photos)
+    depends_on:
+      - ollama
+    restart: unless-stopped
+    # a running pipeline is paused on shutdown and continues on the next start;
+    # the extra time lets the current image finish
+    stop_grace_period: 2m
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices: [{ driver: nvidia, count: 1, capabilities: [gpu] }]
+
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama:/root/.ollama
+    restart: unless-stopped
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices: [{ driver: nvidia, count: 1, capabilities: [gpu] }]
+
+volumes:
+  vt-data:
+  vt-photos:
+  ollama:

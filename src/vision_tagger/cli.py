@@ -445,13 +445,44 @@ def serve(
     host: Annotated[str | None, typer.Option()] = None,
     port: Annotated[int | None, typer.Option()] = None,
     open_browser: Annotated[bool, typer.Option("--open/--no-open")] = False,
+    remote: Annotated[
+        bool, typer.Option("--remote", help="Remote mode: photos are uploaded via the web UI.")
+    ] = False,
+    upload_dir: Annotated[
+        Path | None, typer.Option(help="Remote mode: folder where uploaded photos are stored.")
+    ] = None,
+    migrate_db: Annotated[
+        bool,
+        typer.Option("--migrate", help="Upgrade the database first if needed (with a backup)."),
+    ] = False,
 ) -> None:
-    """Start the local web UI."""
+    """Start the web UI (local mode, or remote mode with --remote --upload-dir PATH)."""
     import uvicorn
 
     from .web.app import create_app
 
     settings = _settings()
+    if remote:
+        settings.mode = "remote"
+    if upload_dir is not None:
+        settings.remote.upload_dir = upload_dir
+    if settings.remote_mode:
+        try:
+            settings.upload_dir  # noqa: B018 - validates that a folder is configured
+        except ValueError as exc:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(2) from exc
+    if migrate_db:
+        from .db.migrate import migration_engine, schema_status, upgrade
+
+        settings.ensure_dirs()
+        url = f"sqlite:///{settings.db_path.as_posix()}"
+        engine = migration_engine(url)
+        status = schema_status(engine)
+        engine.dispose()
+        if status.needs_upgrade and status.state != "new":
+            typer.echo("upgrading the database (a backup copy is made first)…")
+            upgrade(url, backup=True)
     _db().dispose()  # fails early with a clear message if `vision-tagger migrate` is needed
     host = host or settings.web.host
     port = port or settings.web.port

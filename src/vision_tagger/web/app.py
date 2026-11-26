@@ -65,11 +65,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.ctx = AppContext(settings)
         yield
         context: AppContext = app.state.ctx
-        if context.runner.running:
-            from ..pipeline import control
-
-            control.request_state(context.db, control.STOPPED)
-            context.runner.join(timeout=30)
+        context.shutdown_pipeline()  # paused, not stopped: the next start continues it
         context.close()
 
     app = FastAPI(title="vision-tagger", lifespan=lifespan, docs_url="/api/docs")

@@ -63,3 +63,28 @@ def test_cli_search(cli_env):
     out = invoke("-c", str(cfg), "search", "trees and a car", "--limit", "2")
     assert "mode=basic" in out and "semantic=on" in out
     assert out.count(".jpg") == 2
+
+
+def test_cli_serve_remote_and_migrate(cli_env, monkeypatch):
+    from vision_tagger.db.migrate import current_revision, head_revision, migration_engine
+
+    from .test_migrations import build_at, url_of
+
+    cfg, tmp = cli_env
+    db_path = tmp / "data" / "vision_tagger.sqlite3"
+    db_path.parent.mkdir(parents=True)
+    build_at(db_path, "0003")
+    started = []
+    monkeypatch.setattr("uvicorn.run", lambda app, **kw: started.append((app, kw)))
+
+    result = CliRunner().invoke(app, ["-c", str(cfg), "serve", "--remote"])
+    assert result.exit_code == 2 and "upload" in result.output  # remote mode needs a folder
+    result = CliRunner().invoke(app, ["-c", str(cfg), "serve"])
+    assert result.exit_code != 0 and not started  # outdated database: refused
+
+    invoke("-c", str(cfg), "serve", "--remote", "--upload-dir", str(tmp / "up"), "--migrate")
+    engine = migration_engine(url_of(db_path))
+    assert current_revision(engine) == head_revision()
+    engine.dispose()
+    assert list(db_path.parent.glob("*.bak-0003-*"))  # backup made before upgrading
+    assert len(started) == 1
