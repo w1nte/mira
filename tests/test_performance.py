@@ -407,6 +407,16 @@ def test_keyword_value_matching_equals_sql_ilike(db, settings):
             assert engine._images_with_value(s, word) == expected, word
 
 
+def test_inplace_normalize_equals_copy():
+    from vision_tagger.faces.vectors import normalize
+
+    m = np.random.default_rng(0).normal(size=(20_000, 512)).astype(np.float32)
+    m[5] = 0
+    expected = normalize(m)
+    assert normalize(m, inplace=True) is m
+    assert np.array_equal(m, expected)
+
+
 def test_connections_use_read_pragmas(db):
     from vision_tagger.db.session import CACHE_KIB
 

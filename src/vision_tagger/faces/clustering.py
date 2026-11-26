@@ -226,7 +226,12 @@ def _dissolve_unlocked(s: Session) -> int:
 def _load_inputs(s: Session, full: bool):
     free = _by_id(s.execute(_free_faces_stmt()))
     face_ids = np.array([r[0] for r in free], dtype=np.int64)
-    m = normalize(stack([r[1] for r in free])) if free else np.zeros((0, EMBEDDING_DIM))
+    # one float32 copy of the embeddings (~400 MB for 200k faces), normalised in place
+    m = (
+        normalize(stack([r[1] for r in free]), inplace=True)
+        if free
+        else np.zeros((0, EMBEDDING_DIM))
+    )
     existing_stmt = select(Cluster.id)
     if full:
         existing_stmt = existing_stmt.where(Cluster.locked.is_(True))
