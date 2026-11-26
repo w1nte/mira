@@ -209,3 +209,31 @@ def test_cli_migrate(tmp_path, monkeypatch):
     r = runner.invoke(app, ["migrate", "--check"])
     assert r.exit_code == 0 and "up to date" in r.output
     assert runner.invoke(app, ["status"]).exit_code == 0
+
+
+def test_0003_replaces_indexes_and_keeps_data(tmp_path):
+    """0003 only swaps indexes (covering ones for the hot queries); data must not change."""
+    path = tmp_path / "v2.sqlite3"
+    build_at(path, "0002")
+    fill_first_version(path)
+    before = counts(path)
+    upgrade(url_of(path), backup=False)
+    assert counts(path) == before
+    con = sqlite3.connect(path)
+    indexes = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='index'")}
+    con.close()
+    assert {
+        "ix_faces_image_ignored_cluster",
+        "ix_faces_cluster_ignored_image_age",
+        "ix_image_properties_key_value_image",
+        "ix_stage_status_stage_status_image",
+    } <= indexes
+    assert (
+        not {
+            "ix_faces_image_id",
+            "ix_faces_cluster_id",
+            "ix_image_properties_key_value",
+            "ix_stage_status_stage_status",
+        }
+        & indexes
+    )

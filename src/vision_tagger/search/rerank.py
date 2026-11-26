@@ -65,6 +65,7 @@ class Judgement:
 def describe(s: Session, image_ids: list[int]) -> dict[int, str]:
     """Short, LLM-friendly description per image (includes person names)."""
     out: dict[int, str] = {}
+    keys = set(_KEYS)
     for part in chunked(image_ids):
         images = {i.id: i for i in s.scalars(select(Image).where(Image.id.in_(part)))}
         captions = {
@@ -74,12 +75,15 @@ def describe(s: Session, image_ids: list[int]) -> dict[int, str]:
             )
         }
         props: dict[int, dict[str, list[str]]] = {}
+        # by image only (keys filtered here): a key condition can make SQLite scan every
+        # row of those keys through the (key, value, ...) index
         for image_id, key, value in s.execute(
-            select(ImageProperty.image_id, ImageProperty.key, ImageProperty.value).where(
-                ImageProperty.image_id.in_(part), ImageProperty.key.in_(_KEYS)
-            )
+            select(ImageProperty.image_id, ImageProperty.key, ImageProperty.value)
+            .where(ImageProperty.image_id.in_(part))
+            .order_by(ImageProperty.image_id, ImageProperty.key, ImageProperty.id)
         ):
-            props.setdefault(image_id, {}).setdefault(key, []).append(value.replace("_", " "))
+            if key in keys:
+                props.setdefault(image_id, {}).setdefault(key, []).append(value.replace("_", " "))
         people: dict[int, set[str]] = {}
         for image_id, name in s.execute(
             select(Face.image_id, Person.name)

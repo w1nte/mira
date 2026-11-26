@@ -149,7 +149,7 @@ def cluster_detail(request: Request, cluster_id: int, page: int = 1) -> Response
             s.scalars(
                 select(Face)
                 .where(Face.cluster_id == cluster_id, Face.ignored.is_(False))
-                .order_by((Face.det_score * Face.face_px).desc())
+                .order_by((Face.det_score * Face.face_px).desc(), Face.id)
                 .offset((page - 1) * PAGE)
                 .limit(PAGE)
             )
@@ -257,7 +257,7 @@ def _face_list(request: Request, title: str, where, page: int, mode: str) -> Res
             s.scalars(
                 select(Face)
                 .where(where)
-                .order_by((Face.det_score * Face.face_px).desc())
+                .order_by((Face.det_score * Face.face_px).desc(), Face.id)
                 .offset((page - 1) * PAGE)
                 .limit(PAGE)
             )

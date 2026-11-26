@@ -122,7 +122,7 @@ def next_name_question(s: Session, skip: set[int] | None = None) -> NameQuestion
             s.scalars(
                 select(Face)
                 .where(Face.cluster_id == cluster.id, Face.ignored.is_(False))
-                .order_by((Face.det_score * Face.face_px).desc())
+                .order_by((Face.det_score * Face.face_px).desc(), Face.id)
                 .limit(6)
             )
         )

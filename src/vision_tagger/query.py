@@ -432,7 +432,9 @@ def person_counts(s: Session, f: ImageFilter | None = None) -> list[tuple[Person
     )
     if f is not None and not f.is_empty:
         stmt = stmt.where(Face.image_id.in_(image_ids_subquery(f)))
-    stmt = stmt.group_by(Person.id).order_by(func.count(func.distinct(Face.image_id)).desc())
+    stmt = stmt.group_by(Person.id).order_by(
+        func.count(func.distinct(Face.image_id)).desc(), Person.id
+    )
     return [(p, n) for p, n in s.execute(stmt)]
 
 

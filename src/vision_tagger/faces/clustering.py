@@ -19,7 +19,7 @@ from collections import defaultdict
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, ParamSpec, TypeVar
+from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
 
 import numpy as np
 from sklearn.cluster import DBSCAN
@@ -128,6 +128,16 @@ def _cluster_centroids(s: Session, cluster_ids: Iterable[int] | None = None):
     return ids, mat
 
 
+def _by_id(rows: Iterable[Any]) -> list[Any]:
+    """Rows sorted by face id (their first column).
+
+    Centroids, cover faces and DBSCAN labels depend on the row order, which would otherwise
+    follow whatever index SQLite picks. Sorted here, not in SQL, so SQLite does not sort the
+    embedding blobs or fall back to a full table scan.
+    """
+    return sorted(rows, key=lambda r: r[0])
+
+
 def _update_faces(s: Session, face_ids: Sequence[int], **values: object) -> None:
     for part in chunked([int(i) for i in face_ids]):
         s.execute(update(Face).where(Face.id.in_(part)).values(**values))
@@ -161,11 +171,13 @@ def update_cluster_stats(s: Session, cluster_ids: Iterable[int] | None = None) -
             clusters.extend(s.scalars(select(Cluster).where(Cluster.id.in_(part))))
     removed = 0
     for cluster in clusters:
-        rows = s.execute(
-            select(Face.id, Face.embedding, Face.det_score, Face.face_px).where(
-                Face.cluster_id == cluster.id, Face.ignored.is_(False)
+        rows = _by_id(
+            s.execute(
+                select(Face.id, Face.embedding, Face.det_score, Face.face_px).where(
+                    Face.cluster_id == cluster.id, Face.ignored.is_(False)
+                )
             )
-        ).all()
+        )
         if not rows:
             s.delete(cluster)
             removed += 1
@@ -212,7 +224,7 @@ def _dissolve_unlocked(s: Session) -> int:
 
 
 def _load_inputs(s: Session, full: bool):
-    free = s.execute(_free_faces_stmt()).all()
+    free = _by_id(s.execute(_free_faces_stmt()))
     face_ids = np.array([r[0] for r in free], dtype=np.int64)
     m = normalize(stack([r[1] for r in free])) if free else np.zeros((0, EMBEDDING_DIM))
     existing_stmt = select(Cluster.id)
@@ -345,7 +357,7 @@ def replace_faces(
     inserted before the old ones are deleted, so no cluster becomes empty in between.
     Returns the ids of the removed old faces (for crop cleanup).
     """
-    old = list(s.scalars(select(Face).where(Face.image_id == image_id)))
+    old = list(s.scalars(select(Face).where(Face.image_id == image_id).order_by(Face.id)))
     pairs = sorted(
         (
             (_iou((o.x1, o.y1, o.x2, o.y2), (n.x1, n.y1, n.x2, n.y2)), oi, ni)
@@ -443,7 +455,7 @@ def add_cluster_references(s: Session, cluster_id: int, person_id: int, k: int) 
     rows = s.execute(
         select(Face.id, Face.embedding, Face.det_score, Face.face_px)
         .where(Face.cluster_id == cluster_id, Face.ignored.is_(False))
-        .order_by((Face.det_score * Face.face_px).desc())
+        .order_by((Face.det_score * Face.face_px).desc(), Face.id)
         .limit(k)
     ).all()
     _drop_face_references(s, [r[0] for r in rows])
@@ -622,11 +634,13 @@ def auto_split(s: Session, cluster_id: int, eps: float, min_samples: int = 2) ->
     The largest sub-group stays in the original cluster, other sub-groups become new locked
     clusters. Faces that do not belong to any sub-group stay where they are.
     """
-    rows = s.execute(
-        select(Face.id, Face.embedding).where(
-            Face.cluster_id == cluster_id, Face.ignored.is_(False)
+    rows = _by_id(
+        s.execute(
+            select(Face.id, Face.embedding).where(
+                Face.cluster_id == cluster_id, Face.ignored.is_(False)
+            )
         )
-    ).all()
+    )
     if len(rows) < 2 * min_samples:
         return []
     ids = np.array([r[0] for r in rows])
