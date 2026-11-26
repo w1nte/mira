@@ -147,6 +147,8 @@ PAGES = [
     "/collections",
     "/database",
     "/database/missing",
+    "/database/clear",
+    "/database/clear?step=2&understood=yes",
     "/partials/database-status",
     "/partials/status",
     "/partials/health",

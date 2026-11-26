@@ -331,6 +331,57 @@ uv run vision-tagger db import D:\Backup\vision-tagger-2026-11-26.sqlite3
 uv run vision-tagger index "E:\Photos"                  # re-links the photos found there
 ```
 
+## Cleaning up the library
+
+The **Database** page also cleans up. Like an import, removing photos and clearing the library
+are refused while the pipeline runs or is paused, or while another job runs: stop the pipeline
+first. Neither ever deletes, moves or changes a photo file.
+
+- **Removing missing photos.** Photos that are gone for good (deleted, or on a drive you no
+  longer have) can be removed under **Database → Missing files**: **Remove** next to a photo,
+  **Remove all missing photos (N)** for the whole list, or **Remove from library** on the page of
+  a missing photo. Each asks first.
+  - Only photos flagged as missing can be removed. Right before deleting, Mira looks for each
+    file once more: a photo whose file is there again (a drive was connected meanwhile) is
+    skipped and counted, never removed. So is a photo with a duplicate file that still exists;
+    **Check again** makes that copy its file.
+  - Removed with a photo: its faces, animals, properties, search index entries, duplicate
+    records, pipeline status and cached thumbnails and crops.
+  - Cleaned up: face clusters and unnamed animal groups without photos are deleted, the others
+    get new counts and covers; places without photos are deleted unless you named them.
+  - **Named persons and named pets are never deleted.** They keep their names and reference
+    faces and just have fewer photos.
+  - If a removed file turns up again later, a scan adds it as a new photo, analysed from the
+    start.
+- **Clearing the library** starts over with an empty library: **Database → Danger zone → Clear
+  the library…**.
+  - First step: a page lists what is deleted, with the current numbers: all photos' data, faces,
+    clusters, persons and their names, animals and pets, properties, collections, places, the
+    search index and the pipeline history. It also lists what is kept. Tick *I understand* to
+    continue.
+  - Second step: type the number of photos in the library to enable **Clear the library now**.
+    A number works in every language, and it must still match when you click: if photos were
+    added meanwhile, Mira refuses. The server checks both steps again.
+  - Kept: the photo files, your library folders (**Scan now** on the Import page builds the
+    library again), `config.toml`, the language and the theme. In remote mode the uploaded files
+    stay in the upload folder and come back with the next scan of it (after the next upload).
+  - First, a backup of the database is written next to it:
+    `vision_tagger.sqlite3.bak-clear-<time>`. Importing it on the Database page brings the
+    library back. Thumbnails and crops are cleared, and browsers drop their cached copies.
+  - From the command line: `vision-tagger db clear` asks the same two questions (a yes, then the
+    number of photos); `--yes --yes` (`-yy`) answers both, for scripts. Close the web UI first.
+- **Show in Explorer / Finder.** When Mira runs on the computer in front of you (the desktop app,
+  or `vision-tagger serve` opened on the same computer), buttons open the file manager:
+  - **Show in folder** on a photo's page selects the file in Explorer (Windows) or Finder
+    (macOS). On Linux the file manager opens its folder. For a missing photo the button is off.
+  - **Open folder** next to each library folder on the Import page.
+  - **Show database file** and **Open data folder** on the Database page.
+  - The buttons appear only in local mode and for a browser on that same computer: a request
+    from `127.0.0.1` or `::1`, under a local host name, not through a reverse proxy. On Linux
+    there must be a graphical session. They never appear in remote mode, in Docker, or from
+    another device on your network. The browser only says *what* to show (a photo, a library
+    folder, the database), never a path.
+
 ## Quick start
 
 ```powershell
@@ -409,16 +460,16 @@ prefer it.
 |---|---|
 | **Home** | Your library at a glance: number of photos, people, places and years, *On this day* memories, recently added photos, and collections. Nudges you when face or animal groups still need a name, and while AI models are missing (with **Download now**). |
 | **Collections** | A collection is a saved filter: it stays up to date as new photos arrive. Suggested ones (people, places, events, this year) appear by themselves; **Save as collection** in *Images* adds your own. Rename, reorder and delete them here. |
-| **Import** | Local mode: your photo folders, with a folder browser, and **Scan now**. Remote mode: upload photos, folders or ZIP files (see [Remote mode](#remote-mode-and-docker)). Shows what is being indexed and analysed right now. |
+| **Import** | Local mode: your photo folders, with a folder browser, and **Scan now**; **Open folder** shows one in Explorer or Finder. Remote mode: upload photos, folders or ZIP files (see [Remote mode](#remote-mode-and-docker)). Shows what is being indexed and analysed right now. |
 | **Pipeline** | The technical part: start/pause/resume/stop runs (stages, batch size, limit), per-stage progress, ETA, errors (retry/skip), outdated results, jobs, recent runs, environment check (CUDA, Ollama, and the AI models with their state and **Download** buttons). |
-| **Database** | Export the whole library database (backup, another computer) and import one (see [Moving a library](#moving-a-library-to-another-computer-export--import)). **Missing files** lists photos that are not where Mira last saw them; scanning their new folder re-links them. |
+| **Database** | Export the whole library database (backup, another computer) and import one (see [Moving a library](#moving-a-library-to-another-computer-export--import)). **Missing files** lists photos that are not where Mira last saw them; scanning their new folder re-links them, **Remove** takes those that are gone for good out of the library. **Clear the library** starts over (two confirmations, a backup first). See [Cleaning up the library](#cleaning-up-the-library). |
 | **Faces** | All clusters with cover face and size. Name inline (autocomplete), accept reference suggestions, select several to **merge**. Views for unclustered and ignored faces. |
 | **Cluster** | All faces of a cluster. Select faces to **split** into a new cluster, **assign to a person**, **move** to another cluster, or **remove**. **Auto-split** mixed clusters. Similar clusters with one-click merge. |
 | **Animals** | Pet groups with picture and number of photos, by species. Name a group inline (typing another group's name merges the two), tick several to **merge**. Per group: all its photos to **move** to a pet (by name) or a new group, **take out** ("Not this one") or **remove**, similar groups with one-click merge, and the species (correct it when the detector took a dog for a bear). Views for ungrouped and removed animals. |
 | **Persons** | Named persons. Rename (renaming to an existing name merges), merge, delete, manage references. Images with *all* / *any* of the selected persons. Per person: birth year (set or estimated), age today, a "through the years" face timeline, and photos with a doubtful date with suggested fixes. |
 | **Properties** | Every extracted property grouped by topic, with counts. Tick values and show images with **all** / **any** of them (*any* keeps the other filters: "summer and (beach or mountains)"). Per property: sample images per value, **merge / rename / delete** values (remembered for future results). |
 | **Images** | **Timeline slider** above the gallery: photos per month; click the first month, then the last, drag the band or its edges, or sweep across the bars (arrow keys move the handles). Gallery with infinite scroll and a filter builder: persons and pets (AND/OR, NOT), properties (AND/OR, NOT), date range, folder, camera, faces, text search, sort. Facets refine the current result; their **or** switch (or Ctrl+click / ⌘+click on a value) adds a value as an alternative, e.g. "beach or mountains" (see [Alternatives](#alternatives-or)). **Export** the result, with XMP metadata for other apps. **Select** to tick photos and mark them as NSFW or not NSFW. Filters are part of the URL, so they can be bookmarked. |
-| **Image** | Full image with face and animal boxes and names, all properties with source and confidence, the NSFW verdict (mark the photo as NSFW or not NSFW), metadata, duplicates, raw VLM JSON, per-stage status and re-run buttons. `←` / `→` open the previous / next photo of the current filter. |
+| **Image** | Full image with face and animal boxes and names, all properties with source and confidence, the NSFW verdict (mark the photo as NSFW or not NSFW), metadata, duplicates, raw VLM JSON, per-stage status and re-run buttons. `←` / `→` open the previous / next photo of the current filter. **Show in folder** opens Explorer or Finder at the file (on your own computer). |
 | **Quiz** | "Who's that?": name the largest unnamed clusters with one click (suggestions from references and look-alikes), or play the face quiz with score, streaks and "you vs. the AI"; wrong answers can fix misfiled faces. Keys 1–4 and Enter. |
 | **Generations** | Every person with photos from different ages. Per person: a grow-up timelapse (play, scrub, download as animated WebP), "looks most like…" ranking, and a same-age comparison with any other person. |
 | **Search** | Search box in the top bar on every page (`/` focuses it). Shows how the request was understood (persons, pets, required / preferred / excluded properties, alternatives such as "Anna or Ben", dates, keywords), ranks the results and, with **Deep search**, gives the LLM's reason for each. "Open in filter builder" turns the strict part into a gallery filter; results can be exported. |
@@ -937,8 +988,8 @@ Everything lives in `data/`:
 
 - `uploads/`: unfinished uploads (remote mode); finished ones are moved into the upload folder.
 - `transfer/`: temporary files of database exports and imports (removed afterwards).
-- `vision_tagger.sqlite3.bak-*`: backups made before a migration or an import. Delete old ones
-  when you no longer need them.
+- `vision_tagger.sqlite3.bak-*`: backups made before a migration, an import or clearing the
+  library. Delete old ones when you no longer need them.
 - `secret.key`: the key that signs login cookies. Delete it to log everyone out.
 - `update-check.json`: the last update check and the version you dismissed on Home.
 
@@ -1013,6 +1064,10 @@ In local mode the UI is meant for your own machine. It listens on `127.0.0.1`, o
 requests whose `Host` is this machine (blocks DNS rebinding) and rejects form submissions coming
 from other websites (CSRF). If you expose it on your network (`web.host = "0.0.0.0"`), add the
 machine's name to `web.allowed_hosts` and set a password.
+
+The buttons that open Explorer or Finder only appear for, and only answer, a browser on the
+server's own computer (local mode, a loopback address, a local host name, no proxy headers). The
+request names a photo or folder by id; the server looks the path up itself.
 
 In remote mode any host name is accepted (it runs behind your own domain or proxy), while
 cross-site form submissions are still rejected. Set a password and use HTTPS (see

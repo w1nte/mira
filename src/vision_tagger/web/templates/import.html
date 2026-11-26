@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "partials/reveal.html" import reveal_button with context %}
 {% block title %}{{ _('Import') }}{% endblock %}
 {% block content %}
 <div class="page-head">
@@ -64,6 +65,7 @@
     <ul class="roots">
       {% for r in roots %}
       <li>{{ icon('folder', 'sm') }}<span class="mono">{{ r }}</span>
+        {{ reveal_button('root', loop.index0, _('Open folder'), 'small ghost') }}
         <form method="post" action="/import/roots/remove"><input type="hidden" name="path" value="{{ r }}"><button class="small ghost" title="{{ _('Remove from the library folders') }}">{{ icon('x', 'sm') }}</button></form></li>
       {% endfor %}
     </ul>

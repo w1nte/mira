@@ -20,10 +20,14 @@ from ..indexer import ensure_stage_rows
 from ..pipeline import control
 from ..pipeline.runner import BackgroundRunner, PipelineRunner
 from ..pipeline.stages import STAGE_NAMES, default_stage_factory, stage_versions
+from ..reveal import FileManager
 from ..updates import UpdateChecker
 from ..vlm.models import OllamaStatus, ollama_status
 
 log = logging.getLogger(__name__)
+
+#: jobs that replace or remove library data: no pipeline may run meanwhile
+LIBRARY_JOBS = ("import", "clear", "remove-missing")
 
 
 @dataclass
@@ -38,9 +42,18 @@ class Job:
     stop_requested: bool = False
 
 
+def _failure(exc: Exception) -> str | Lazy:
+    """What a failed job shows. Errors meant for users carry a Lazy text, translated when shown:
+    ``text`` (vlm.models.PullError) or ``message`` (db.transfer errors)."""
+    user_text = getattr(exc, "text", None)
+    if not isinstance(user_text, Lazy):
+        user_text = getattr(exc, "message", None)
+    return user_text if isinstance(user_text, Lazy) else f"{type(exc).__name__}: {exc}"
+
+
 class JobManager:
     """Runs one maintenance job (index scan, recluster, reference import, export, database
-    import, location check) at a time."""
+    import, location check, clearing the library, removing missing photos) at a time."""
 
     def __init__(self) -> None:
         self.current: Job | None = None
@@ -65,14 +78,7 @@ class JobManager:
                 job.message = result or job.message or Lazy("done")
             except Exception as exc:
                 job.status = "failed"
-                # errors meant for users carry a Lazy text, translated when shown:
-                # ``text`` (vlm.models.PullError) or ``message`` (db.transfer errors)
-                user_text = getattr(exc, "text", None)
-                if not isinstance(user_text, Lazy):
-                    user_text = getattr(exc, "message", None)
-                job.message = (
-                    user_text if isinstance(user_text, Lazy) else f"{type(exc).__name__}: {exc}"
-                )
+                job.message = _failure(exc)
                 log.error("job %s failed\n%s", name, traceback.format_exc())
             finally:
                 job.finished_at = datetime.now()
@@ -80,6 +86,28 @@ class JobManager:
 
         threading.Thread(target=target, name=f"job-{name}", daemon=True).start()
         return True
+
+    def run_now(self, name: str, fn: Callable[[Job], str | Lazy | None]) -> Job | None:
+        """Run a short job in the calling thread (a request), with the same exclusivity as
+        :meth:`start`. ``None``: another job runs. Exceptions are re-raised."""
+        with self._lock:
+            if self.busy:
+                return None
+            job = Job(name=name)
+            self.current = job
+        done = False
+        try:
+            result = fn(job)
+            job.message = result or job.message or Lazy("done")
+            done = True
+        except Exception as exc:
+            job.message = _failure(exc)
+            raise
+        finally:
+            job.status = "done" if done else "failed"
+            job.finished_at = datetime.now()
+            self.history.appendleft(job)
+        return job
 
     def request_stop(self) -> None:
         if self.current is not None:
@@ -127,6 +155,8 @@ class AppContext:
         #: the update check (``updates.check``): in the background, about once a day
         self.updates = UpdateChecker(settings)
         self.updates.start()
+        #: "Show in folder" (local mode); tests replace its launcher
+        self.file_manager = FileManager()
 
     def _resume_paused(self) -> None:
         """Continue the pipeline that was paused when the app last closed."""
@@ -154,12 +184,21 @@ class AppContext:
     @property
     def importing(self) -> bool:
         """A database import is replacing the library (no pipeline may start meanwhile)."""
+        return self.library_job == "import"
+
+    @property
+    def library_job(self) -> str | None:
+        """The running job that replaces or removes library data (import, clearing, removing
+        missing photos), during which no pipeline may start; else ``None``."""
         job = self.jobs.current
-        return job is not None and job.status == "running" and job.name == "import"
+        if job is not None and job.status == "running" and job.name in LIBRARY_JOBS:
+            return job.name
+        return None
 
     def forget_library(self) -> None:
-        """After a database import: drop every in-memory cache keyed by ids (they now mean
-        other photos). Disk caches are cleared by ``db.transfer.clear_cache_dirs``."""
+        """After a database import, clearing the library or removing photos: drop every
+        in-memory cache keyed by ids (they now mean other photos, or none). Disk caches are
+        cleared by ``db.transfer.clear_cache_dirs`` (``removal`` deletes single files)."""
         self.cache.clear()
         with self._search_lock:
             self._search = None  # its embedding matrix and value counts

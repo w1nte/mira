@@ -13,7 +13,7 @@ from ...i18n import Lazy, LazyJoin, _, _n
 from ...indexer import ROOTS_KEY, Indexer, stored_roots
 from ...pipeline import control
 from ...pipeline.stages import STAGE_NAMES
-from ..common import ctx, redirect, render
+from ..common import ctx, job_title, redirect, render
 from ..context import Job
 from .models import models_context
 
@@ -225,6 +225,12 @@ def start_run(
         return redirect(request, "/pipeline", err=_("A run is already active."))
     if c.importing:
         return redirect(request, "/pipeline", err=_("Wait until the database import has finished."))
+    if c.library_job:
+        return redirect(
+            request,
+            "/pipeline",
+            err=_("Wait until “%(job)s” has finished.", job=job_title(c.library_job)),
+        )
     lim = int(limit) if limit.strip().isdigit() and int(limit) > 0 else None
     c.forget_models_status()  # the run may download a model (vlm.auto_pull)
     c.runner.start(stages, batch_size=batch_size or None, limit=lim)

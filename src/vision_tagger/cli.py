@@ -297,7 +297,7 @@ def update_check(
 
 
 db_app = typer.Typer(
-    help="Export or import the whole library database (backup, another computer).",
+    help="Export, import or clear the whole library database (backup, another computer).",
     no_args_is_help=True,
 )
 app.add_typer(db_app, name="db")
@@ -390,6 +390,82 @@ def db_import(
                 "scan the folders where the photos are now (`vision-tagger index FOLDER`): "
                 "they are linked again by perceptual hash, with their faces and properties"
             )
+    finally:
+        db.dispose()
+
+
+@db_app.command("clear")
+def db_clear(
+    yes: Annotated[
+        int,
+        typer.Option(
+            "--yes",
+            "-y",
+            count=True,
+            help="Answer a confirmation; give it twice to answer both (scripts).",
+        ),
+    ] = 0,
+) -> None:
+    """Delete everything Mira knows about the photos and start with an empty library.
+
+    Deleted: all photos' data, faces, persons and their names, pets, properties, collections,
+    places, the search index and the history. Kept: the photo files (never touched), the
+    library folders (`vision-tagger index` builds the library again) and the settings. A backup
+    of the database is written first. Close the web UI first. Asks twice: a yes/no question,
+    then the number of photos in the library.
+    """
+    from .db import transfer
+
+    settings = _settings()
+    db = _db()
+    try:
+        reason = transfer.busy_reason(db)
+        if reason is not None:
+            typer.echo(f"error: {reason}", err=True)
+            raise typer.Exit(1)
+        n = transfer.library_contents(db)
+        typer.echo("This deletes from Mira:")
+        typer.echo(
+            f"  {n['images']} photos (index, dates, places, analysis), {n['faces']} faces in "
+            f"{n['clusters']} clusters, {n['persons']} persons with their names, "
+            f"{n['animals']} animals and {n['pets']} named pets, {n['properties']} properties, "
+            f"{n['collections']} collections, {n['places']} places, {n['search']} search index "
+            f"entries, {n['runs']} pipeline runs"
+        )
+        backup = settings.db_path.with_name(f"{settings.db_path.name}.bak-clear-<time>")
+        typer.echo("Kept: the photo files (never touched), the library folders and the settings.")
+        typer.echo(f"A backup of the database is written first: {backup}")
+        if yes < 1 and not typer.confirm("Delete all of this from Mira?", default=False):
+            typer.echo("Nothing was deleted.")
+            raise typer.Exit(1)
+        if yes < 2:
+            typed = typer.prompt(f"Type the number of photos ({n['images']}) to confirm")
+            if transfer.typed_number(typed) != str(n["images"]):
+                typer.echo("The number does not match. Nothing was deleted.", err=True)
+                raise typer.Exit(1)
+
+        def before_replace() -> None:
+            busy = transfer.busy_reason(db)
+            if busy is not None:
+                raise transfer.TransferError(busy)
+
+        try:
+            result = transfer.clear_library(
+                db,
+                settings,
+                before_replace=before_replace,
+                progress=lambda message: typer.echo(f"  {message}"),
+            )
+        except transfer.TransferError as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(1) from None
+        typer.echo(f"cleared: {result.images} photos removed from Mira, no file was touched")
+        if result.backup:
+            typer.echo(f"backup:  {result.backup}")
+        roots = result.roots if result.roots is not None else settings.paths.image_roots
+        if roots:
+            typer.echo(f"library folders: {', '.join(str(r) for r in roots)}")
+            typer.echo("`vision-tagger index` builds the library again")
     finally:
         db.dispose()
 
