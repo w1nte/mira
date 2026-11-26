@@ -18,6 +18,7 @@ from ...query import (
     page_images,
     person_counts,
     property_counts,
+    property_keys,
 )
 from ..common import back, ctx, redirect, render
 from ..context import Job
@@ -67,7 +68,7 @@ def gallery(request: Request) -> Response:
         facets = {k: facets_all[k][:12] for k in FACET_KEYS if k in facets_all}
         people = person_counts(s, f)[:30]
         all_persons = list(s.scalars(select(Person).order_by(Person.name)))
-        keys = sorted(s.scalars(select(ImageProperty.key).distinct().order_by(ImageProperty.key)))
+        keys = property_keys(s)
         cameras = [
             cam
             for (cam,) in s.execute(

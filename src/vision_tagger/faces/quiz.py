@@ -178,15 +178,17 @@ def next_quiz_question(
     for cid, pid, _n in clusters:
         by_person.setdefault(pid, []).append(cid)
     pid = rng.choice(sorted(by_person))
+    # ids only: loading every embedding of a person with thousands of faces is slow
     face_rows = list(
         s.execute(
-            select(Face.id, Face.image_id, Face.cluster_id, Face.embedding).where(
-                Face.cluster_id.in_(by_person[pid]), Face.ignored.is_(False)
-            )
+            select(Face.id, Face.image_id, Face.cluster_id)
+            .where(Face.cluster_id.in_(by_person[pid]), Face.ignored.is_(False))
+            .order_by(Face.id)
         )
     )
     candidates = [r for r in face_rows if r[0] not in (exclude_faces or set())] or face_rows
-    face_id, image_id, cluster_id, emb = rng.choice(candidates)
+    face_id, image_id, cluster_id = rng.choice(candidates)
+    emb = s.scalar(select(Face.embedding).where(Face.id == face_id))
     answer = s.get(Person, pid)
     assert answer is not None
     # distractors: two look-alikes (hard) and the rest random

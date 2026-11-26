@@ -19,6 +19,9 @@ from ..common import ctx, render
 
 router = APIRouter()
 
+# property breakdowns shown on the overview (only these are aggregated)
+BREAKDOWN_KEYS = ("work_image", "capture_device", "orientation", "image_type", "setting")
+
 TABLE_SORTS = {
     "date": Image.recorded_at,
     "name": Image.filename,
@@ -60,7 +63,7 @@ def overview(request: Request, level: str | None = None) -> Response:
         exts = column_counts(s, f, Image.ext, limit=20)
         date_sources = column_counts(s, f, Image.date_source, limit=10)
         size_total = s.scalar(select(func.sum(Image.size_bytes)).where(*conditions(f))) or 0
-        props = property_counts(s, f)
+        props = property_counts(s, f, keys=BREAKDOWN_KEYS)
         with_faces = (
             s.scalar(
                 select(func.count(func.distinct(Face.image_id))).where(
@@ -70,11 +73,7 @@ def overview(request: Request, level: str | None = None) -> Response:
             )
             or 0
         )
-    breakdowns = {
-        k: props.get(k, [])
-        for k in ("work_image", "capture_device", "orientation", "image_type", "setting")
-        if props.get(k)
-    }
+    breakdowns = {k: props.get(k, []) for k in BREAKDOWN_KEYS if props.get(k)}
     return render(
         request,
         "overview.html",
