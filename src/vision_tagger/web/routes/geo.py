@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from ...db.models import Image
 from ...geo.mapdata import gps_counts, heat_points, place_detail, place_summaries
-from ...i18n import _, js_strings
+from ...i18n import MAP_JS_KEYS, _, js_strings
 from ...query import ImageFilter, count_images
 from ..common import back, ctx, redirect, render
 from ..context import Job
@@ -17,17 +17,6 @@ from .images import _chips
 router = APIRouter()
 
 #: strings used by static/map.js
-MAP_JS_KEYS = [
-    "%(n)s photos",
-    "1 photo",
-    "Show photos",
-    "Name",
-    "Save",
-    "Empty: automatic name",
-    "Named by you",
-    "Could not load the map data.",
-    "Map tiles could not be loaded – showing photos without a background map.",
-]
 
 
 def _places(c, f: ImageFilter) -> list[dict]:

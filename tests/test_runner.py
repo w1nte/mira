@@ -275,3 +275,29 @@ def test_newly_enabled_stage_gets_its_images_queued(indexed, settings):
     summary = PipelineRunner(indexed, settings, stages.__getitem__).run(["ages"])
     assert summary.processed == {"ages": 10}
     assert set(statuses(indexed, "ages").values()) == {Status.DONE}
+
+
+def test_closing_the_app_pauses_instead_of_stopping(indexed, settings):
+    """Shutdown ends the run after the current image but leaves the pipeline paused."""
+    started = threading.Event()
+
+    def on_process(image_id):
+        started.set()
+
+    stage = FakeStage(indexed, settings, delay=0.05, on_process=on_process)
+    runner = PipelineRunner(indexed, settings, lambda _n: stage)
+    runner.poll_interval = 0.05
+    bg = BackgroundRunner(runner)
+    assert bg.start(["faces"], batch_size=3)
+    assert started.wait(5)
+    control.request_state(indexed, control.PAUSED)
+    runner.shutdown()
+    bg.join(10)
+    assert not bg.running and bg.last_summary.status == control.PAUSED
+    assert control.desired_state(indexed) == control.PAUSED  # continues on the next start
+    with indexed.session() as s:
+        run = s.scalars(select(Run).order_by(Run.id.desc())).first()
+        assert run.status == control.PAUSED and "closed" in (run.message or "")
+        running = s.scalars(select(StageStatus).where(StageStatus.status == Status.RUNNING)).all()
+    assert running == []  # claimed images are back in the queue
+    assert 1 <= len(stage.processed) < 10

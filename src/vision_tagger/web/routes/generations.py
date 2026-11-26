@@ -17,6 +17,7 @@ from ...faces.generations import (
     pair_frames,
     resemblance,
 )
+from ...i18n import _
 from ..common import ctx, redirect, render
 
 router = APIRouter()
@@ -68,7 +69,7 @@ def person_view(request: Request, person_id: int, compare: int | None = None) ->
         person = s.get(Person, person_id)
         others = [p for p in s.scalars(select(Person).order_by(Person.name)) if p.id != person_id]
     if person is None:
-        return redirect(request, "/generations", err="Person not found.")
+        return redirect(request, "/generations", err=_("Person not found."))
     frames_of = _frames_of(request)
     frames = frames_of(person_id)
     looks_like = c.cache.get(
@@ -102,7 +103,7 @@ def compare_view(request: Request, person_id: int, other_id: int) -> Response:
         a, b = s.get(Person, person_id), s.get(Person, other_id)
         others = [p for p in s.scalars(select(Person).order_by(Person.name)) if p.id != person_id]
     if a is None or b is None:
-        return redirect(request, "/generations", err="Person not found.")
+        return redirect(request, "/generations", err=_("Person not found."))
     frames_of = _frames_of(request)
     frames_a, frames_b = frames_of(person_id), frames_of(other_id)
     with c.db.session() as s:

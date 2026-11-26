@@ -3,78 +3,79 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <nav class="crumbs" aria-label="Breadcrumb"><a href="/persons">Persons</a></nav>
+    <nav class="crumbs" aria-label="{{ _('Breadcrumb') }}"><a href="/persons">{{ _('Persons') }}</a></nav>
     <div class="title-row">
       {% if clusters and clusters[0].cover_face_id %}<img class="avatar lg" src="/media/face/{{ clusters[0].cover_face_id }}" alt="">{% endif %}
       <div>
         <h1>{{ person.name }}</h1>
-        <small>{{ clusters | length }} cluster{{ 's' if clusters | length != 1 }} · {{ refs | length }} reference faces</small>
+        <small>{{ ngettext('%(num)d cluster', '%(num)d clusters', clusters | length) }} · {{ ngettext('%(num)d reference face', '%(num)d reference faces', refs | length) }}</small>
       </div>
     </div>
   </div>
   <div class="row">
-    <a class="btn" href="/generations/{{ person.id }}">{{ icon('growth', 'sm') }}Watch {{ person.name }} grow up</a>
+    <a class="btn" href="/generations/{{ person.id }}">{{ icon('growth', 'sm') }}{{ _('Watch %(name)s grow up', name=person.name) }}</a>
     <details class="dropdown">
-      <summary class="btn">Edit</summary>
+      <summary class="btn">{{ _('Edit') }}</summary>
       <div class="dropdown-panel">
-        <h3>Rename</h3>
+        <h3>{{ _('Rename') }}</h3>
         <form method="post" action="/persons/{{ person.id }}/rename" class="row">
-          <input type="text" name="name" value="{{ person.name }}" aria-label="New name" style="flex:1">
-          <button class="primary">Rename</button>
+          <input type="text" name="name" value="{{ person.name }}" aria-label="{{ _('New name') }}" style="flex:1">
+          <button class="primary">{{ _('Rename') }}</button>
         </form>
-        <p class="muted hint">Renaming to an existing name merges the two persons.</p>
+        <p class="muted hint">{{ _('Renaming to an existing name merges the two persons.') }}</p>
         <hr>
-        <form method="post" action="/persons/{{ person.id }}/delete" data-confirm="Delete {{ person.name }}? Clusters stay but become unnamed."><button class="danger">{{ icon('trash', 'sm') }}Delete person</button></form>
+        <form method="post" action="/persons/{{ person.id }}/delete" data-confirm="{{ _('Delete %(name)s? Clusters stay but become unnamed.', name=person.name) }}"><button class="danger">{{ icon('trash', 'sm') }}{{ _('Delete person') }}</button></form>
       </div>
     </details>
-    <a class="btn primary" href="/images?p={{ person.id }}">{{ icon('image', 'sm') }}Show images</a>
+    <a class="btn primary" href="/images?p={{ person.id }}">{{ icon('image', 'sm') }}{{ _('Show images') }}</a>
   </div>
 </div>
 
 <section class="card">
   <div class="age-head">
     <div>
-      <h2>Age</h2>
+      <h2>{{ _('Age') }}</h2>
       {% if person.birth_year %}
-        <p class="flush">Born <b>{{ person.birth_year }}</b> · {{ ages.current_age }} years old today.</p>
+        <p class="flush">{{ ngettext('Born %(year)s · %(num)d year old today.', 'Born %(year)s · %(num)d years old today.', ages.current_age, year='<b>' | safe ~ person.birth_year ~ '</b>' | safe) }}</p>
         {% if ages.estimate and ages.estimate.confidence != 'low' and (person.birth_year < ages.estimate.low - 5 or person.birth_year > ages.estimate.high + 5) %}
-          <div class="note warn">{{ icon('alert', 'sm') }}<small>The photos suggest ~{{ ages.estimate.year }}. Check the birth year – or many photo dates may be off.</small></div>
+          <div class="note warn">{{ icon('alert', 'sm') }}<small>{{ _('The photos suggest ~%(year)s. Check the birth year – or many photo dates may be off.', year=ages.estimate.year) }}</small></div>
         {% endif %}
       {% elif ages.birth_source == 'estimated' %}
-        <p class="flush">Probably born around <b>{{ ages.estimate.year }}</b> <small class="muted">({{ ages.estimate.low }}–{{ ages.estimate.high }})</small> · about {{ ages.current_age }} today.</p>
+        <p class="flush">{{ _('Probably born around %(year)s %(range)s · about %(age)s today.', year='<b>' | safe ~ ages.estimate.year ~ '</b>' | safe, range='<small class="muted">(' | safe ~ ages.estimate.low ~ '–' ~ ages.estimate.high ~ ')</small>' | safe, age=ages.current_age) }}</p>
       {% else %}
-        <p class="flush muted">No birth year yet{% if not ages.estimate %} – not enough well-dated photos to estimate one{% endif %}.</p>
+        <p class="flush muted">{% if not ages.estimate %}{{ _('No birth year yet – not enough well-dated photos to estimate one.') }}{% else %}{{ _('No birth year yet.') }}{% endif %}</p>
       {% endif %}
       {% if ages.estimate %}
-        <p class="muted hint">Estimate from {{ ages.estimate.samples }} photos (photo year − face age, trusted dates weighted higher, outliers dropped): ~{{ ages.estimate.year }}, {{ ages.estimate.confidence }} confidence.</p>
+        {% set confidence = {'low': _('low confidence'), 'medium': _('medium confidence'), 'high': _('high confidence')} %}
+        <p class="muted hint">{{ ngettext('Estimate from %(num)d photo (photo year − face age, trusted dates weighted higher, outliers dropped): ~%(year)s, %(confidence)s.', 'Estimate from %(num)d photos (photo year − face age, trusted dates weighted higher, outliers dropped): ~%(year)s, %(confidence)s.', ages.estimate.samples, year=ages.estimate.year, confidence=confidence.get(ages.estimate.confidence, ages.estimate.confidence)) }}</p>
       {% endif %}
     </div>
     <form method="post" action="/persons/{{ person.id }}/birth-year" class="row">
-      <input type="number" name="birth_year" min="1850" max="{{ now().year }}" value="{{ person.birth_year or '' }}" placeholder="{{ ages.estimate.year if ages.estimate else 'e.g. 1988' }}" style="width:7.5rem" aria-label="Birth year">
-      <button>{{ 'Update' if person.birth_year else 'Set birth year' }}</button>
+      <input type="number" name="birth_year" min="1850" max="{{ now().year }}" value="{{ person.birth_year or '' }}" placeholder="{{ ages.estimate.year if ages.estimate else _('e.g. %(example)s', example='1988') }}" style="width:7.5rem" aria-label="{{ _('Birth year') }}">
+      <button>{{ _('Update') if person.birth_year else _('Set birth year') }}</button>
       {% if not person.birth_year and ages.estimate %}
-        <button name="birth_year" value="{{ ages.estimate.year }}" class="primary">Use {{ ages.estimate.year }}</button>
+        <button name="birth_year" value="{{ ages.estimate.year }}" class="primary">{{ _('Use %(year)s', year=ages.estimate.year) }}</button>
       {% endif %}
     </form>
   </div>
   {% if ages.suspicious %}
-    <div class="note warn" style="margin-top:14px">{{ icon('alert', 'sm') }}<span><a href="#doubtful">{{ ages.suspicious | length }} photo{{ 's' if ages.suspicious | length != 1 }} with a doubtful date</a> <small class="muted">– the age on the date doesn't match the face.</small></span></div>
+    <div class="note warn" style="margin-top:14px">{{ icon('alert', 'sm') }}<span><a href="#doubtful">{{ ngettext('%(num)d photo with a doubtful date', '%(num)d photos with a doubtful date', ages.suspicious | length) }}</a> <small class="muted">{{ _("– the age on the date doesn't match the face.") }}</small></span></div>
   {% endif %}
 </section>
 
 {% if timeline %}
-<div class="section-title"><h2>Through the years</h2></div>
+<div class="section-title"><h2>{{ _('Through the years') }}</h2></div>
 <div class="years">
   {% for year, faces in timeline %}
   <div class="year">
-    <div class="ylabel">{{ year }}</div>
+    <div class="ylabel">{{ _('undated') if year == 'undated' else year }}</div>
     <div class="yfaces">
       {% for f in faces %}
         {% set a = f.best_age %}
-        <a class="face" href="/images/{{ f.image_id }}" title="{{ f.recorded_at | dt('%Y-%m-%d') }} · date from {{ f.date_source }}{% if f.face_age is not none %} · face looks ~{{ f.face_age }}{% endif %}{% if f.suspicious %} · date doubtful{% if f.suggested_year %}, faces suggest ~{{ f.suggested_year }}{% endif %}{% endif %}">
+        <a class="face" href="/images/{{ f.image_id }}" title="{{ f.recorded_at | dt('%Y-%m-%d') }} · {{ _('date from %(source)s', source=f.date_source) }}{% if f.face_age is not none %} · {{ _('face looks ~%(age)s', age=f.face_age) }}{% endif %}{% if f.suspicious %} · {% if f.suggested_year %}{{ _('date doubtful, faces suggest ~%(year)s', year=f.suggested_year) }}{% else %}{{ _('date doubtful') }}{% endif %}{% endif %}">
           <img loading="lazy" src="/media/face/{{ f.face_id }}" alt="">
           {% if a is not none %}<span class="agebadge {{ 'est' if (f.calendar_age is none or f.suspicious) }}">{{ '~' if (f.calendar_age is none or f.suspicious) }}{{ a }}</span>{% endif %}
-          {% if f.suspicious %}<span class="lq badge warn" aria-label="date doubtful">{{ icon('alert') }}</span>{% endif %}
+          {% if f.suspicious %}<span class="lq badge warn" aria-label="{{ _('date doubtful') }}">{{ icon('alert') }}</span>{% endif %}
         </a>
       {% endfor %}
     </div>
@@ -84,17 +85,17 @@
 {% endif %}
 
 {% if ages.suspicious %}
-<div class="section-title" id="doubtful"><h2>Photos with a doubtful date</h2></div>
-<p class="muted">Face ages are estimates (±5 years for adults), so check before fixing. Fixed dates are kept when the folder is scanned again.</p>
+<div class="section-title" id="doubtful"><h2>{{ _('Photos with a doubtful date') }}</h2></div>
+<p class="muted">{{ _('Face ages are estimates (±5 years for adults), so check before fixing. Fixed dates are kept when the folder is scanned again.') }}</p>
 <section class="card flush-table">
   <div class="table-wrap"><table>
     {% for f in ages.suspicious[:60] %}
     <tr>
       <td style="width:64px"><a class="thumb" href="/images/{{ f.image_id }}" style="width:56px"><img loading="lazy" src="/media/thumb/{{ f.image_id }}?size=96" alt=""></a></td>
-      <td>Recorded <b>{{ f.recorded_at | dt('%Y-%m-%d') }}</b> <span class="badge">{{ f.date_source }}</span><br>
-        <small>{% if f.calendar_age is not none %}{{ person.name }} would be {{ f.calendar_age }}{% endif %}{% if f.face_age is not none %}, but looks about {{ f.face_age }}{% endif %}</small></td>
+      <td>{{ _('Recorded %(date)s', date='<b>' | safe ~ f.recorded_at | dt('%Y-%m-%d') ~ '</b>' | safe) }} <span class="badge">{{ f.date_source }}</span><br>
+        <small>{% if f.calendar_age is not none and f.face_age is not none %}{{ _('%(name)s would be %(age)s, but looks about %(face_age)s', name=person.name, age=f.calendar_age, face_age=f.face_age) }}{% elif f.calendar_age is not none %}{{ _('%(name)s would be %(age)s', name=person.name, age=f.calendar_age) }}{% elif f.face_age is not none %}{{ _('looks about %(face_age)s', face_age=f.face_age) }}{% endif %}</small></td>
       <td class="num">{% if f.suggested_year %}
-        <form method="post" action="/images/{{ f.image_id }}/date"><input type="hidden" name="year" value="{{ f.suggested_year }}"><button class="small">Set to {{ f.suggested_year }}</button></form>
+        <form method="post" action="/images/{{ f.image_id }}/date"><input type="hidden" name="year" value="{{ f.suggested_year }}"><button class="small">{{ _('Set to %(year)s', year=f.suggested_year) }}</button></form>
       {% endif %}</td>
     </tr>
     {% endfor %}
@@ -103,45 +104,45 @@
 {% endif %}
 
 <div class="section-title">
-  <h2>Clusters</h2>
-  {% if clusters | length > 1 %}<form method="post" action="/persons/{{ person.id }}/merge-clusters"><button class="small">Merge all clusters</button></form>{% endif %}
+  <h2>{{ _('Clusters') }}</h2>
+  {% if clusters | length > 1 %}<form method="post" action="/persons/{{ person.id }}/merge-clusters"><button class="small">{{ _('Merge all clusters') }}</button></form>{% endif %}
 </div>
 {% if clusters %}
 <div class="clusters">
   {% for cl in clusters %}
   <div class="cluster-card">
-    <a class="cover" href="/clusters/{{ cl.id }}" aria-label="Cluster #{{ cl.id }}">{% if cl.cover_face_id %}<img loading="lazy" src="/media/face/{{ cl.cover_face_id }}" alt="">{% endif %}<span class="count" title="{{ cl.face_count }} faces">{{ cl.face_count }}</span>{% if cl.locked %}<span class="lock" title="Edited by you – kept on re-cluster">{{ icon('lock') }}</span>{% endif %}</a>
-    <div class="body"><a href="/clusters/{{ cl.id }}">Cluster #{{ cl.id }}</a></div>
+    <a class="cover" href="/clusters/{{ cl.id }}" aria-label="{{ _('Cluster #%(id)s', id=cl.id) }}">{% if cl.cover_face_id %}<img loading="lazy" src="/media/face/{{ cl.cover_face_id }}" alt="">{% endif %}<span class="count" title="{{ ngettext('%(num)d face', '%(num)d faces', cl.face_count) }}">{{ cl.face_count }}</span>{% if cl.locked %}<span class="lock" title="{{ _('Edited by you – kept on re-cluster') }}">{{ icon('lock') }}</span>{% endif %}</a>
+    <div class="body"><a href="/clusters/{{ cl.id }}">{{ _('Cluster #%(id)s', id=cl.id) }}</a></div>
   </div>
   {% endfor %}
 </div>
-{% else %}<p class="muted">No clusters.</p>{% endif %}
+{% else %}<p class="muted">{{ _('No clusters.') }}</p>{% endif %}
 
 {% if suggested %}
-<div class="section-title"><h2>Suggested clusters</h2></div>
+<div class="section-title"><h2>{{ _('Suggested clusters') }}</h2></div>
 <div class="clusters">
   {% for cl in suggested %}
   <div class="cluster-card">
-    <a class="cover" href="/clusters/{{ cl.id }}" aria-label="Cluster #{{ cl.id }}">{% if cl.cover_face_id %}<img loading="lazy" src="/media/face/{{ cl.cover_face_id }}" alt="">{% endif %}<span class="count" title="{{ cl.face_count }} faces">{{ cl.face_count }}</span></a>
+    <a class="cover" href="/clusters/{{ cl.id }}" aria-label="{{ _('Cluster #%(id)s', id=cl.id) }}">{% if cl.cover_face_id %}<img loading="lazy" src="/media/face/{{ cl.cover_face_id }}" alt="">{% endif %}<span class="count" title="{{ ngettext('%(num)d face', '%(num)d faces', cl.face_count) }}">{{ cl.face_count }}</span></a>
     <div class="body">
-      <small>{{ '%.0f' | format((cl.suggestion_score or 0) * 100) }}% match</small>
-      <form method="post" action="/clusters/{{ cl.id }}/accept"><button class="small primary">Accept</button></form>
+      <small>{{ _('%(percent)s%% match', percent='%.0f' | format((cl.suggestion_score or 0) * 100)) }}</small>
+      <form method="post" action="/clusters/{{ cl.id }}/accept"><button class="small primary">{{ _('Accept') }}</button></form>
     </div>
   </div>
   {% endfor %}
 </div>
 {% endif %}
 
-<div class="section-title"><h2>References</h2></div>
-<p class="muted">Embeddings used to recognise {{ person.name }} in new clusters. They come from the reference folder and from clusters you named.</p>
+<div class="section-title"><h2>{{ _('References') }}</h2></div>
+<p class="muted">{{ _('Embeddings used to recognise %(name)s in new clusters. They come from the reference folder and from clusters you named.', name=person.name) }}</p>
 {% if refs %}
 <div class="faces">
   {% for r in refs %}
   <div class="face static">
-    <img loading="lazy" src="/media/reference/{{ r.id }}" alt="" title="{{ r.source_path or ('face #' ~ r.face_id) }}">
-    <form method="post" action="/references/{{ r.id }}/delete" class="del"><button class="small danger" title="Remove reference" aria-label="Remove reference">{{ icon('x', 'sm') }}</button></form>
+    <img loading="lazy" src="/media/reference/{{ r.id }}" alt="" title="{{ r.source_path or _('face #%(id)s', id=r.face_id) }}">
+    <form method="post" action="/references/{{ r.id }}/delete" class="del"><button class="small danger" title="{{ _('Remove reference') }}" aria-label="{{ _('Remove reference') }}">{{ icon('x', 'sm') }}</button></form>
   </div>
   {% endfor %}
 </div>
-{% else %}<p class="muted">No references yet.</p>{% endif %}
+{% else %}<p class="muted">{{ _('No references yet.') }}</p>{% endif %}
 {% endblock %}

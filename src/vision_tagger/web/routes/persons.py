@@ -16,6 +16,7 @@ from ...faces.ages import (
     estimate_birth_year,
     person_faces,
 )
+from ...i18n import _, _n
 from ..common import back, ctx, ints, redirect, render
 
 router = APIRouter()
@@ -81,7 +82,7 @@ def person_detail(request: Request, person_id: int) -> Response:
     with c.db.session() as s:
         person = s.get(Person, person_id)
         if person is None:
-            return redirect(request, "/persons", err="Person not found.")
+            return redirect(request, "/persons", err=_("Person not found."))
         clusters = list(
             s.scalars(
                 select(Cluster)
@@ -142,15 +143,19 @@ def set_birth_year(request: Request, person_id: int, birth_year: str = Form(""))
     with c.db.write() as s:
         person = s.get(Person, person_id)
         if person is None:
-            return redirect(request, "/persons", err="Person not found.")
+            return redirect(request, "/persons", err=_("Person not found."))
         if not value:
             person.birth_year = None
-            msg = "Birth year removed."
+            msg = _("Birth year removed.")
         elif value.isdigit() and 1850 <= int(value) <= date.today().year:
             person.birth_year = int(value)
-            msg = f"Birth year set to {value}."
+            msg = _("Birth year set to %(year)s.", year=value)
         else:
-            return redirect(request, f"/persons/{person_id}", err="Enter a year like 1988.")
+            return redirect(
+                request,
+                f"/persons/{person_id}",
+                err=_("Enter a year like %(example)s.", example=1988),
+            )
     return redirect(request, back(request, f"/persons/{person_id}"), msg=msg)
 
 
@@ -161,10 +166,12 @@ def rename(request: Request, person_id: int, name: str = Form(...)) -> Response:
         with c.db.write() as s:
             person = C.rename_person(s, person_id, name)
             target = person.id
-    except (ValueError, LookupError) as exc:
-        return redirect(request, back(request, "/persons"), err=str(exc))
+    except ValueError:
+        return redirect(request, back(request, "/persons"), err=_("Enter a name."))
+    except LookupError:
+        return redirect(request, back(request, "/persons"), err=_("Person not found."))
     url = f"/persons/{target}" if target != person_id else back(request, "/persons")
-    return redirect(request, url, msg="Person renamed.")
+    return redirect(request, url, msg=_("Person renamed."))
 
 
 @router.post("/persons/merge")
@@ -174,11 +181,13 @@ def merge(
     c = ctx(request)
     ids = ints(person_ids)
     if len(ids) < 2:
-        return redirect(request, "/persons", err="Select at least two persons.")
+        return redirect(request, "/persons", err=_("Select at least two persons."))
     target_id = int(target) if target.isdigit() and int(target) in ids else ids[0]
     with c.db.write() as s:
         C.merge_persons(s, target_id, ids)
-    return redirect(request, "/persons", msg=f"Merged {len(ids)} persons.")
+    return redirect(
+        request, "/persons", msg=_n("Merged %(num)d person.", "Merged %(num)d persons.", len(ids))
+    )
 
 
 @router.post("/persons/{person_id}/delete")
@@ -186,7 +195,7 @@ def delete(request: Request, person_id: int) -> Response:
     c = ctx(request)
     with c.db.write() as s:
         C.delete_person(s, person_id)
-    return redirect(request, "/persons", msg="Person deleted (clusters kept, now unnamed).")
+    return redirect(request, "/persons", msg=_("Person deleted (clusters kept, now unnamed)."))
 
 
 @router.post("/persons/{person_id}/merge-clusters")
@@ -202,7 +211,7 @@ def merge_person_clusters(request: Request, person_id: int) -> Response:
         )
         if len(ids) > 1:
             C.merge_clusters(s, ids[0], ids[1:])
-    return redirect(request, f"/persons/{person_id}", msg="Clusters merged.")
+    return redirect(request, f"/persons/{person_id}", msg=_("Clusters merged."))
 
 
 @router.post("/references/{ref_id}/delete")
@@ -212,4 +221,4 @@ def delete_reference(request: Request, ref_id: int) -> Response:
         ref = s.get(PersonReference, ref_id)
         if ref is not None:
             s.delete(ref)
-    return redirect(request, back(request, "/persons"), msg="Reference removed.")
+    return redirect(request, back(request, "/persons"), msg=_("Reference removed."))

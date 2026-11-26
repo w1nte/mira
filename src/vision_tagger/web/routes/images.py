@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from ...db.models import Cluster, Face, Image, ImageProperty, Person, Place, VlmResult
 from ...export import METADATA, ExportStats, export_images, write_sidecars_in_place
 from ...faces.ages import age_label, check_image_date, correct_image_date
+from ...i18n import Lazy, LazyJoin, _
 from ...pipeline import control
 from ...query import (
     ImageFilter,
@@ -54,7 +55,7 @@ def _chips(s, f: ImageFilter) -> dict[str, object]:
             .outerjoin(Person, Person.id == Cluster.person_id)
             .where(Cluster.id.in_(f.clusters))
         ):
-            cluster_names[cid] = name or f"Cluster #{cid}"
+            cluster_names[cid] = name or _("Cluster #%(id)s", id=cid)
     place_name = None
     if f.place is not None:
         place_name = s.scalar(select(Place.name).where(Place.id == f.place))
@@ -256,14 +257,17 @@ def set_date(
     request: Request, image_id: int, year: str = Form(...), month: str = Form("")
 ) -> Response:
     c = ctx(request)
+    url = back(request, f"/images/{image_id}")
     try:
         with c.db.write() as s:
             correct_image_date(
                 s, image_id, int(year), int(month) if month.strip().isdigit() else None
             )
-    except (ValueError, LookupError) as exc:
-        return redirect(request, back(request, f"/images/{image_id}"), err=str(exc))
-    return redirect(request, back(request, f"/images/{image_id}"), msg=f"Date set to {year}.")
+    except LookupError:
+        return redirect(request, url, err=_("Photo not found."))
+    except ValueError:
+        return redirect(request, url, err=_("Implausible year: %(year)s", year=year))
+    return redirect(request, url, msg=_("Date set to %(year)s.", year=year))
 
 
 @router.post("/images/{image_id}/requeue")
@@ -273,7 +277,9 @@ def requeue(request: Request, image_id: int, stage: str = Form(...)) -> Response
     return redirect(
         request,
         back(request, f"/images/{image_id}"),
-        msg=f"Re-queued for {stage}." if n else "Could not re-queue (running?).",
+        msg=_("Re-queued for %(stage)s.", stage=stage)
+        if n
+        else _("Could not re-queue (running?)."),
     )
 
 
@@ -293,12 +299,12 @@ def export(
         raise HTTPException(403, "use the ZIP download in remote mode")
     f = ImageFilter.from_params(QueryParams(query))
     if not target.strip():
-        return redirect(request, f"/images?{query}", err="Enter a target folder.")
+        return redirect(request, f"/images?{query}", err=_("Enter a target folder."))
     mode = mode if mode in ("copy", "hardlink", "symlink") else "copy"
     layout = layout if layout in ("flat", "date", "folder") else "flat"
 
-    def job(j: Job) -> str:
-        j.message = f"exporting to {target}"
+    def job(j: Job) -> Lazy:
+        j.message = Lazy("exporting to %(target)s", target=target)
         stats = export_images(
             c.db,
             f,
@@ -311,20 +317,35 @@ def export(
         return export_summary(stats)
 
     if not c.jobs.start("export", job):
-        return redirect(request, f"/images?{query}", err="Another job is running.")
-    return redirect(request, f"/images?{query}", msg="Export started – see dashboard for progress.")
+        return redirect(request, f"/images?{query}", err=_("Another job is running."))
+    return redirect(
+        request, f"/images?{query}", msg=_("Export started – see dashboard for progress.")
+    )
 
 
-def export_summary(stats: ExportStats, what: str = "Export") -> str:
-    parts = [f"{what} to {stats.target}: {stats.exported} files"]
+def export_summary(stats: ExportStats, search: bool = False) -> Lazy:
+    """Result of an export job (made in the job thread: translated when shown)."""
+    if search:
+        first = Lazy(
+            "Search export to %(target)s: %(n)s files", target=stats.target, n=stats.exported
+        )
+    else:
+        first = Lazy("Export to %(target)s: %(n)s files", target=stats.target, n=stats.exported)
+    parts: list[Lazy] = [first]
     if stats.sidecars:
-        parts.append(f"{stats.sidecars} XMP sidecars")
+        parts.append(Lazy("%(n)s XMP sidecars", n=stats.sidecars))
     if stats.embedded:
-        parts.append(f"metadata written into {stats.embedded} copies")
+        parts.append(Lazy("metadata written into %(n)s copies", n=stats.embedded))
     if stats.fallbacks:
-        parts.append(f"{stats.fallbacks} copied instead of linked")
-    parts.append(f"{stats.skipped} skipped, {len(stats.errors)} errors")
-    return ", ".join(parts)
+        parts.append(Lazy("%(n)s copied instead of linked", n=stats.fallbacks))
+    parts.append(
+        Lazy(
+            "%(skipped)s skipped, %(errors)s errors",
+            skipped=stats.skipped,
+            errors=len(stats.errors),
+        )
+    )
+    return LazyJoin(", ", parts)
 
 
 @router.post("/images/sidecars")
@@ -335,17 +356,28 @@ def sidecars(request: Request, query: str = Form("")) -> Response:
     c = ctx(request)
     f = ImageFilter.from_params(QueryParams(query))
 
-    def job(j: Job) -> str:
-        j.message = "writing XMP sidecars next to the originals"
+    def job(j: Job) -> Lazy:
+        j.message = Lazy("writing XMP sidecars next to the originals")
         stats = write_sidecars_in_place(c.db, f, naming=c.settings.export.sidecar_naming)
-        kept = f", {stats.kept} sidecars of other apps kept" if stats.kept else ""
-        return (
-            f"XMP sidecars: {stats.sidecars} written{kept}, {stats.skipped} photos missing, "
-            f"{len(stats.errors)} errors"
+        variables = {
+            "written": stats.sidecars,
+            "kept": stats.kept,
+            "missing": stats.skipped,
+            "errors": len(stats.errors),
+        }
+        if stats.kept:
+            return Lazy(
+                "XMP sidecars: %(written)s written, %(kept)s sidecars of other apps kept, "
+                "%(missing)s photos missing, %(errors)s errors",
+                **variables,
+            )
+        return Lazy(
+            "XMP sidecars: %(written)s written, %(missing)s photos missing, %(errors)s errors",
+            **variables,
         )
 
     if not c.jobs.start("sidecars", job):
-        return redirect(request, f"/images?{query}", err="Another job is running.")
+        return redirect(request, f"/images?{query}", err=_("Another job is running."))
     return redirect(
-        request, f"/images?{query}", msg="Writing XMP sidecars – see dashboard for progress."
+        request, f"/images?{query}", msg=_("Writing XMP sidecars – see dashboard for progress.")
     )

@@ -1,16 +1,16 @@
 {% extends "base.html" %}
-{% block title %}Images{% endblock %}
+{% block title %}{{ _('Images') }}{% endblock %}
 {% block main_class %}wide{% endblock %}
 {% block content %}
 <div x-data="{ filtersOpen: false }">
 <div class="page-head">
-  <div><h1>Images</h1><small>{{ total }} images{% if not f.is_empty %} match the filter{% endif %}</small></div>
+  <div><h1>{{ _('Images') }}</h1><small>{% if f.is_empty %}{{ ngettext('%(num)d image', '%(num)d images', total) }}{% else %}{{ ngettext('%(num)d image matches the filter', '%(num)d images match the filter', total) }}{% endif %}</small></div>
   <div class="row">
-    <button type="button" class="filters-btn" @click="filtersOpen = !filtersOpen" :aria-expanded="filtersOpen" aria-controls="filters">Filters</button>
-    <a class="btn" href="/overview?{{ f.query_string() }}">{{ icon('chart', 'sm') }}Timeline</a>
+    <button type="button" class="filters-btn" @click="filtersOpen = !filtersOpen" :aria-expanded="filtersOpen" aria-controls="filters">{{ _('Filters') }}</button>
+    <a class="btn" href="/overview?{{ f.query_string() }}">{{ icon('chart', 'sm') }}{{ _('Timeline') }}</a>
     <a class="btn" href="/map{{ '?' ~ f.query_string() if not f.is_empty }}">{{ icon('map', 'sm') }}{{ _('Map') }}</a>
-    <a class="btn" href="/overview/table?{{ f.query_string() }}">Table</a>
-    <a class="btn" href="/properties?{{ f.query_string() }}">{{ icon('tag', 'sm') }}Properties</a>
+    <a class="btn" href="/overview/table?{{ f.query_string() }}">{{ _('Table') }}</a>
+    <a class="btn" href="/properties?{{ f.query_string() }}">{{ icon('tag', 'sm') }}{{ _('Properties') }}</a>
     {% if not f.is_empty %}
     <details class="dropdown">
       <summary class="btn">{{ icon('layers', 'sm') }}{{ _('Save as collection') }}</summary>
@@ -25,35 +25,35 @@
     </details>
     {% endif %}
     <details class="dropdown">
-      <summary class="btn primary">{{ icon('download', 'sm') }}Export</summary>
+      <summary class="btn primary">{{ icon('download', 'sm') }}{{ _('Export') }}</summary>
       <div class="dropdown-panel">
-        <h3>{{ _('Export %(n)s images', n=total) }}</h3>
+        <h3>{{ ngettext('Export %(num)d image', 'Export %(num)d images', total) }}</h3>
         {% if request.app.state.ctx.settings.remote_mode %}
         <p class="muted">{{ _('Downloads the photos as a ZIP file, with XMP files (keywords, caption, people, dates) for other photo apps and an index file.') }}</p>
         <a class="btn primary" href="/images/download.zip{{ '?' ~ f.query_string() if f.query_string() }}">{{ icon('download', 'sm') }}{{ _('Download ZIP') }}</a>
         {% else %}
         <form method="post" action="/images/export">
           <input type="hidden" name="query" value="{{ f.query_string() }}">
-          <label class="field"><span>Target folder</span><input type="text" name="target" placeholder="D:\Export\Beach 2021" required></label>
+          <label class="field"><span>{{ _('Target folder') }}</span><input type="text" name="target" placeholder="D:\Export\{{ _('Beach 2021') }}" required></label>
           <div class="row" style="gap:12px">
-            <label class="field" style="flex:1"><span>Mode</span><select name="mode">{% for m in ['copy', 'hardlink', 'symlink'] %}<option {{ 'selected' if m == export_mode }}>{{ m }}</option>{% endfor %}</select></label>
-            <label class="field" style="flex:1"><span>Layout</span><select name="layout"><option value="flat">flat</option><option value="date">year/month</option><option value="folder">original folders</option></select></label>
+            <label class="field" style="flex:1"><span>{{ _('Mode') }}</span><select name="mode">{% for m, text in [('copy', _('copy')), ('hardlink', _('hardlink')), ('symlink', _('symlink'))] %}<option value="{{ m }}" {{ 'selected' if m == export_mode }}>{{ text }}</option>{% endfor %}</select></label>
+            <label class="field" style="flex:1"><span>{{ _('Layout') }}</span><select name="layout"><option value="flat">{{ _('flat') }}</option><option value="date">{{ _('year/month') }}</option><option value="folder">{{ _('original folders') }}</option></select></label>
           </div>
           <fieldset class="checks meta-options">
-            <legend>Metadata for other apps</legend>
-            <label><input type="checkbox" name="metadata" value="xmp" checked> XMP sidecar files <small class="muted">digiKam, darktable, Immich, PhotoPrism</small></label>
-            <label><input type="checkbox" name="metadata" value="embed" checked> Into the copies (JPEG, PNG) <small class="muted">Lightroom, Apple Photos, Windows</small></label>
-            <label><input type="checkbox" name="metadata" value="index" checked> Index files <small class="muted">vision-tagger.csv / .json</small></label>
+            <legend>{{ _('Metadata for other apps') }}</legend>
+            <label><input type="checkbox" name="metadata" value="xmp" checked> {{ _('XMP sidecar files') }} <small class="muted">digiKam, darktable, Immich, PhotoPrism</small></label>
+            <label><input type="checkbox" name="metadata" value="embed" checked> {{ _('Into the copies (JPEG, PNG)') }} <small class="muted">Lightroom, Apple Photos, Windows</small></label>
+            <label><input type="checkbox" name="metadata" value="index" checked> {{ _('Index files') }} <small class="muted">vision-tagger.csv / .json</small></label>
           </fieldset>
           <div class="form-foot">
-            <small class="muted">Originals are never moved or changed. Keywords, caption, people with face areas and dates go along.</small>
-            <button class="primary">Export</button>
+            <small class="muted">{{ _('Originals are never moved or changed. Keywords, caption, people with face areas and dates go along.') }}</small>
+            <button class="primary">{{ _('Export') }}</button>
           </div>
         </form>
-        <form method="post" action="/images/sidecars" class="sidecar-form" data-confirm="Write XMP sidecar files next to the {{ total }} original photos? The photos are not changed; sidecars of other apps are kept.">
+        <form method="post" action="/images/sidecars" class="sidecar-form" data-confirm="{{ ngettext('Write an XMP sidecar file next to the %(num)d original photo? The photo is not changed; sidecars of other apps are kept.', 'Write XMP sidecar files next to the %(num)d original photos? The photos are not changed; sidecars of other apps are kept.', total) }}">
           <input type="hidden" name="query" value="{{ f.query_string() }}">
-          <small class="muted">Library managed in place (digiKam, Immich, PhotoPrism)?</small>
-          <button class="ghost small">Write XMP next to the originals</button>
+          <small class="muted">{{ _('Library managed in place (digiKam, Immich, PhotoPrism)?') }}</small>
+          <button class="ghost small">{{ _('Write XMP next to the originals') }}</button>
         </form>
         {% endif %}
       </div>
@@ -62,36 +62,36 @@
 </div>
 
 <div class="sidebar-layout">
-  <aside class="filters" id="filters" :class="filtersOpen && 'open'" aria-label="Filters">
+  <aside class="filters" id="filters" :class="filtersOpen && 'open'" aria-label="{{ _('Filters') }}">
     <section>
-      <h3>Search</h3>
+      <h3>{{ _('Search') }}</h3>
       <form method="get" action="/images">
         {% for name, value in f.to_params() %}{% if name not in ('q', 'from', 'to', 'sort', 'faces', 'camera', 'folder') %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endif %}{% endfor %}
-        <label class="field"><span>Text</span><input type="search" name="q" value="{{ f.text or '' }}" placeholder="file name, path, caption…"></label>
+        <label class="field"><span>{{ _('Text') }}</span><input type="search" name="q" value="{{ f.text or '' }}" placeholder="{{ _('file name, path, caption…') }}"></label>
         <div class="row nowrap" style="gap:10px">
-          <label class="field" style="flex:1"><span>From</span><input type="text" name="from" value="{{ f.date_from or '' }}" placeholder="e.g. 2019"></label>
-          <label class="field" style="flex:1"><span>To</span><input type="text" name="to" value="{{ f.date_to or '' }}" placeholder="2021-08"></label>
+          <label class="field" style="flex:1"><span>{{ _('From') }}</span><input type="text" name="from" value="{{ f.date_from or '' }}" placeholder="{{ _('e.g. %(example)s', example='2019') }}"></label>
+          <label class="field" style="flex:1"><span>{{ _('To') }}</span><input type="text" name="to" value="{{ f.date_to or '' }}" placeholder="2021-08"></label>
         </div>
-        <label class="field"><span>Folder</span><input type="text" name="folder" value="{{ f.folder or '' }}" placeholder="relative folder prefix"></label>
+        <label class="field"><span>{{ _('Folder') }}</span><input type="text" name="folder" value="{{ f.folder or '' }}" placeholder="{{ _('relative folder prefix') }}"></label>
         <div class="row nowrap" style="gap:10px">
-          <label class="field" style="flex:1"><span>Camera</span>
-            <select name="camera"><option value="">any</option>{% for cam in cameras %}<option {{ 'selected' if f.camera == cam }}>{{ cam }}</option>{% endfor %}</select></label>
-          <label class="field" style="flex:1"><span>Faces</span>
-            <select name="faces"><option value="">any</option><option value="yes" {{ 'selected' if f.has_faces == true }}>with</option><option value="no" {{ 'selected' if f.has_faces == false }}>without</option></select></label>
+          <label class="field" style="flex:1"><span>{{ _('Camera') }}</span>
+            <select name="camera"><option value="">{{ _('any') }}</option>{% for cam in cameras %}<option {{ 'selected' if f.camera == cam }}>{{ cam }}</option>{% endfor %}</select></label>
+          <label class="field" style="flex:1"><span>{{ _('Faces') }}</span>
+            <select name="faces"><option value="">{{ _('any') }}</option><option value="yes" {{ 'selected' if f.has_faces == true }}>{{ _('with') }}</option><option value="no" {{ 'selected' if f.has_faces == false }}>{{ _('without') }}</option></select></label>
         </div>
-        <label class="field"><span>Sort</span>
-          <select name="sort">{% for v, l in [('date_desc','Newest first'),('date_asc','Oldest first'),('name','File name'),('path','Path'),('faces','Most faces'),('size','File size')] %}<option value="{{ v }}" {{ 'selected' if f.sort == v }}>{{ l }}</option>{% endfor %}</select></label>
-        <button class="primary block">Apply</button>
+        <label class="field"><span>{{ _('Sort') }}</span>
+          <select name="sort">{% for v, l in [('date_desc', _('Newest first')), ('date_asc', _('Oldest first')), ('name', _('File name')), ('path', _('Path')), ('faces', _('Most faces')), ('size', _('File size'))] %}<option value="{{ v }}" {{ 'selected' if f.sort == v }}>{{ l }}</option>{% endfor %}</select></label>
+        <button class="primary block">{{ _('Apply') }}</button>
       </form>
     </section>
 
     <section>
-      <h3>People</h3>
+      <h3>{{ _('People') }}</h3>
       <form method="get" action="/images/add" class="row nowrap">
         {% for name, value in f.to_params() %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
-        <select name="person" aria-label="Person">{% for p in all_persons %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}</select>
-        <button name="mode" value="include" class="icon-btn bordered" title="Must contain" aria-label="Must contain">{{ icon('plus') }}</button>
-        <button name="mode" value="exclude" class="icon-btn bordered" title="Must not contain" aria-label="Must not contain">{{ icon('minus') }}</button>
+        <select name="person" aria-label="{{ _('Person') }}">{% for p in all_persons %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}</select>
+        <button name="mode" value="include" class="icon-btn bordered" title="{{ _('Must contain') }}" aria-label="{{ _('Must contain') }}">{{ icon('plus') }}</button>
+        <button name="mode" value="exclude" class="icon-btn bordered" title="{{ _('Must not contain') }}" aria-label="{{ _('Must not contain') }}">{{ icon('minus') }}</button>
       </form>
       {% if people %}
       <div class="chips" style="margin-top:12px">
@@ -101,16 +101,16 @@
     </section>
 
     <section>
-      <h3>Property</h3>
+      <h3>{{ _('Property') }}</h3>
       <form method="get" action="/images/add">
         {% for name, value in f.to_params() %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
-        <label class="field"><span>Name</span>
+        <label class="field"><span>{{ _('Name') }}</span>
           <select name="key" hx-get="/partials/value-options" hx-target="#value-options" hx-trigger="change, load">
             {% for k in keys %}<option value="{{ k }}">{{ k | label }}</option>{% endfor %}
           </select></label>
-        <label class="field"><span>Value</span><input type="text" name="value" list="value-options" placeholder="value…" autocomplete="off"></label>
+        <label class="field"><span>{{ _('Value') }}</span><input type="text" name="value" list="value-options" placeholder="{{ _('value…') }}" autocomplete="off"></label>
         <datalist id="value-options"></datalist>
-        <div class="row"><button name="mode" value="include" class="primary">Include</button><button name="mode" value="exclude">Exclude</button></div>
+        <div class="row"><button name="mode" value="include" class="primary">{{ _('Include') }}</button><button name="mode" value="exclude">{{ _('Exclude') }}</button></div>
       </form>
     </section>
 
@@ -119,7 +119,7 @@
       <h3><a href="/properties/{{ key }}?{{ f.query_string() }}">{{ key | label }}</a></h3>
       <div class="chips">
         {% for v, n in vals %}
-          <a class="chip {{ 'active' if (key, v) in f.props }}" href="/images?{{ f.with_prop(key, v) }}" title="include">{{ v | pretty }} <span class="n">{{ n }}</span></a>
+          <a class="chip {{ 'active' if (key, v) in f.props }}" href="/images?{{ f.with_prop(key, v) }}" title="{{ _('include') }}">{{ v | pretty(key) }} <span class="n">{{ n }}</span></a>
         {% endfor %}
       </div>
     </section>
@@ -129,11 +129,11 @@
   <div class="results">
     {% if timeline %}
     <script type="application/json" id="timeline-data">{{ timeline | tojson }}</script>
-    <section class="timeline" x-data="vtTimeline('timeline-data')" aria-label="Timeline" @keydown.escape.window="cancel()">
+    <section class="timeline" x-data="vtTimeline('timeline-data')" aria-label="{{ _('Timeline') }}" @keydown.escape.window="cancel()">
       <div class="tl-head">
         <span class="tl-range" x-text="summary"></span>
         <span class="tl-hint muted" x-text="hint"></span>
-        <button type="button" class="ghost small" x-show="hasSel" x-cloak @click="clear()">All time</button>
+        <button type="button" class="ghost small" x-show="hasSel" x-cloak @click="clear()">{{ _('All time') }}</button>
       </div>
       <div class="tl-track" x-ref="track" @pointerdown="down($event)" @pointermove="move($event)" @pointerup="up($event)" @pointerleave="hover = null" @pointercancel="drag = null">
         <div class="tl-bars">
@@ -142,8 +142,8 @@
           </template>
         </div>
         <div class="tl-sel" x-show="band" x-cloak :class="pending !== null ? 'preview' : ''" :style="band ? 'left:' + band.left + '%;width:' + band.width + '%' : ''">
-          <span class="tl-handle start" data-handle="start" role="slider" tabindex="0" aria-label="Start month" :aria-valuemin="0" :aria-valuemax="n - 1" :aria-valuenow="start" :aria-valuetext="start !== null ? label(start) : ''" @keydown="key($event, 'start')" x-show="pending === null"></span>
-          <span class="tl-handle end" data-handle="end" role="slider" tabindex="0" aria-label="End month" :aria-valuemin="0" :aria-valuemax="n - 1" :aria-valuenow="end" :aria-valuetext="end !== null ? label(end) : ''" @keydown="key($event, 'end')" x-show="pending === null"></span>
+          <span class="tl-handle start" data-handle="start" role="slider" tabindex="0" aria-label="{{ _('Start month') }}" :aria-valuemin="0" :aria-valuemax="n - 1" :aria-valuenow="start" :aria-valuetext="start !== null ? label(start) : ''" @keydown="key($event, 'start')" x-show="pending === null"></span>
+          <span class="tl-handle end" data-handle="end" role="slider" tabindex="0" aria-label="{{ _('End month') }}" :aria-valuemin="0" :aria-valuemax="n - 1" :aria-valuenow="end" :aria-valuetext="end !== null ? label(end) : ''" @keydown="key($event, 'end')" x-show="pending === null"></span>
         </div>
         <div class="tl-tip" x-show="hover !== null && !drag" x-cloak :style="'left:' + pos(hover) + '%'" x-text="hover !== null ? label(hover) + ' · ' + counts[hover] : ''"></div>
       </div>
@@ -158,7 +158,7 @@
         {% include "partials/image_grid.html" %}
       </div>
     {% else %}
-      <div class="card empty">No images match.</div>
+      <div class="card empty">{{ _('No images match.') }}</div>
     {% endif %}
   </div>
 </div>

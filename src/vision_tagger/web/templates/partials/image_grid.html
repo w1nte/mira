@@ -6,5 +6,5 @@
 </a>
 {% endfor %}
 {% if next_page %}
-<div hx-get="/images/page?page={{ next_page }}{{ '&' ~ qs if qs }}" hx-trigger="revealed" hx-swap="outerHTML" class="muted" style="grid-column:1/-1;text-align:center;padding:1rem">Loading…</div>
+<div hx-get="/images/page?page={{ next_page }}{{ '&' ~ qs if qs }}" hx-trigger="revealed" hx-swap="outerHTML" class="muted" style="grid-column:1/-1;text-align:center;padding:1rem">{{ _('Loading…') }}</div>
 {% endif %}

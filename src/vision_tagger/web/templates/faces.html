@@ -1,26 +1,26 @@
 {% extends "base.html" %}
-{% block title %}Faces{% endblock %}
+{% block title %}{{ _('Faces') }}{% endblock %}
 {% block content %}
 <div class="page-head">
   <div>
-    <h1>Faces</h1>
-    <small>{{ total }} clusters · name a cluster inline, tick several to merge, open one to split or move faces. Shift-click selects a range.</small>
+    <h1>{{ _('Faces') }}</h1>
+    <small>{{ ngettext('%(num)d cluster', '%(num)d clusters', total) }} · {{ _('name a cluster inline, tick several to merge, open one to split or move faces. Shift-click selects a range.') }}</small>
   </div>
   <div class="row">
-    <a class="btn" href="/faces/unclustered">Unclustered <span class="badge">{{ unclustered }}</span></a>
-    <a class="btn" href="/faces/ignored">Ignored <span class="badge">{{ ignored }}</span></a>
-    <a class="btn primary" href="/quiz?mode=name" title="Name clusters as a game">{{ icon('dice', 'sm') }}Name them as a game</a>
+    <a class="btn" href="/faces/unclustered">{{ _('Unclustered') }} <span class="badge">{{ unclustered }}</span></a>
+    <a class="btn" href="/faces/ignored">{{ _('Ignored') }} <span class="badge">{{ ignored }}</span></a>
+    <a class="btn primary" href="/quiz?mode=name" title="{{ _('Name clusters as a game') }}">{{ icon('dice', 'sm') }}{{ _('Name them as a game') }}</a>
   </div>
 </div>
 
 <form class="toolbar" method="get" action="/faces" role="search">
-  <input type="search" name="q" value="{{ q }}" placeholder="Search name…" aria-label="Search by name">
-  <select name="show" data-autosubmit aria-label="Show">
-    {% for v, l in [('all','All clusters'),('unnamed','Unnamed'),('suggested','With suggestion'),('named','Named')] %}
+  <input type="search" name="q" value="{{ q }}" placeholder="{{ _('Search name…') }}" aria-label="{{ _('Search by name') }}">
+  <select name="show" data-autosubmit aria-label="{{ _('Show') }}">
+    {% for v, l in [('all', _('All clusters')), ('unnamed', _('Unnamed')), ('suggested', _('With suggestion')), ('named', _('Named'))] %}
     <option value="{{ v }}" {{ 'selected' if show == v }}>{{ l }}</option>{% endfor %}
   </select>
-  <select name="sort" data-autosubmit aria-label="Sort">
-    {% for v, l in [('size','Largest first'),('unnamed','Unnamed first'),('newest','Newest first')] %}
+  <select name="sort" data-autosubmit aria-label="{{ _('Sort') }}">
+    {% for v, l in [('size', _('Largest first')), ('unnamed', _('Unnamed first')), ('newest', _('Newest first'))] %}
     <option value="{{ v }}" {{ 'selected' if sort == v }}>{{ l }}</option>{% endfor %}
   </select>
 </form>
@@ -28,7 +28,7 @@
 <datalist id="person-names">{% for p in persons %}<option value="{{ p.name }}">{% endfor %}</datalist>
 
 {% if not clusters %}
-  <div class="card empty">No face clusters yet. Run the <b>Faces</b> stage on the dashboard.</div>
+  <div class="card empty">{{ _('No face clusters yet. Run the %(stage)s stage on the dashboard.', stage='<b>' | safe ~ _('Faces') ~ '</b>' | safe) }}</div>
 {% else %}
 <div x-data="{n: 0}" @change="n = vt.count($el)" data-select-scope>
   <div class="clusters">
@@ -37,17 +37,17 @@
     {% endfor %}
   </div>
   <form id="merge-form" method="post" action="/clusters/merge" class="actionbar" x-show="n > 0" x-cloak>
-    <b x-text="n + ' selected'"></b>
-    <button class="primary" :disabled="n < 2">Merge selected</button>
-    <small class="muted">The named (or largest) cluster is kept.</small>
-    <button type="button" class="icon-btn" @click="vt.toggleAll($root, false); n = 0" aria-label="Clear selection" title="Clear selection">{{ icon('x') }}</button>
+    <b x-text="vtT('%(n)s selected', { n: vtNum(n) })"></b>
+    <button class="primary" :disabled="n < 2">{{ _('Merge selected') }}</button>
+    <small class="muted">{{ _('The named (or largest) cluster is kept.') }}</small>
+    <button type="button" class="icon-btn" @click="vt.toggleAll($root, false); n = 0" aria-label="{{ _('Clear selection') }}" title="{{ _('Clear selection') }}">{{ icon('x') }}</button>
   </form>
 </div>
 {% if pages > 1 %}
-<nav class="pager" aria-label="Pages">
-  {% if page > 1 %}<a class="btn" href="?{{ urlencode({'page': page-1, 'sort': sort, 'q': q, 'show': show}) }}">{{ icon('chevron-left', 'sm') }}Previous</a>{% endif %}
-  <span class="muted">Page {{ page }} of {{ pages }}</span>
-  {% if page < pages %}<a class="btn" href="?{{ urlencode({'page': page+1, 'sort': sort, 'q': q, 'show': show}) }}">Next{{ icon('chevron-right', 'sm') }}</a>{% endif %}
+<nav class="pager" aria-label="{{ _('Pages') }}">
+  {% if page > 1 %}<a class="btn" href="?{{ urlencode({'page': page-1, 'sort': sort, 'q': q, 'show': show}) }}">{{ icon('chevron-left', 'sm') }}{{ _('Previous') }}</a>{% endif %}
+  <span class="muted">{{ _('Page %(page)s of %(pages)s', page=page, pages=pages) }}</span>
+  {% if page < pages %}<a class="btn" href="?{{ urlencode({'page': page+1, 'sort': sort, 'q': q, 'show': show}) }}">{{ _('Next') }}{{ icon('chevron-right', 'sm') }}</a>{% endif %}
 </nav>
 {% endif %}
 {% endif %}

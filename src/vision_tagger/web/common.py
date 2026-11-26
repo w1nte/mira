@@ -16,6 +16,7 @@ from markupsafe import Markup
 from sqlalchemy.orm import Session
 
 from .. import i18n
+from ..i18n import N_
 from ..query import ImageFilter, property_counts
 from .context import AppContext
 
@@ -24,7 +25,9 @@ STATIC_DIR = Path(__file__).parent / "static"
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 templates.env.add_extension("jinja2.ext.i18n")
-templates.env.install_gettext_callables(i18n.gettext, i18n.ngettext, newstyle=True)  # type: ignore[attr-defined]
+templates.env.install_gettext_callables(  # type: ignore[attr-defined]
+    i18n.gettext, i18n.ngettext, newstyle=True, pgettext=i18n.pgettext
+)
 templates.env.globals.update(
     languages=i18n.LANGUAGES, current_lang=i18n.current, js_i18n=i18n.js_strings
 )
@@ -127,15 +130,85 @@ def fmt_duration(seconds: float | None) -> str:
     return f"{s}s"
 
 
-def label(key: str | None) -> str:
-    if not key:
-        return ""
+def label_text(key: str) -> str:
+    """English display name of a property key (``location_type`` -> ``Location type``)."""
     return key.replace("_", " ").capitalize()
 
 
-def pretty(value: object) -> str:
-    """Display form of a property value (``meeting_room`` -> ``meeting room``)."""
+def pretty_text(value: object) -> str:
+    """English display form of a property value (``meeting_room`` -> ``meeting room``)."""
     return str(value).replace("_", " ")
+
+
+def label(key: str | None) -> str:
+    """Translated display name of a property key (the key itself stays English)."""
+    if not key:
+        return ""
+    return i18n.gettext(label_text(key))
+
+
+# property keys whose values have their own catalog entries ("orientation|landscape"): the
+# same English word means something else elsewhere (composition "landscape" / "portrait")
+VALUE_CONTEXTS = frozenset({"orientation"})
+
+
+def pretty(value: object, key: str | None = None) -> str:
+    """Translated display form of a property value; stored values and URLs stay English.
+
+    Values of the vocabulary are in the catalogs; free text (objects, tags) is shown as it is
+    unless it happens to be a known word. Pass the ``key`` (``{{ v | pretty(key) }}``): some
+    words need it as context.
+    """
+    text = pretty_text(value)
+    if key in VALUE_CONTEXTS:
+        return i18n.pgettext(key, text)
+    return i18n.gettext(text)
+
+
+# display names of internal identifiers (badges, the activity indicator); unknown ones as they are
+STAGE_TITLES = {
+    "faces": N_("Faces"),
+    "ages": N_("Face ages"),
+    "vlm": N_("Properties"),
+    "embed": N_("Search index"),
+}
+STATUS_TITLES = {
+    "pending": N_("pending"),
+    "running": N_("running"),
+    "done": N_("done"),
+    "error": N_("error"),
+    "skipped": N_("skipped"),
+    "completed": N_("completed"),
+    "failed": N_("failed"),
+    "paused": N_("paused"),
+    "stopped": N_("stopped"),
+    "interrupted": N_("interrupted"),
+}
+JOB_TITLES = {
+    "index": N_("Index"),
+    "recluster": N_("Recluster"),
+    "references": N_("References"),
+    "export": N_("Export"),
+    "sidecars": N_("Sidecars"),
+}
+
+
+def _title(titles: dict[str, str], name: str | None) -> str:
+    if not name:
+        return ""
+    return i18n.gettext(titles[name]) if name in titles else name
+
+
+def stage_title(name: str | None) -> str:
+    return _title(STAGE_TITLES, name)
+
+
+def status_title(name: str | None) -> str:
+    return _title(STATUS_TITLES, name)
+
+
+def job_title(name: str | None) -> str:
+    return _title(JOB_TITLES, name)
 
 
 def pct(part: int | float, total: int | float) -> float:
@@ -159,4 +232,12 @@ def icon(name: str, cls: str = "") -> Markup:
 templates.env.filters.update(
     dt=fmt_dt, bytes=fmt_bytes, duration=fmt_duration, label=label, pretty=pretty
 )
-templates.env.globals.update(pct=pct, urlencode=urlencode, now=datetime.now, icon=icon)
+templates.env.globals.update(
+    pct=pct,
+    urlencode=urlencode,
+    now=datetime.now,
+    icon=icon,
+    stage_title=stage_title,
+    status_title=status_title,
+    job_title=job_title,
+)

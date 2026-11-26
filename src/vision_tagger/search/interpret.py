@@ -20,6 +20,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..db.models import Image, Person, PropertyAlias
+from ..i18n import Lazy
 from ..query import ImageFilter, _parse_date, property_counts
 from ..vlm.normalize import Normalizer, singularize
 from ..vlm.schema import Vocabulary, slug
@@ -57,7 +58,8 @@ class Interpretation:
     semantic_query: str = ""
     keywords: list[str] = field(default_factory=list)
     mode: str = "llm"  # "llm" or "basic"
-    notes: list[str] = field(default_factory=list)
+    # shown in the UI; interpretations are cached for every language, so notes are Lazy
+    notes: list[str | Lazy] = field(default_factory=list)
 
     def hard_filter(self, relaxed: bool = False) -> ImageFilter:
         """The strict part: persons, required / excluded properties and the date range."""
@@ -181,7 +183,7 @@ def validate(raw: dict, ctx: SearchContext, query: str) -> Interpretation:
         for name in names or []:
             p = _find_person(ctx, str(name))
             if p is None:
-                it.notes.append(f"unknown person '{name}' searched as text")
+                it.notes.append(Lazy("unknown person '%(name)s' searched as text", name=name))
                 keywords.append(str(name))
             elif p not in out:
                 out.append(p)
