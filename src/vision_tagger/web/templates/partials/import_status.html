@@ -1,0 +1,18 @@
+{# Live status of scanning / processing on the import page. Expects job, counts, running. #}
+<div class="row spread">
+  <h2 class="flush">{{ _('Progress') }}</h2>
+  <a class="btn ghost small" href="/pipeline">{{ _('Details') }}</a>
+</div>
+{% if job and job.status == 'running' %}
+  <p class="import-line">{{ icon('refresh', 'sm') }} <b>{{ _('Scanning') if job.name == 'index' else job.name | capitalize }}</b> · {{ job.message }}</p>
+  {% set p = job.progress or {} %}
+  {% if p.get('candidates') %}
+  <div class="progress"><div class="p-running" style="width: {{ pct(p.get('processed', 0), p.get('candidates')) }}%"></div></div>
+  {% endif %}
+{% elif running %}
+  <p class="import-line">{{ icon('gauge', 'sm') }} <b>{{ _('Analysing photos') }}</b> · <a href="/pipeline">{{ _('see the pipeline') }}</a></p>
+{% elif job %}
+  <p class="import-line muted">{{ icon('check', 'sm') }} {{ job.message }}</p>
+{% else %}
+  <p class="muted">{{ _('Nothing running.') }} {{ ngettext('%(num)d photo in the library.', '%(num)d photos in the library.', counts.photos) }}</p>
+{% endif %}

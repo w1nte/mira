@@ -165,6 +165,16 @@ class ExportConfig(BaseModel):
     sidecar_naming: Literal["append", "replace"] = "append"
 
 
+class RemoteConfig(BaseModel):
+    """Remote mode: the app runs on a server; photos are uploaded through the web UI."""
+
+    upload_dir: Path | None = None  # where uploads are stored (required in remote mode)
+    auto_process: bool = True  # index uploads and run the pipeline automatically
+    chunk_mb: int = 8  # upload chunk size
+    max_file_gb: float = 50.0  # largest single upload (a ZIP can be big)
+    max_zip_gb: float = 200.0  # largest total size extracted from one ZIP
+
+
 class WebConfig(BaseModel):
     host: str = "127.0.0.1"
     port: int = 8765
@@ -173,6 +183,9 @@ class WebConfig(BaseModel):
     # Extra Host names accepted by the UI (e.g. the machine's LAN name when host="0.0.0.0").
     # Requests for any other host are rejected to block DNS-rebinding attacks.
     allowed_hosts: list[str] = Field(default_factory=list)
+    # Optional login password (strongly recommended in remote mode). Set it with the
+    # environment variable VT_WEB__PASSWORD rather than in a file.
+    password: str = ""
 
 
 _config_file: Path | None = None
@@ -195,6 +208,10 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    # "local": photos are in folders on this computer (pick them on the Import page).
+    # "remote": the app runs on a server; photos are uploaded and stored in remote.upload_dir.
+    mode: Literal["local", "remote"] = "local"
+    remote: RemoteConfig = Field(default_factory=RemoteConfig)
     paths: PathsConfig = Field(default_factory=PathsConfig)
     index: IndexConfig = Field(default_factory=IndexConfig)
     pipeline: PipelineConfig = Field(default_factory=PipelineConfig)
@@ -241,9 +258,35 @@ class Settings(BaseSettings):
     def face_crops_dir(self) -> Path:
         return self.cache_dir / "faces"
 
+    @property
+    def remote_mode(self) -> bool:
+        return self.mode == "remote"
+
+    @property
+    def upload_dir(self) -> Path:
+        """Where uploaded photos are stored (remote mode)."""
+        if self.remote.upload_dir is None:
+            raise ValueError(
+                "Remote mode needs a folder for the uploaded photos: set remote.upload_dir "
+                "(or VT_REMOTE__UPLOAD_DIR, or `serve --remote --upload-dir PATH`)."
+            )
+        return self.remote.upload_dir.expanduser().resolve()
+
+    @property
+    def uploads_tmp_dir(self) -> Path:
+        return self.data_dir / "uploads"
+
+    @property
+    def exports_dir(self) -> Path:
+        """Export target in remote mode (remote users must not write anywhere on the server)."""
+        return self.data_dir / "exports"
+
     def ensure_dirs(self) -> None:
         for d in (self.data_dir, self.thumbs_dir, self.face_crops_dir):
             d.mkdir(parents=True, exist_ok=True)
+        if self.remote_mode:
+            for d in (self.upload_dir, self.uploads_tmp_dir, self.exports_dir):
+                d.mkdir(parents=True, exist_ok=True)
 
 
 def load_settings(config_file: Path | None = None, **overrides: object) -> Settings:

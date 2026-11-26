@@ -92,6 +92,15 @@ class AppContext:
             PipelineRunner(self.db, settings, default_stage_factory(self.db, settings))
         )
         self.jobs = JobManager()
+        self.uploads: Any = None
+        self.ingest: Any = None
+        if settings.remote_mode:
+            from ..uploads import UploadStore
+            from .ingest import Ingest
+
+            self.uploads = UploadStore(settings)
+            self.uploads.cleanup()
+            self.ingest = Ingest(self)
         self._health: tuple[float, dict[str, Any]] = (0.0, {})
         self._versions: tuple[float, dict[str, str]] = (-1.0, {})
         self._search: Any = None
@@ -150,4 +159,6 @@ class AppContext:
             return []
 
     def close(self) -> None:
+        if self.ingest is not None:
+            self.ingest.close()
         self.db.dispose()

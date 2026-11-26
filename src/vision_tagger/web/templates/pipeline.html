@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Pipeline') }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ _('Pipeline') }}</h1>
+    <small>{{ _('Runs the analysis in batches: faces, ages, properties and the search index. You can pause, stop or restart at any time; progress is stored per photo.') }}</small>
+  </div>
+  <a class="btn" href="/import">{{ icon('upload', 'sm') }}{{ _('Import photos') }}</a>
+</div>
+
+<div class="grid-2">
+  <div class="stack">
+    <section class="card">
+      <h2>{{ _('Run pipeline') }}</h2>
+      <form method="post" action="/actions/run">
+        <div class="field"><span>{{ _('Stages') }}</span>
+          <div class="checks">
+            {% for st in stages %}
+            <label><input type="checkbox" name="stages" value="{{ st }}" checked>
+              {{ {'faces': _('Faces (InsightFace + clustering)'), 'ages': _('Ages (AgeNet + InsightFace)'), 'vlm': _('Properties (%(model)s)', model=settings.vlm.model), 'embed': _('Search index (%(model)s)', model=settings.search.embed_model)}.get(st, st) }}</label>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="row" style="gap:12px">
+          <label class="field"><span>{{ _('Batch size') }}</span>
+            <input type="number" name="batch_size" min="1" max="1000" value="{{ settings.pipeline.batch_size }}" style="width:7rem"></label>
+          <label class="field"><span>{{ _('Limit per stage') }}</span>
+            <input type="number" name="limit" min="1" placeholder="{{ _('all') }}" style="width:9rem"></label>
+        </div>
+        <div class="row">
+          <button class="primary" name="go" value="1">{{ icon('play', 'sm') }}{{ _('Start') }}</button>
+          <button formaction="/actions/pause" formmethod="post" type="submit">{{ icon('pause', 'sm') }}{{ _('Pause') }}</button>
+          <button formaction="/actions/resume" formmethod="post" type="submit">{{ icon('play', 'sm') }}{{ _('Resume') }}</button>
+          <button formaction="/actions/stop" formmethod="post" type="submit" class="danger">{{ icon('stop', 'sm') }}{{ _('Stop') }}</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>{{ _('Faces & references') }}</h2>
+      <p class="muted">{{ _('Reference photos: put portraits into %(folder)s. Matching clusters get the name suggested or assigned automatically.', folder=settings.paths.references_dir ~ '/<Person Name>/*.jpg') }}</p>
+      <div class="row">
+        <form method="post" action="/actions/import-references"><button>{{ _('Import references') }}</button></form>
+        <form method="post" action="/actions/recluster"><button>{{ _('Cluster new faces') }}</button></form>
+        <form method="post" action="/actions/recluster?full=1" data-confirm="{{ _('Re-cluster all faces? Named / edited clusters are kept.') }}"><button>{{ _('Full re-cluster') }}</button></form>
+      </div>
+    </section>
+
+    <section class="card" id="health">
+      {% include "partials/health.html" %}
+    </section>
+  </div>
+
+  <div id="status" hx-get="/partials/status" hx-trigger="every 2s [document.visibilityState === 'visible']" hx-swap="innerHTML">
+    {% include "partials/status.html" %}
+  </div>
+</div>
+{% endblock %}

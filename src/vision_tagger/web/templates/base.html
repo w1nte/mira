@@ -2,7 +2,7 @@
 {%- if theme not in ('light', 'dark') %}{% set theme = 'system' %}{% endif -%}
 {%- set path = request.url.path -%}
 <!doctype html>
-<html lang="en" data-theme="{{ theme }}">
+<html lang="{{ current_lang() }}" data-theme="{{ theme }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -16,31 +16,42 @@
 </head>
 <body x-data="{ navOpen: false }" :class="navOpen && 'nav-open'" @keydown.escape.window="navOpen = false">
   {% include "partials/icons.html" %}
-  <a class="skip" href="#main">Skip to content</a>
+  <script type="application/json" id="vt-i18n">{{ js_i18n() | tojson }}</script>
+  <a class="skip" href="#main">{{ _("Skip to content") }}</a>
 
   {% macro navlink(href, icon_name, text, active, hint=None) -%}
     <a class="navlink{{ ' active' if active }}" href="{{ href }}"{% if active %} aria-current="page"{% endif %}{% if hint %} title="{{ hint }}"{% endif %}>{{ icon(icon_name) }}<span>{{ text }}</span></a>
   {%- endmacro %}
   <aside class="sidebar" id="sidebar">
     <a class="brand" href="/"><span class="mark" aria-hidden="true"></span>vision-tagger</a>
-    <nav aria-label="Main">
-      {{ navlink('/', 'gauge', 'Dashboard', path == '/') }}
-      <div class="navgroup">Library</div>
-      {{ navlink('/search', 'search', 'Search', path.startswith('/search')) }}
-      {{ navlink('/images', 'image', 'Images', path.startswith('/images')) }}
-      {{ navlink('/overview', 'chart', 'Overview', path.startswith('/overview')) }}
-      <div class="navgroup">People</div>
-      {{ navlink('/faces', 'scan-face', 'Faces', path.startswith('/faces') or path.startswith('/clusters')) }}
-      {{ navlink('/persons', 'users', 'Persons', path.startswith('/persons')) }}
-      {{ navlink('/generations', 'growth', 'Generations', path.startswith('/generations'), 'Watch people grow up, compare family members at the same age') }}
-      {{ navlink('/quiz', 'dice', 'Quiz', path.startswith('/quiz'), "Who's that? – face quiz") }}
-      <div class="navgroup">Organize</div>
-      {{ navlink('/properties', 'tag', 'Properties', path.startswith('/properties')) }}
+    <nav aria-label="{{ _('Main') }}">
+      {{ navlink('/', 'home', _('Home'), path == '/') }}
+      <div class="navgroup">{{ _('Library') }}</div>
+      {{ navlink('/search', 'search', _('Search'), path.startswith('/search')) }}
+      {{ navlink('/images', 'image', _('Images'), path.startswith('/images')) }}
+      {{ navlink('/collections', 'layers', _('Collections'), path.startswith('/collections')) }}
+      {{ navlink('/overview', 'chart', _('Overview'), path.startswith('/overview')) }}
+      <div class="navgroup">{{ _('People') }}</div>
+      {{ navlink('/faces', 'scan-face', _('Faces'), path.startswith('/faces') or path.startswith('/clusters')) }}
+      {{ navlink('/persons', 'users', _('Persons'), path.startswith('/persons')) }}
+      {{ navlink('/generations', 'growth', _('Generations'), path.startswith('/generations'), _('Watch people grow up, compare family members at the same age')) }}
+      {{ navlink('/quiz', 'dice', _('Quiz'), path.startswith('/quiz'), _("Who's that? – face quiz")) }}
+      <div class="navgroup">{{ _('Organize') }}</div>
+      {{ navlink('/properties', 'tag', _('Properties'), path.startswith('/properties')) }}
+      <div class="navgroup">{{ _('System') }}</div>
+      {{ navlink('/import', 'upload', _('Import'), path.startswith('/import')) }}
+      {{ navlink('/pipeline', 'gauge', _('Pipeline'), path.startswith('/pipeline')) }}
     </nav>
     <div class="sidebar-foot">
       <div id="activity" hx-get="/partials/activity" hx-trigger="load, every 5s [document.visibilityState === 'visible']"></div>
-      <div class="theme-switch" role="radiogroup" aria-label="Theme">
-        {% for value, text, ic in [('system', 'System theme', 'monitor'), ('light', 'Light theme', 'sun'), ('dark', 'Dark theme', 'moon')] %}
+      <button type="button" class="install-btn ghost small" data-install hidden>{{ icon('smartphone', 'sm') }}{{ _('Install app') }}</button>
+      <label class="lang-switch" title="{{ _('Language') }}">{{ icon('globe', 'sm') }}
+        <select data-lang-switch aria-label="{{ _('Language') }}">
+          {% for code, name in languages.items() %}<option value="{{ code }}" {{ 'selected' if code == current_lang() }}>{{ name }}</option>{% endfor %}
+        </select>
+      </label>
+      <div class="theme-switch" role="radiogroup" aria-label="{{ _('Theme') }}">
+        {% for value, text, ic in [('system', _('System theme'), 'monitor'), ('light', _('Light theme'), 'sun'), ('dark', _('Dark theme'), 'moon')] %}
         <button type="button" role="radio" aria-checked="{{ 'true' if theme == value else 'false' }}" tabindex="{{ '0' if theme == value else '-1' }}"
                 data-theme-set="{{ value }}" title="{{ text }}" aria-label="{{ text }}">{{ icon(ic, 'sm') }}</button>
         {% endfor %}
@@ -51,13 +62,13 @@
 
   <div class="shell">
     <header class="topbar">
-      <button type="button" class="icon-btn menu-btn" @click="navOpen = !navOpen" aria-label="Menu" aria-controls="sidebar" :aria-expanded="navOpen">{{ icon('menu') }}</button>
+      <button type="button" class="icon-btn menu-btn" @click="navOpen = !navOpen" aria-label="{{ _('Menu') }}" aria-controls="sidebar" :aria-expanded="navOpen">{{ icon('menu') }}</button>
       <form class="navsearch" role="search" method="get" action="/search">
         {{ icon('search') }}
-        <input type="search" name="q" aria-label="Search photos" aria-keyshortcuts="/" autocomplete="off"
+        <input type="search" name="q" aria-label="{{ _('Search photos') }}" aria-keyshortcuts="/" autocomplete="off"
                value="{{ request.query_params.get('q', '') if path.startswith('/search') else '' }}"
-               placeholder="Search photos – e.g. “Anna at the beach, summer 2021”">
-        <kbd title="Press / to search">/</kbd>
+               placeholder="{{ _('Search photos – e.g. “Anna at the beach, summer 2021”') }}">
+        <kbd title="{{ _('Press / to search') }}">/</kbd>
       </form>
     </header>
     <main id="main" class="{% block main_class %}container{% endblock %}">
@@ -69,7 +80,7 @@
   {% if msg %}
   <div class="toast" role="status" x-data="{ show: true }" x-show="show" x-init="setTimeout(() => show = false, 6000)" x-transition.opacity.duration.200ms>
     <span>{{ msg }}</span>
-    <button type="button" class="icon-btn" @click="show = false" aria-label="Dismiss">{{ icon('x') }}</button>
+    <button type="button" class="icon-btn" @click="show = false" aria-label="{{ _('Dismiss') }}">{{ icon('x') }}</button>
   </div>
   {% endif %}
 </body>

@@ -15,6 +15,7 @@ from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
 from sqlalchemy.orm import Session
 
+from .. import i18n
 from ..query import ImageFilter, property_counts
 from .context import AppContext
 
@@ -22,6 +23,11 @@ TEMPLATES_DIR = Path(__file__).parent / "templates"
 STATIC_DIR = Path(__file__).parent / "static"
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+templates.env.add_extension("jinja2.ext.i18n")
+templates.env.install_gettext_callables(i18n.gettext, i18n.ngettext, newstyle=True)  # type: ignore[attr-defined]
+templates.env.globals.update(
+    languages=i18n.LANGUAGES, current_lang=i18n.current, js_i18n=i18n.js_strings
+)
 
 
 def ctx(request: Request) -> AppContext:

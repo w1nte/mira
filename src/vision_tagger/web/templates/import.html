@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Import') }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ _('Import photos') }}</h1>
+    <small>{% if remote %}{{ _('Upload photos, whole folders or ZIP files. They are stored on the server, analysed automatically and appear in your library.') }}{% else %}{{ _('Choose the folders with your photos. vision-tagger only reads them – your files are never moved or changed.') }}{% endif %}</small>
+  </div>
+  <a class="btn" href="/images">{{ icon('image', 'sm') }}{{ ngettext('%(num)d photo in the library', '%(num)d photos in the library', counts.photos) }}</a>
+</div>
+
+{% if remote %}
+<script type="application/json" id="upload-config">{{ {"chunk": chunk_bytes, "auto": auto_process} | tojson }}</script>
+<section class="card uploader" x-data="vtUploader('upload-config')"
+         @dragover.prevent="dragging = true" @dragleave.prevent="dragging = false" @drop.prevent="drop($event)">
+  <div class="dropzone" :class="dragging && 'over'">
+    {{ icon('cloud', 'lg') }}
+    <h2>{{ _('Drop photos, folders or ZIP files here') }}</h2>
+    <p class="muted">{{ _('Large files and thousands of photos are fine. You can close this page – the uploads continue when you come back.') }}</p>
+    <div class="row" style="justify-content:center">
+      <label class="btn primary">{{ icon('image', 'sm') }}{{ _('Choose photos') }}
+        <input type="file" multiple accept="image/*,.heic,.heif,.zip" hidden @change="pick($event)"></label>
+      <label class="btn">{{ icon('folder', 'sm') }}{{ _('Choose a folder') }}
+        <input type="file" webkitdirectory multiple hidden @change="pick($event)"></label>
+    </div>
+  </div>
+
+  <template x-if="total > 0">
+    <div class="queue">
+      <div class="row spread">
+        <b x-text="summary"></b>
+        <div class="row">
+          <button type="button" class="small" x-show="!paused && pending > 0" @click="pause()">{{ icon('pause', 'sm') }}{{ _('Pause') }}</button>
+          <button type="button" class="small primary" x-show="paused && pending > 0" x-cloak @click="resume()">{{ icon('play', 'sm') }}{{ _('Resume') }}</button>
+          <button type="button" class="small ghost" x-show="done + failed > 0" @click="clearFinished()">{{ _('Clear finished') }}</button>
+        </div>
+      </div>
+      <div class="progress" style="margin-top:10px"><div class="p-done" :style="'width:' + percent + '%'"></div></div>
+      <div class="legend">
+        <span>{{ _('waiting') }} <b x-text="waiting"></b></span>
+        <span>{{ _('uploading') }} <b x-text="active"></b></span>
+        <span>{{ _('done') }} <b x-text="done"></b></span>
+        <span x-show="failed">{{ _('failed') }} <b x-text="failed"></b></span>
+      </div>
+      <ul class="upload-list">
+        <template x-for="item in visible" :key="item.id">
+          <li :class="item.state">
+            {{ icon('file', 'sm') }}<span class="name" x-text="item.name" :title="item.name"></span>
+            <span class="muted size" x-text="fmt(item.size)"></span>
+            <span class="bar"><span :style="'width:' + (item.size ? Math.round(100 * item.received / item.size) : 100) + '%'"></span></span>
+            <small class="err" x-show="item.error" x-text="item.error"></small>
+          </li>
+        </template>
+      </ul>
+      <small class="muted" x-show="storageNote" x-text="storageNote"></small>
+    </div>
+  </template>
+</section>
+{% else %}
+<div class="grid-2">
+  <section class="card">
+    <h2>{{ _('Your photo folders') }}</h2>
+    {% if roots %}
+    <ul class="roots">
+      {% for r in roots %}
+      <li>{{ icon('folder', 'sm') }}<span class="mono">{{ r }}</span>
+        <form method="post" action="/import/roots/remove"><input type="hidden" name="path" value="{{ r }}"><button class="small ghost" title="{{ _('Remove from the library folders') }}">{{ icon('x', 'sm') }}</button></form></li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="muted">{{ _('No folders yet. Add the folder (or drive) with your photos – subfolders are included.') }}</p>
+    {% endif %}
+
+    <div x-data="vtFolderPicker()" class="picker">
+      <button type="button" class="btn" x-show="!open" @click="start()">{{ icon('folder-plus', 'sm') }}{{ _('Add a folder…') }}</button>
+      <div x-show="open" x-cloak class="picker-panel">
+        <form class="row nowrap" @submit.prevent="go(typed)">
+          <input type="text" x-model="typed" placeholder="{{ _('Type or paste a path, e.g. D:\\Photos') }}" aria-label="{{ _('Folder path') }}" style="flex:1">
+          <button class="small">{{ _('Open') }}</button>
+        </form>
+        <div class="picker-path">
+          <button type="button" class="small ghost" :disabled="parent === null" @click="go(parent || '')">{{ icon('arrow-up', 'sm') }}{{ _('Up') }}</button>
+          <span class="mono" data-empty="{{ _('Start') }}" x-text="path || $el.dataset.empty"></span>
+        </div>
+        <ul class="picker-list" aria-live="polite">
+          <template x-for="f in folders" :key="f.path">
+            <li><button type="button" @click="go(f.path)">{{ icon('folder', 'sm') }}<span x-text="f.name"></span></button></li>
+          </template>
+          <li class="muted" x-show="!loading && folders.length === 0">{{ _('No subfolders') }}</li>
+        </ul>
+        <div class="form-foot">
+          <small class="muted" x-text="path ? info : ''"></small>
+          <div class="row">
+            <button type="button" class="small ghost" @click="open = false">{{ _('Cancel') }}</button>
+            <form method="post" action="/import/roots"><input type="hidden" name="path" :value="path"><button class="small primary" :disabled="!path">{{ _('Add this folder') }}</button></form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>{{ _('Scan for photos') }}</h2>
+    <p class="muted">{{ _('Finds new, changed and moved photos in your folders. Duplicates are recognised and added only once.') }}</p>
+    <form method="post" action="/actions/index" class="stack">
+      <label class="check"><input type="checkbox" name="analyse" value="1" checked> {{ _('Analyse new photos right away (faces, places, search)') }}</label>
+      <div><button class="primary" {{ 'disabled' if not roots }}>{{ icon('refresh', 'sm') }}{{ _('Scan now') }}</button></div>
+    </form>
+  </section>
+</div>
+{% endif %}
+
+<section class="card" id="import-status" hx-get="/partials/import-status" hx-trigger="load, every 3s [document.visibilityState === 'visible']" hx-swap="innerHTML">
+  {% include "partials/import_status.html" %}
+</section>
+{% endblock %}

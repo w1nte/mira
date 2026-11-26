@@ -79,6 +79,7 @@ ignore = [
 "src/vision_tagger/indexer.py" = ["PTH"]
 # typographic dashes in UI strings are intentional
 "src/vision_tagger/web/**" = ["RUF001"]
+"src/vision_tagger/i18n.py" = ["RUF001"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["vision_tagger"]

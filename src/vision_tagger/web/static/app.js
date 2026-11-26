@@ -1,3 +1,13 @@
+// Translations for scripts: the page carries the current language's strings (i18n.JS_KEYS).
+window.vtT = function (key, vars) {
+  if (!window.__vtI18n) {
+    try { window.__vtI18n = JSON.parse(document.getElementById("vt-i18n").textContent); } catch (e) { window.__vtI18n = {}; }
+  }
+  const text = window.__vtI18n[key] || key;
+  return text.replace(/%\((\w+)\)s/g, (m, name) => (vars && name in vars ? vars[name] : m));
+};
+window.vtNum = (n) => Number(n).toLocaleString(document.documentElement.lang || undefined);
+
 // True while the user types into a text field (keyboard shortcuts must not fire then).
 // Checkboxes, radios and buttons don't count: focus often lands there after a click.
 window.vtIsTyping = function (el) {
@@ -204,7 +214,7 @@ window.vtGrowup = function (dataId) {
 // keyboard (arrows: one month, Shift: one year). The range becomes the from/to filter.
 window.vtTimeline = function (dataId) {
   const data = JSON.parse(document.getElementById(dataId).textContent);
-  const NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const monthName = new Intl.DateTimeFormat(document.documentElement.lang || undefined, { month: "short", year: "numeric" });
   const months = data.months;
   const n = months.length;
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -250,15 +260,15 @@ window.vtTimeline = function (dataId) {
     },
     get summary() {
       if (this.pending !== null) return this.label(this.pending) + " – …";
-      if (!this.hasSel) return "All time · " + this.total(0, n - 1).toLocaleString() + " photos";
+      if (!this.hasSel) return vtT("All time · %(n)s photos", { n: vtNum(this.total(0, n - 1)) });
       const range = this.start === this.end ? this.label(this.start) : this.label(this.start) + " – " + this.label(this.end);
-      return range + " · " + this.total(this.start, this.end).toLocaleString() + " photos";
+      return vtT("%(range)s · %(n)s photos", { range, n: vtNum(this.total(this.start, this.end)) });
     },
     get hint() {
-      if (this.pending !== null) return "Click the last month (Esc cancels)";
-      return this.hasSel ? "Drag the band or its edges" : "Click the first month, then the last";
+      if (this.pending !== null) return vtT("Click the last month (Esc cancels)");
+      return this.hasSel ? vtT("Drag the band or its edges") : vtT("Click the first month, then the last");
     },
-    label(i) { const m = months[i]; return NAMES[+m.slice(5, 7) - 1] + " " + m.slice(0, 4); },
+    label(i) { const m = months[i]; return monthName.format(new Date(+m.slice(0, 4), +m.slice(5, 7) - 1, 15)); },
     total(a, b) { let t = 0; for (let i = a; i <= b; i++) t += this.counts[i]; return t; },
     pos(i, offset = 0.5) { return ((i + offset) / n) * 100; },
     barHeight(c) { return c ? Math.max(4, (c / this.max) * 100) : 0; },
@@ -352,3 +362,222 @@ window.vtTimeline = function (dataId) {
     },
   };
 };
+
+// Language switcher: remember the choice in a cookie (read by the server) and reload.
+document.addEventListener("change", function (ev) {
+  const sel = ev.target.closest("select[data-lang-switch]");
+  if (!sel) return;
+  document.cookie = "vt_lang=" + encodeURIComponent(sel.value) + "; path=/; max-age=31536000; SameSite=Lax";
+  window.location.reload();
+});
+
+// Import (local mode): pick a folder on this computer. Lists folders only.
+window.vtFolderPicker = function () {
+  return {
+    open: false, path: "", parent: null, folders: [], images: 0, typed: "", loading: false,
+    get info() { return vtT("Photos in this folder: %(n)s", { n: vtNum(this.images) }); },
+    start() { this.open = true; this.go(""); },
+    async go(path) {
+      this.loading = true;
+      try {
+        const r = await fetch("/api/fs?path=" + encodeURIComponent(path || ""));
+        if (!r.ok) throw new Error(await r.text());
+        const d = await r.json();
+        Object.assign(this, { path: d.path, parent: d.parent, folders: d.folders, images: d.images });
+        this.typed = d.path;
+      } catch (e) {
+        this.folders = [];
+      } finally {
+        this.loading = false;
+      }
+    },
+  };
+};
+
+// Import (remote mode): resumable uploads. The queue lives in IndexedDB (metadata in "queue",
+// the files themselves in "files"), so closing the page loses nothing: when it is opened
+// again, every unfinished file continues where the server stopped receiving it.
+(function () {
+  const DB = "vision-tagger-uploads";
+  let dbPromise = null;
+  function db() {
+    if (!dbPromise) {
+      dbPromise = new Promise((resolve, reject) => {
+        const req = indexedDB.open(DB, 1);
+        req.onupgradeneeded = () => {
+          req.result.createObjectStore("queue", { keyPath: "id" });
+          req.result.createObjectStore("files");
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+    return dbPromise;
+  }
+  async function tx(stores, mode, fn) {
+    const d = await db();
+    return new Promise((resolve, reject) => {
+      const t = d.transaction(stores, mode);
+      const result = fn(t);
+      t.oncomplete = () => resolve(result && result.result !== undefined ? result.result : result);
+      t.onerror = () => reject(t.error);
+      t.onabort = () => reject(t.error);
+    });
+  }
+  const idb = {
+    all: () => tx(["queue"], "readonly", (t) => t.objectStore("queue").getAll()),
+    putMeta: (item) => tx(["queue"], "readwrite", (t) => { t.objectStore("queue").put(item); }),
+    addMany: (pairs) => tx(["queue", "files"], "readwrite", (t) => {
+      for (const [item, file] of pairs) { t.objectStore("queue").put(item); t.objectStore("files").put(file, item.id); }
+    }),
+    file: (id) => tx(["files"], "readonly", (t) => t.objectStore("files").get(id)),
+    dropFile: (id) => tx(["files"], "readwrite", (t) => { t.objectStore("files").delete(id); }),
+    remove: (ids) => tx(["queue", "files"], "readwrite", (t) => {
+      for (const id of ids) { t.objectStore("queue").delete(id); t.objectStore("files").delete(id); }
+    }),
+  };
+  const OK = /\.(jpe?g|png|webp|heic|heif|tiff?|bmp|gif|zip)$/i;
+  const PARALLEL = 3;
+
+  async function entriesOf(entry, prefix, out) { // drag & drop of folders
+    if (entry.isFile) {
+      await new Promise((res) => entry.file((f) => { out.push([f, prefix + f.name]); res(); }, res));
+    } else if (entry.isDirectory) {
+      const reader = entry.createReader();
+      let batch;
+      do {
+        batch = await new Promise((res) => reader.readEntries(res, () => res([])));
+        for (const e of batch) await entriesOf(e, prefix + entry.name + "/", out);
+      } while (batch.length);
+    }
+  }
+
+  window.vtUploader = function (configId) {
+    const cfg = JSON.parse(document.getElementById(configId).textContent);
+    return {
+      items: [], paused: false, dragging: false, running: 0, storageNote: "", skipped: 0,
+      get total() { return this.items.length; },
+      get done() { return this.items.filter((i) => i.state === "done").length; },
+      get failed() { return this.items.filter((i) => i.state === "failed").length; },
+      get active() { return this.items.filter((i) => i.state === "uploading").length; },
+      get waiting() { return this.items.filter((i) => i.state === "queued").length; },
+      get pending() { return this.waiting + this.active; },
+      get percent() {
+        let size = 0, got = 0;
+        for (const i of this.items) { size += i.size; got += i.state === "done" ? i.size : i.received; }
+        return size ? Math.round((100 * got) / size) : 0;
+      },
+      get summary() {
+        const vars = { done: vtNum(this.done), total: vtNum(this.total) };
+        let text = vtT(this.paused ? "%(done)s of %(total)s files uploaded – paused" : "%(done)s of %(total)s files uploaded", vars);
+        if (this.skipped) text += " · " + vtT("%(n)s files skipped (not photos)", { n: vtNum(this.skipped) });
+        return text;
+      },
+      get visible() { // active first, then failed, then a few waiting / done
+        const rank = { uploading: 0, failed: 1, queued: 2, done: 3 };
+        return [...this.items].sort((a, b) => rank[a.state] - rank[b.state] || a.added - b.added).slice(0, 12);
+      },
+      fmt(bytes) {
+        const u = ["B", "KB", "MB", "GB"]; let i = 0; let v = bytes;
+        while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+        return v.toLocaleString(undefined, { maximumFractionDigits: 1 }) + " " + u[i];
+      },
+      async init() {
+        if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+        const stored = await idb.all();
+        for (const item of stored) if (item.state === "uploading") item.state = "queued";
+        this.items = stored;
+        this.pump();
+        this.updateStorage();
+      },
+      async updateStorage() {
+        if (!navigator.storage || !navigator.storage.estimate) return;
+        const e = await navigator.storage.estimate();
+        this.storageNote = this.pending ? vtT("Browser storage for waiting uploads: %(used)s of %(quota)s", { used: this.fmt(e.usage || 0), quota: this.fmt(e.quota || 0) }) : "";
+      },
+      pick(ev) { this.add([...ev.target.files].map((f) => [f, f.webkitRelativePath || f.name])); ev.target.value = ""; },
+      async drop(ev) {
+        this.dragging = false;
+        const list = [];
+        const entries = [...ev.dataTransfer.items].map((it) => it.webkitGetAsEntry && it.webkitGetAsEntry()).filter(Boolean);
+        if (entries.length) { for (const e of entries) await entriesOf(e, "", list); }
+        else for (const f of ev.dataTransfer.files) list.push([f, f.name]);
+        this.add(list);
+      },
+      async add(list) {
+        const pairs = [];
+        const now = Date.now();
+        list.forEach(([file, name], k) => {
+          if (!OK.test(name)) { this.skipped++; return; }
+          pairs.push([{ id: crypto.randomUUID(), name, size: file.size, received: 0, state: "queued", serverId: null, error: "", added: now + k }, file]);
+        });
+        for (let k = 0; k < pairs.length; k += 200) await idb.addMany(pairs.slice(k, k + 200)); // copies into browser storage
+        this.items.push(...pairs.map(([item]) => item));
+        this.pump();
+        this.updateStorage();
+      },
+      pause() { this.paused = true; },
+      resume() { this.paused = false; this.pump(); },
+      async clearFinished() {
+        const ids = this.items.filter((i) => i.state === "done" || i.state === "failed").map((i) => i.id);
+        await idb.remove(ids);
+        this.items = this.items.filter((i) => !ids.includes(i.id));
+        this.skipped = 0;
+      },
+      pump() {
+        while (!this.paused && this.running < PARALLEL) {
+          const next = this.items.find((i) => i.state === "queued" && !i.backoff);
+          if (!next) break;
+          this.running++;
+          this.upload(next).finally(() => { this.running--; this.pump(); this.updateStorage(); });
+        }
+      },
+      async api(url, opts = {}) {
+        const r = await fetch(url, opts);
+        if (!r.ok) { const e = new Error((await r.text()) || r.statusText); e.status = r.status; throw e; }
+        return r.status === 204 ? null : r.json();
+      },
+      async upload(item) {
+        item.state = "uploading";
+        try {
+          const file = await idb.file(item.id);
+          if (!file) throw Object.assign(new Error("file no longer available"), { status: 400 });
+          let state = null;
+          if (item.serverId) {
+            try { state = await this.api("/api/uploads/" + item.serverId); } catch (e) { if (e.status !== 404) throw e; }
+          }
+          if (!state) {
+            state = await this.api("/api/uploads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: item.name, size: item.size }) });
+            item.serverId = state.id;
+          }
+          item.received = state.received;
+          await idb.putMeta({ ...item });
+          while (item.received < item.size) {
+            if (this.paused) { item.state = "queued"; return; }
+            const chunk = file.slice(item.received, item.received + cfg.chunk);
+            state = await this.api("/api/uploads/" + item.serverId + "?offset=" + item.received, { method: "PUT", headers: { "Content-Type": "application/octet-stream" }, body: chunk });
+            item.received = state.received;
+            await idb.putMeta({ ...item });
+          }
+          await this.api("/api/uploads/" + item.serverId + "/complete", { method: "POST" });
+          item.state = "done";
+          item.error = "";
+          await idb.putMeta({ ...item });
+          await idb.dropFile(item.id); // free the browser storage right away
+        } catch (e) {
+          if (e.status && e.status >= 400 && e.status < 500 && e.status !== 408 && e.status !== 429) {
+            item.state = "failed"; // the server refused this file: do not retry
+            item.error = e.status === 400 ? vtT("Not a photo or ZIP file") + " – " + e.message.slice(0, 120) : e.message.slice(0, 160);
+            await idb.putMeta({ ...item });
+            await idb.dropFile(item.id);
+          } else {
+            item.state = "queued"; // network or server trouble: try again later
+            item.error = vtT("Connection lost – retrying…");
+            item.backoff = true;
+            setTimeout(() => { item.backoff = false; this.pump(); }, 5000);
+          }
+        }
+      },
+    };
+  };
+})();

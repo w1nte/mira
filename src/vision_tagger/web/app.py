@@ -14,6 +14,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
+from .. import i18n
 from ..config import Settings, load_settings
 from ..db.models import Face, Image, PersonReference
 from ..imaging import (
@@ -30,7 +31,9 @@ from .routes import (
     dashboard,
     faces,
     generations,
+    home,
     images,
+    importing,
     overview,
     persons,
     properties,
@@ -66,9 +69,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="vision-tagger", lifespan=lifespan, docs_url="/api/docs")
     app.middleware("http")(guard(allowed_hostnames(settings.web.host, settings.web.allowed_hosts)))
+
+    @app.middleware("http")
+    async def language(request: Request, call_next):  # type: ignore[no-untyped-def]
+        lang = i18n.negotiate(
+            request.headers.get("accept-language"), request.cookies.get(i18n.COOKIE)
+        )
+        token = i18n.activate(lang)
+        try:
+            return await call_next(request)
+        finally:
+            i18n.reset(token)
+
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
     for module in (
+        home,
         dashboard,
+        importing,
         faces,
         persons,
         properties,
