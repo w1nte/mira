@@ -21,6 +21,109 @@ window.vtIsTyping = function (el) {
   );
 };
 
+// Loading indicator: a thin bar at the top of the window while a page, or an HTMX request the
+// user started, is loading (with a running pipeline a page can take a few seconds). It shows
+// only after a short delay, so fast loads don't flash. Not counted: polling and lazy-loading
+// requests (hx-trigger with every / load / revealed / intersect), downloads (<a download>),
+// new tabs, and anything inside [data-no-loading].
+(function () {
+  const DELAY_MS = 150;
+  const GIVE_UP_MS = 60000; // a navigation that turned into a download or was cancelled
+  const BACKGROUND = /\b(every|load|revealed|intersect)\b/;
+  const root = document.documentElement;
+  const pending = new Set();
+  let navigating = false;
+  let showTimer = null;
+  let giveUpTimer = null;
+
+  function update() {
+    const busy = navigating || pending.size > 0;
+    const main = document.getElementById("main");
+    if (busy) {
+      if (!showTimer && !root.classList.contains("is-loading")) {
+        showTimer = setTimeout(function () {
+          showTimer = null;
+          root.classList.add("is-loading");
+          root.classList.toggle("is-navigating", navigating);
+        }, DELAY_MS);
+      } else if (navigating) {
+        root.classList.toggle("is-navigating", root.classList.contains("is-loading"));
+      }
+      if (main) main.setAttribute("aria-busy", "true");
+    } else {
+      clearTimeout(showTimer);
+      showTimer = null;
+      root.classList.remove("is-loading", "is-navigating");
+      if (main) main.removeAttribute("aria-busy");
+    }
+  }
+
+  function startNavigation() {
+    navigating = true;
+    clearTimeout(giveUpTimer);
+    giveUpTimer = setTimeout(stop, GIVE_UP_MS);
+    update();
+  }
+
+  function stop() {
+    navigating = false;
+    pending.clear();
+    clearTimeout(giveUpTimer);
+    update();
+  }
+
+  window.vtLoading = { start: startNavigation, stop: stop };
+
+  function leavesPage(a, ev) {
+    if (ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return false;
+    if (a.hasAttribute("download") || a.closest("[data-no-loading]")) return false;
+    const target = a.getAttribute("target");
+    if (target && target !== "_self") return false;
+    const href = a.getAttribute("href") || "";
+    if (!href || href.charAt(0) === "#" || /^(javascript|mailto|tel):/i.test(href)) return false;
+    const url = new URL(a.href, window.location.href);
+    if (url.origin !== window.location.origin) return false;
+    const here = window.location;
+    return !(url.hash && url.pathname === here.pathname && url.search === here.search);
+  }
+
+  // checked after the event has run: handlers that call preventDefault() (HTMX links, Alpine
+  // @click.prevent, cancelled confirmations) keep the page, so there is nothing to wait for
+  document.addEventListener("click", function (ev) {
+    const a = ev.target.closest && ev.target.closest("a[href]");
+    if (!a || !leavesPage(a, ev)) return;
+    setTimeout(function () {
+      if (!ev.defaultPrevented) startNavigation();
+    }, 0);
+  });
+  document.addEventListener("submit", function (ev) {
+    const form = ev.target;
+    if (form.closest("[data-no-loading]")) return;
+    const target =
+      (ev.submitter && ev.submitter.getAttribute("formtarget")) || form.getAttribute("target");
+    if (target && target !== "_self") return;
+    setTimeout(function () {
+      if (!ev.defaultPrevented) startNavigation();
+    }, 0);
+  });
+
+  document.addEventListener("htmx:beforeSend", function (ev) {
+    const elt = ev.detail.elt;
+    const xhr = ev.detail.xhr;
+    if (!elt || !xhr || elt.closest("[data-no-loading]")) return;
+    if (BACKGROUND.test(elt.getAttribute("hx-trigger") || "")) return;
+    pending.add(xhr);
+    // on the request itself: the element may be swapped out before HTMX's own events fire
+    xhr.addEventListener("loadend", function () {
+      if (pending.delete(xhr)) update();
+    });
+    update();
+  });
+
+  // back / forward cache: the page comes back as it was left, bar included
+  window.addEventListener("pageshow", stop);
+})();
+
 // Theme switch (System / Light / Dark). The server renders <html data-theme> from the
 // vt_theme cookie, so pages never flash; a click only stores the new choice.
 (function () {
@@ -358,6 +461,7 @@ window.vtTimeline = function (dataId) {
         params.set("to", months[this.end]);
       }
       const qs = params.toString();
+      window.vtLoading.start();
       window.location.assign("/images" + (qs ? "?" + qs : ""));
     },
   };
@@ -368,6 +472,7 @@ document.addEventListener("change", function (ev) {
   const sel = ev.target.closest("select[data-lang-switch]");
   if (!sel) return;
   document.cookie = "vt_lang=" + encodeURIComponent(sel.value) + "; path=/; max-age=31536000; SameSite=Lax";
+  window.vtLoading.start();
   window.location.reload();
 });
 

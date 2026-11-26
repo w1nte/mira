@@ -17,7 +17,7 @@
         <div class="dropdown-panel">
           <h3>{{ ngettext('Export %(num)d result', 'Export these %(num)d results', result.hits | length) }}</h3>
           {% if request.app.state.ctx.settings.remote_mode %}
-          <a class="btn primary" href="/search/download.zip?ids={{ result.hits | map(attribute='image_id') | join(',') }}">{{ icon('download', 'sm') }}{{ _('Download ZIP') }}</a>
+          <a class="btn primary" download href="/search/download.zip?ids={{ result.hits | map(attribute='image_id') | join(',') }}">{{ icon('download', 'sm') }}{{ _('Download ZIP') }}</a>
           {% else %}
           <form method="post" action="/search/export">
             <input type="hidden" name="ids" value="{{ result.hits | map(attribute='image_id') | join(',') }}">

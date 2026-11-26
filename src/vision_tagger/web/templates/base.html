@@ -21,6 +21,7 @@
   {% block head %}{% endblock %}
 </head>
 <body x-data="{ navOpen: false }" :class="navOpen && 'nav-open'" @keydown.escape.window="navOpen = false">
+  <div class="page-progress" aria-hidden="true"></div>
   {% include "partials/icons.html" %}
   <script type="application/json" id="vt-i18n">{{ js_i18n() | tojson }}</script>
   <a class="skip" href="#main">{{ _("Skip to content") }}</a>

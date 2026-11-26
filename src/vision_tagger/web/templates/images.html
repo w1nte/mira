@@ -30,7 +30,7 @@
         <h3>{{ ngettext('Export %(num)d image', 'Export %(num)d images', total) }}</h3>
         {% if request.app.state.ctx.settings.remote_mode %}
         <p class="muted">{{ _('Downloads the photos as a ZIP file, with XMP files (keywords, caption, people, dates) for other photo apps and an index file.') }}</p>
-        <a class="btn primary" href="/images/download.zip{{ '?' ~ f.query_string() if f.query_string() }}">{{ icon('download', 'sm') }}{{ _('Download ZIP') }}</a>
+        <a class="btn primary" download href="/images/download.zip{{ '?' ~ f.query_string() if f.query_string() }}">{{ icon('download', 'sm') }}{{ _('Download ZIP') }}</a>
         {% else %}
         <form method="post" action="/images/export">
           <input type="hidden" name="query" value="{{ f.query_string() }}">
