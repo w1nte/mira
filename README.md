@@ -289,13 +289,23 @@ automatically.
 ### Docker
 
 ```bash
-echo "VT_PASSWORD=choose-a-good-one" > .env
+cp .env.example .env          # Windows: copy .env.example .env
+```
+
+Open `.env` in a text editor and choose a password (`VT_PASSWORD=…`), then:
+
+```bash
 docker compose up -d
 docker compose exec ollama ollama pull qwen2.5vl:7b
 docker compose exec ollama ollama pull nomic-embed-text
 ```
 
 Then open `http://<server>:8765`, log in and upload photos on the *Import* page.
+
+On Windows, don't create `.env` with `echo … > .env` in Windows PowerShell 5.1: it writes UTF-16,
+and Docker Compose stops with `unexpected character "�" in variable name`. Copy the example and
+edit it, or write it as plain text:
+`Set-Content -Path .env -Value "VT_PASSWORD=…" -Encoding ascii`.
 
 - [`docker-compose.yml`](docker-compose.yml) starts Mira and Ollama. The volumes
   `vt-data` (database, thumbnails, models) and `vt-photos` (the uploaded photos) keep your data.
