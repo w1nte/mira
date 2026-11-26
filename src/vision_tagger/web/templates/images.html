@@ -8,6 +8,7 @@
   <div class="row">
     <button type="button" class="filters-btn" @click="filtersOpen = !filtersOpen" :aria-expanded="filtersOpen" aria-controls="filters">Filters</button>
     <a class="btn" href="/overview?{{ f.query_string() }}">{{ icon('chart', 'sm') }}Timeline</a>
+    <a class="btn" href="/map{{ '?' ~ f.query_string() if not f.is_empty }}">{{ icon('map', 'sm') }}{{ _('Map') }}</a>
     <a class="btn" href="/overview/table?{{ f.query_string() }}">Table</a>
     <a class="btn" href="/properties?{{ f.query_string() }}">{{ icon('tag', 'sm') }}Properties</a>
     {% if not f.is_empty %}

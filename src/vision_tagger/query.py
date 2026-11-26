@@ -19,6 +19,8 @@ parameter  meaning                                                example
 ``faces``  ``yes`` / ``no``                                       ``faces=yes``
 ``stage``  + ``status``: pipeline state                           ``stage=vlm&status=error``
 ``q``      text search in file name, path and caption             ``q=birthday``
+``place``  place id (see ``geo.places``)                          ``place=12``
+``bbox``   map area: min lon, min lat, max lon, max lat           ``bbox=13.3,52.4,13.5,52.6``
 ``sort``   ``date_desc`` (default), ``date_asc``, ``name``, ``path``, ``faces``, ``size``
 =========  =====================================================  =========
 """
@@ -26,6 +28,7 @@ parameter  meaning                                                example
 from __future__ import annotations
 
 import calendar
+import math
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -80,6 +83,23 @@ def _pairs(values: Iterable[str]) -> list[tuple[str, str]]:
     return out
 
 
+def _bbox(value: str | None) -> tuple[float, float, float, float] | None:
+    """``"minlon,minlat,maxlon,maxlat"``; min lon > max lon crosses the date line."""
+    try:
+        w, s, e, n = (float(v) for v in (value or "").split(","))
+    except ValueError:
+        return None
+    if not all(math.isfinite(v) for v in (w, s, e, n)):
+        return None
+    if not (-180 <= w <= 180 and -180 <= e <= 180 and -90 <= s <= n <= 90):
+        return None
+    return w, s, e, n
+
+
+def _coord(v: float) -> str:
+    return f"{v:.5f}".rstrip("0").rstrip(".")
+
+
 def _getlist(params: Mapping[str, Any], key: str) -> list[str]:
     if hasattr(params, "getlist"):
         return [v for v in params.getlist(key) if v not in (None, "")]
@@ -106,6 +126,8 @@ class ImageFilter:
     stage: str | None = None
     status: str | None = None
     text: str | None = None
+    place: int | None = None
+    bbox: tuple[float, float, float, float] | None = None
     include_missing: bool = False
     sort: str = "date_desc"
 
@@ -130,6 +152,8 @@ class ImageFilter:
             stage=params.get("stage") or None,
             status=params.get("status") or None,
             text=(params.get("q") or "").strip() or None,
+            place=(_ints([params.get("place")]) or [None])[0],
+            bbox=_bbox(params.get("bbox")),
             include_missing=params.get("missing") == "1",
             sort=sort if sort in SORTS else "date_desc",
         )
@@ -158,6 +182,10 @@ class ImageFilter:
                 out.append((key, val))
         if self.has_faces is not None:
             out.append(("faces", "yes" if self.has_faces else "no"))
+        if self.place is not None:
+            out.append(("place", str(self.place)))
+        if self.bbox is not None:
+            out.append(("bbox", ",".join(_coord(v) for v in self.bbox)))
         if self.include_missing:
             out.append(("missing", "1"))
         if self.sort != "date_desc":
@@ -259,6 +287,15 @@ def conditions(f: ImageFilter) -> list[Any]:
         )
     if f.camera:
         conds.append(Image.camera == f.camera)
+    if f.place is not None:
+        conds.append(Image.place_id == f.place)
+    if f.bbox is not None:
+        w, s, e, n = f.bbox
+        conds.append(Image.lat.between(s, n))
+        if w <= e:
+            conds.append(Image.lon.between(w, e))
+        else:  # the area crosses the date line
+            conds.append(or_(Image.lon >= w, Image.lon <= e))
     if f.has_faces is not None:
         face_exists = exists(
             select(Face.id).where(Face.image_id == Image.id, Face.ignored.is_(False))

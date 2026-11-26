@@ -13,6 +13,7 @@
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/app.js" defer></script>
   <script src="/static/alpine.min.js" defer></script>
+  {% block head %}{% endblock %}
 </head>
 <body x-data="{ navOpen: false }" :class="navOpen && 'nav-open'" @keydown.escape.window="navOpen = false">
   {% include "partials/icons.html" %}
@@ -30,6 +31,7 @@
       {{ navlink('/search', 'search', _('Search'), path.startswith('/search')) }}
       {{ navlink('/images', 'image', _('Images'), path.startswith('/images')) }}
       {{ navlink('/collections', 'layers', _('Collections'), path.startswith('/collections')) }}
+      {{ navlink('/map', 'map', _('Map'), path.startswith('/map')) }}
       {{ navlink('/overview', 'chart', _('Overview'), path.startswith('/overview')) }}
       <div class="navgroup">{{ _('People') }}</div>
       {{ navlink('/faces', 'scan-face', _('Faces'), path.startswith('/faces') or path.startswith('/clusters')) }}
