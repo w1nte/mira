@@ -21,10 +21,21 @@
             <label class="field" style="flex:1"><span>Mode</span><select name="mode">{% for m in ['copy', 'hardlink', 'symlink'] %}<option {{ 'selected' if m == export_mode }}>{{ m }}</option>{% endfor %}</select></label>
             <label class="field" style="flex:1"><span>Layout</span><select name="layout"><option value="flat">flat</option><option value="date">year/month</option><option value="folder">original folders</option></select></label>
           </div>
+          <fieldset class="checks meta-options">
+            <legend>Metadata for other apps</legend>
+            <label><input type="checkbox" name="metadata" value="xmp" checked> XMP sidecar files <small class="muted">digiKam, darktable, Immich, PhotoPrism</small></label>
+            <label><input type="checkbox" name="metadata" value="embed" checked> Into the copies (JPEG, PNG) <small class="muted">Lightroom, Apple Photos, Windows</small></label>
+            <label><input type="checkbox" name="metadata" value="index" checked> Index files <small class="muted">vision-tagger.csv / .json</small></label>
+          </fieldset>
           <div class="form-foot">
-            <small class="muted">Originals are never moved.</small>
+            <small class="muted">Originals are never moved or changed. Keywords, caption, people with face areas and dates go along.</small>
             <button class="primary">Export</button>
           </div>
+        </form>
+        <form method="post" action="/images/sidecars" class="sidecar-form" data-confirm="Write XMP sidecar files next to the {{ total }} original photos? The photos are not changed; sidecars of other apps are kept.">
+          <input type="hidden" name="query" value="{{ f.query_string() }}">
+          <small class="muted">Library managed in place (digiKam, Immich, PhotoPrism)?</small>
+          <button class="ghost small">Write XMP next to the originals</button>
         </form>
       </div>
     </details>

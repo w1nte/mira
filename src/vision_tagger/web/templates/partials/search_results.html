@@ -24,6 +24,12 @@
               <label class="field" style="flex:1"><span>Mode</span><select name="mode">{% for m in ['copy', 'hardlink', 'symlink'] %}<option {{ 'selected' if m == export_mode }}>{{ m }}</option>{% endfor %}</select></label>
               <label class="field" style="flex:1"><span>Layout</span><select name="layout"><option value="flat">flat</option><option value="date">year/month</option><option value="folder">original folders</option></select></label>
             </div>
+            <fieldset class="checks meta-options">
+              <legend>Metadata for other apps</legend>
+              <label><input type="checkbox" name="metadata" value="xmp" checked> XMP sidecar files <small class="muted">digiKam, darktable, Immich, PhotoPrism</small></label>
+              <label><input type="checkbox" name="metadata" value="embed" checked> Into the copies (JPEG, PNG) <small class="muted">Lightroom, Apple Photos, Windows</small></label>
+              <label><input type="checkbox" name="metadata" value="index" checked> Index files <small class="muted">vision-tagger.csv / .json</small></label>
+            </fieldset>
             <div class="form-foot">
               <small class="muted">Originals are never moved.</small>
               <button class="primary">Export</button>

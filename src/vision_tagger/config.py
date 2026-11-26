@@ -55,6 +55,9 @@ class IndexConfig(BaseModel):
     skip_dirs: list[str] = Field(
         default_factory=lambda: ["$RECYCLE.BIN", "System Volume Information", "$WinREAgent"]
     )
+    # Write gallery thumbnails while indexing (from the image decoded for hashing anyway) and
+    # create missing ones for files indexed earlier, so the gallery never waits for them.
+    thumbnails: bool = True
 
 
 class PipelineConfig(BaseModel):
@@ -157,6 +160,9 @@ class DerivedConfig(BaseModel):
 
 class ExportConfig(BaseModel):
     mode: Literal["copy", "hardlink", "symlink"] = "copy"
+    # XMP sidecar names: "append" = photo.jpg.xmp (digiKam, darktable, Immich, PhotoPrism),
+    # "replace" = photo.xmp (Lightroom style; two photos named alike share one then)
+    sidecar_naming: Literal["append", "replace"] = "append"
 
 
 class WebConfig(BaseModel):

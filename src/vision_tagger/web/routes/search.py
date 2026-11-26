@@ -9,9 +9,10 @@ from fastapi.responses import Response
 
 from ...db.models import Image
 from ...db.util import chunked
-from ...export import export_images
+from ...export import METADATA, export_images
 from ..common import ctx, ints, redirect, render
 from ..context import Job
+from .images import export_summary
 
 router = APIRouter()
 
@@ -74,6 +75,7 @@ def export_results(
     mode: str = Form("copy"),
     layout: str = Form("flat"),
     q: str = Form(""),
+    metadata: list[str] = Form([]),
 ) -> Response:
     c = ctx(request)
     image_ids = ints(ids.split(","))
@@ -93,8 +95,10 @@ def export_results(
             mode=mode,
             layout=layout,
             image_ids=image_ids,  # type: ignore[arg-type]
+            metadata=[m for m in metadata if m in METADATA],
+            sidecar_naming=c.settings.export.sidecar_naming,
         )
-        return f"Search export to {stats.target}: {stats.exported} files, {stats.skipped} skipped"
+        return export_summary(stats, "Search export")
 
     if not c.jobs.start("export", job):
         return redirect(request, back_url, err="Another job is running.")

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import io
 import logging
+import os
+import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -14,7 +16,14 @@ from fastapi.staticfiles import StaticFiles
 
 from ..config import Settings, load_settings
 from ..db.models import Face, Image, PersonReference
-from ..imaging import ensure_face_crop, ensure_thumbnail, face_crop_path, load_image
+from ..imaging import (
+    ensure_face_crop,
+    ensure_thumbnail,
+    face_crop_path,
+    load_image,
+    thumbnail_is_fresh,
+    thumbnail_path,
+)
 from .common import STATIC_DIR, ctx
 from .context import AppContext
 from .routes import (
@@ -33,6 +42,11 @@ from .security import allowed_hostnames, guard
 log = logging.getLogger(__name__)
 
 BROWSER_FORMATS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
+
+# Decoding a photo for a missing thumbnail or face crop is CPU work (and ~100 MB of memory
+# for a 12 MP HEIC). A gallery asks for dozens at once; more parallel decodes than CPU cores
+# only add memory pressure, so they queue here. Cached files are served without waiting.
+_GENERATE = threading.BoundedSemaphore(max(2, min(8, os.cpu_count() or 2)))
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -70,16 +84,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/media/thumb/{image_id}")
     def thumb(request: Request, image_id: int, size: int | None = None) -> Response:
         c = ctx(request)
-        size = min(max(size or c.settings.web.thumb_size, 64), 1024)
+        base_size = c.settings.web.thumb_size
+        size = min(max(size or base_size, 64), 1024)
         with c.db.session() as s:
             img = s.get(Image, image_id)
             if img is None:
                 raise HTTPException(404)
             path = img.path
-        try:
-            target = ensure_thumbnail(c.settings.thumbs_dir, image_id, path, size)
-        except (OSError, ValueError) as exc:
-            raise HTTPException(404, f"cannot read image: {exc}") from exc
+        target = thumbnail_path(c.settings.thumbs_dir, image_id, size)
+        if not thumbnail_is_fresh(target, path):
+            try:
+                with _GENERATE:  # see _GENERATE: cached thumbnails never wait here
+                    ensure_thumbnail(
+                        c.settings.thumbs_dir, image_id, path, size, base_size=base_size
+                    )
+            except (OSError, ValueError) as exc:
+                raise HTTPException(404, f"cannot read image: {exc}") from exc
         return FileResponse(target, media_type="image/webp", headers=_cache_headers())
 
     @app.get("/media/image/{image_id}")
@@ -112,18 +132,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 assert img is not None
                 path, w = img.path, img.width
                 bbox = (face.x1, face.y1, face.x2, face.y2)
-            try:
-                im = load_image(path, max_px=c.settings.faces.max_image_px)
-            except OSError as exc:
-                raise HTTPException(404, str(exc)) from exc
-            scale = im.width / w if w else 1.0
-            ensure_face_crop(
-                c.settings.face_crops_dir,
-                face_id,
-                im,
-                tuple(v * scale for v in bbox),  # type: ignore[arg-type]
-                size=c.settings.faces.crop_size,
-            )
+            with _GENERATE:
+                try:
+                    im = load_image(path, max_px=c.settings.faces.max_image_px)
+                except OSError as exc:
+                    raise HTTPException(404, str(exc)) from exc
+                scale = im.width / w if w else 1.0
+                ensure_face_crop(
+                    c.settings.face_crops_dir,
+                    face_id,
+                    im,
+                    tuple(v * scale for v in bbox),  # type: ignore[arg-type]
+                    size=c.settings.faces.crop_size,
+                )
         return FileResponse(target, media_type="image/webp", headers=_cache_headers())
 
     @app.get("/media/reference/{ref_id}")

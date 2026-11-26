@@ -824,3 +824,10 @@ details.more > summary { font-weight: 500; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* ---------- export metadata options */
+.meta-options { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px 12px; margin: 4px 0 14px; gap: 7px; }
+.meta-options legend { padding: 0 6px; font-size: .9rem; font-weight: 500; color: var(--text-2); }
+.meta-options label { align-items: baseline; flex-wrap: wrap; column-gap: 9px; row-gap: 0; }
+.meta-options label small { font-size: .84rem; }
+.sidecar-form { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
