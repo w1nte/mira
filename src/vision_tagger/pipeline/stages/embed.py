@@ -13,6 +13,7 @@ from ...search.document import build_document, doc_hash
 from ...vlm.backend import VlmBackend, make_backend
 from ...vlm.schema import Vocabulary
 from .base import Stage, StageAbort
+from .ollama import ensure_model
 from .versions import embed_stage_version
 
 log = logging.getLogger(__name__)
@@ -38,10 +39,11 @@ class EmbedStage(Stage):
         return embed_stage_version(self.settings, fake=self.backend.model == "fake")
 
     def setup(self) -> None:
-        if not self.backend.has_model(self.model):
+        # downloads a missing model first (vlm.auto_pull)
+        if not ensure_model(self, self.backend, self.model):
             raise StageAbort(
                 f"embedding model {self.model!r} is not available - is Ollama running? "
-                f"Install it with: ollama pull {self.model}"
+                f"Install it with: ollama pull {self.model} (or set vlm.auto_pull = true)"
             )
 
     def process(self, image_id: int) -> None:

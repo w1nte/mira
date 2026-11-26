@@ -8,6 +8,7 @@ import json
 import logging
 import re
 import zlib
+from collections.abc import Callable
 from typing import Any, Protocol
 
 import httpx
@@ -158,26 +159,48 @@ class OllamaBackend:
         return _normalize_rows(np.asarray(vectors, dtype=np.float32))
 
     def _installed(self) -> set[str]:
-        tags = self._client.get("/api/tags", timeout=3).json().get("models", [])
-        return {n for m in tags for n in (m.get("name"), m.get("model")) if n}
+        from .models import installed_models
+
+        return set(installed_models(self._client))
 
     def has_model(self, name: str) -> bool:
+        from .models import normalize
+
         try:
             installed = self._installed()
         except Exception:
             return False
-        return (name if ":" in name else f"{name}:latest") in installed
+        return normalize(name) in installed
+
+    def pull(
+        self,
+        name: str,
+        on_progress: Callable[[Any], None] | None = None,
+        cancel: Callable[[], bool] | None = None,
+    ) -> Any:
+        """Let Ollama download ``name`` (see :func:`vlm.models.pull`)."""
+        from .models import pull
+
+        return pull(name, client=self._client, on_progress=on_progress, cancel=cancel)
 
     def health(self) -> dict[str, Any]:
         info: dict[str, Any] = {"backend": "ollama", "url": self.cfg.base_url, "model": self.model}
         try:
             version = self._client.get("/api/version", timeout=3).json().get("version")
             names = self._installed()
+        except httpx.TransportError as exc:
+            info.update(
+                ok=False,
+                error=f"cannot reach Ollama at {self.cfg.base_url} ({type(exc).__name__}: {exc}); "
+                "install it from https://ollama.com/download and start it",
+            )
+            return info
         except Exception as exc:
             info.update(ok=False, error=f"{type(exc).__name__}: {exc}")
             return info
-        wanted = self.model if ":" in self.model else f"{self.model}:latest"
-        info.update(ok=wanted in names, version=version, installed=sorted(names))
+        from .models import normalize
+
+        info.update(ok=normalize(self.model) in names, version=version, installed=sorted(names))
         if not info["ok"]:
             info["error"] = f"model {self.model!r} not pulled (ollama pull {self.model})"
         return info

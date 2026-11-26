@@ -13,6 +13,12 @@
       <p class="muted" style="margin:6px 0 0">{{ _('Run #%(id)s · %(processed)s processed, %(failed)s failed', id=active_run.id, processed=active_run.processed, failed=active_run.failed) }}
         {% if rate %} · {{ _('%(rate)s img/s · ETA %(eta)s', rate='%.2f' | format(rate), eta=eta | duration) }}{% endif %}</p>
     {% endif %}
+    {% if pull %}
+      <div class="pull-note">
+        <p class="flush">{{ icon('download', 'sm') }} {{ _('Downloading the model for %(stage)s first', stage=stage_title(pull.stage)) }} · {{ pull_message(pull) }}</p>
+        <div class="progress" role="progressbar" aria-label="{{ pull.model }}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ pull.percent or 0 }}"><div class="p-running" style="width: {{ pull.percent or 0 }}%"></div></div>
+      </div>
+    {% endif %}
     {% if runner_error %}<div class="flash err" style="margin:12px 0 0">{{ icon('alert') }}<span>{{ runner_error }}</span></div>{% endif %}
     <div class="stats" style="margin-top:16px">
       <div class="stat"><div class="v">{{ totals.images }}</div><div class="l">{{ _('Images') }}</div></div>
@@ -70,7 +76,7 @@
   <section class="card">
     <h2>{{ _('Jobs') }}</h2>
     {% if job and job.status == 'running' %}
-      <p class="flush"><span class="badge running">{{ job.name }}</span> {{ job.message }}</p>
+      <p class="flush"><span class="badge running">{{ job_title(job.name) }}</span> {{ job.message }}</p>
       {% if job.progress and job.progress.get('candidates') %}
         <div class="progress" style="margin-top:8px"><div class="p-running" style="width: {{ pct(job.progress.processed, job.progress.candidates) }}%"></div></div>
       {% endif %}
@@ -78,7 +84,7 @@
     {% if jobs %}
     <div class="table-wrap"><table style="margin-top:8px">
       {% for j in jobs %}
-      <tr><td style="width:1%"><span class="badge {{ j.status }}">{{ j.name }}</span></td><td>{{ j.message }}</td><td class="num"><small>{{ j.finished_at.strftime('%H:%M:%S') if j.finished_at }}</small></td></tr>
+      <tr><td style="width:1%"><span class="badge {{ j.status }}">{{ job_title(j.name) }}</span></td><td>{{ j.message }}</td><td class="num"><small>{{ j.finished_at.strftime('%H:%M:%S') if j.finished_at }}</small></td></tr>
       {% endfor %}
     </table></div>
     {% endif %}

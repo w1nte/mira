@@ -2,9 +2,9 @@
 #
 #   1. cp .env.example .env (Windows: copy .env.example .env) and set the password in it
 #   2. docker compose up -d
-#   3. docker compose exec ollama ollama pull qwen2.5vl:7b
-#      docker compose exec ollama ollama pull nomic-embed-text
-#   4. open http://<server>:8765 and upload photos on the Import page
+#   3. open http://<server>:8765 and upload photos on the Import page
+#   4. the ollama service downloads the AI models when Mira needs them ("Download now" on
+#      Home, or the first run); by hand: docker compose exec ollama ollama pull qwen2.5vl:7b
 #
 # For "Install app" on phones and other computers, put it behind HTTPS (see the README).
 services:

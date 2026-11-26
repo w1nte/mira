@@ -20,6 +20,7 @@ from ..indexer import ensure_stage_rows
 from ..pipeline import control
 from ..pipeline.runner import BackgroundRunner, PipelineRunner
 from ..pipeline.stages import STAGE_NAMES, default_stage_factory, stage_versions
+from ..vlm.models import OllamaStatus, ollama_status
 
 log = logging.getLogger(__name__)
 
@@ -62,7 +63,9 @@ class JobManager:
                 job.message = result or job.message or Lazy("done")
             except Exception as exc:
                 job.status = "failed"
-                job.message = f"{type(exc).__name__}: {exc}"
+                # errors meant for the user carry a translatable ``text`` (vlm.models.PullError)
+                text = getattr(exc, "text", None)
+                job.message = text if isinstance(text, Lazy) else f"{type(exc).__name__}: {exc}"
                 log.error("job %s failed\n%s", name, traceback.format_exc())
             finally:
                 job.finished_at = datetime.now()
@@ -96,6 +99,9 @@ class AppContext:
             PipelineRunner(self.db, settings, default_stage_factory(self.db, settings))
         )
         self.jobs = JobManager()
+        #: downloads of Ollama models: one at a time, beside the other jobs (an index scan
+        #: should not wait for gigabytes of models)
+        self.downloads = JobManager()
         if was_paused:
             self._resume_paused()
         self.uploads: Any = None
@@ -107,7 +113,7 @@ class AppContext:
             self.uploads = UploadStore(settings)
             self.uploads.cleanup()
             self.ingest = Ingest(self)
-        self._health: tuple[float, dict[str, Any]] = (0.0, {})
+        self._models: tuple[float, OllamaStatus | None] = (0.0, None)
         self._versions: tuple[float, dict[str, str]] = (-1.0, {})
         self._search: Any = None
         self._search_lock = threading.Lock()
@@ -158,26 +164,17 @@ class AppContext:
             self._versions = (mtime, stage_versions(self.settings))
         return self._versions[1]
 
-    def vlm_health(self, max_age: float = 30.0) -> dict[str, Any]:
-        ts, cached = self._health
-        if cached and time.monotonic() - ts < max_age:
+    def models_status(self, max_age: float = 10.0) -> OllamaStatus:
+        """Ollama and the models this configuration needs (cached for ``max_age`` seconds)."""
+        ts, cached = self._models
+        if cached is not None and time.monotonic() - ts < max_age:
             return cached
-        from ..vlm.backend import make_backend
-        from ..vlm.schema import Vocabulary
+        status = ollama_status(self.settings)
+        self._models = (time.monotonic(), status)
+        return status
 
-        backend = None
-        try:
-            backend = make_backend(
-                self.settings.vlm, Vocabulary.load(self.settings.vlm.vocabulary_file)
-            )
-            health = backend.health()
-        except Exception as exc:  # pragma: no cover - defensive
-            health = {"ok": False, "error": str(exc)}
-        finally:
-            if backend is not None:
-                backend.close()
-        self._health = (time.monotonic(), health)
-        return health
+    def forget_models_status(self) -> None:
+        self._models = (0.0, None)
 
     def onnx_providers(self) -> list[str]:
         try:
@@ -188,6 +185,7 @@ class AppContext:
             return []
 
     def close(self) -> None:
+        self.downloads.request_stop()  # Ollama keeps the layers; the next download continues
         if self.ingest is not None:
             self.ingest.close()
         self.db.dispose()

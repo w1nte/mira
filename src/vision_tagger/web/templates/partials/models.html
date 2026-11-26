@@ -1,0 +1,43 @@
+{# The Ollama models this configuration needs, their state and download buttons (Environment card).
+   Polls itself while a download runs (or may start: a pipeline run with a model missing).
+   Expects models, downloads, downloading, download_job, poll. #}
+<div id="models" class="models"{% if poll %} hx-get="/partials/models" hx-trigger="every 2s [document.visibilityState === 'visible']" hx-swap="outerHTML"{% endif %}>
+  <ul class="model-list">
+    {% for m in models.required %}
+    {% set d = downloads.get(m.name) %}
+    <li>
+      <div class="model-info">
+        <div class="model-head">
+          <code>{{ m.name }}</code>
+          {% if models.is_installed(m) %}<span class="badge ok">{{ _('ready') }}</span>
+          {% elif d and d.phase == 'queued' %}<span class="badge pending">{{ _('queued') }}</span>
+          {% elif d %}<span class="badge running">{{ _('downloading %(percent)s %%', percent=d.percent or 0) }}</span>
+          {% elif models.reachable %}<span class="badge warn">{{ _('missing') }}</span>
+          {% else %}<span class="badge">{{ _('unknown') }}</span>{% endif %}
+        </div>
+        <small class="muted">{% for purpose in m.purposes %}{{ _(purpose) }}{% if not loop.last %} · {% endif %}{% endfor %}</small>
+        {% if d and d.phase != 'queued' %}
+        <div class="progress" role="progressbar" aria-label="{{ m.name }}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ d.percent or 0 }}"><div class="p-running" style="width: {{ d.percent or 0 }}%"></div></div>
+        <small>{{ pull_phase(d) }}</small>
+        {% endif %}
+      </div>
+      {% if models.reachable and not models.is_installed(m) and not d and not downloading %}
+      <form method="post" action="/models/download"><input type="hidden" name="key" value="{{ m.key }}"><button class="small">{{ icon('download', 'sm') }}{{ _('Download') }}</button></form>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% set missing = models.missing %}
+  {% if downloading %}
+  <form method="post" action="/models/cancel" class="row"><button class="small">{{ icon('x', 'sm') }}{{ _('Cancel download') }}</button></form>
+  {% elif missing | length > 1 %}
+  <form method="post" action="/models/download" class="row"><button class="small primary">{{ icon('download', 'sm') }}{{ _('Download missing models') }}</button></form>
+  {% endif %}
+  {% if download_job and download_job.status == 'failed' and missing and not downloading %}
+  <div class="note err">{{ icon('alert', 'sm') }}<small>{{ download_job.message }}</small></div>
+  {% endif %}
+  {% if missing and not downloads %}
+  {% set command %}{% for m in missing %}<code>ollama pull {{ m.name }}</code>{% if not loop.last %} {% endif %}{% endfor %}{% endset %}
+  <small class="muted model-alt">{{ _('Several GB, downloaded by Ollama in the background. Or in a terminal: %(command)s', command=command) }}</small>
+  {% endif %}
+</div>

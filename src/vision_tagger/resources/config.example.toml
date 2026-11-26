@@ -70,12 +70,13 @@ max_image_px = 1024
 timeout = 600
 concurrency = 1                     # parallel requests; match OLLAMA_NUM_PARALLEL
 keep_alive = "10m"
+# auto_pull = true                  # a run downloads missing Ollama models first (false: it stops)
 # vocabulary_file = "my_vocabulary.yaml"   # copy src/vision_tagger/resources/vocabulary.yaml to customise
 # synonyms_file = "my_synonyms.yaml"
 
 [search]
 # model = "qwen2.5vl:7b"            # LLM for query understanding / deep search (default: vlm.model)
-embed_model = "nomic-embed-text"    # text embeddings for the search index (ollama pull nomic-embed-text)
+embed_model = "nomic-embed-text"    # text embeddings for the search index (Mira downloads it)
 query_prefix = "search_query: "     # nomic expects these prefixes; use "" for e.g. bge-m3
 document_prefix = "search_document: "
 result_limit = 200

@@ -7,7 +7,7 @@ import shutil
 import sys
 import time
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 
@@ -242,6 +242,85 @@ def run(
         )
         for m in summary.messages:
             typer.echo(f"  {m}")
+
+
+models_app = typer.Typer(
+    help="The Ollama models Mira needs: list them (exit code 1 if some are missing) or "
+    "`models pull` the missing ones.",
+    invoke_without_command=True,
+)
+app.add_typer(models_app, name="models")
+
+
+@models_app.callback()
+def models(ctx: typer.Context) -> None:
+    """List the Ollama models this configuration needs and whether Ollama has them."""
+    if ctx.invoked_subcommand is not None:
+        return
+    from .i18n import _
+    from .vlm.models import ollama_status, unreachable_text
+
+    settings = _settings()
+    status = ollama_status(settings)
+    if not status.enabled:
+        typer.echo(f"vlm.backend = {settings.vlm.backend!r}: no Ollama models needed")
+        return
+    if not status.reachable:
+        typer.echo(f"{unreachable_text(status.url)}\n({status.error})", err=True)
+        raise typer.Exit(1)
+    typer.echo(f"Ollama {status.version or '?'} at {status.url}")
+    width = max(len(m.name) for m in status.required)
+    for m in status.required:
+        state = "installed" if status.is_installed(m) else "missing"
+        purposes = ", ".join(_(p).lower() for p in m.purposes)
+        typer.echo(f"  {m.name:<{width}}  {state:<9}  {purposes}")
+    missing = status.missing
+    if missing:
+        typer.echo(
+            f"{len(missing)} missing: run `vision-tagger models pull` (a pipeline run that needs "
+            "them downloads them too, unless vlm.auto_pull = false)"
+        )
+        raise typer.Exit(1)
+    typer.echo("all models are there")
+
+
+@models_app.command("pull")
+def models_pull() -> None:
+    """Let Ollama download the missing models, one after another (Ctrl+C cancels)."""
+    from .vlm.models import PullError, PullProgress, phase_text, pull_missing
+
+    settings = _settings()
+    tty = sys.stdout.isatty()
+    shown: dict[str, Any] = {"phase": None, "step": -1}
+
+    def on_start(index: int, todo: list[str]) -> None:
+        typer.echo(f"downloading {todo[index]} ({index + 1}/{len(todo)})")
+
+    def on_progress(index: int, todo: list[str], p: PullProgress) -> None:
+        text = f"  {p.model}: {phase_text(p.as_dict())}"
+        if tty:  # one line, updated in place
+            typer.echo(f"\r{text:<72}", nl=p.phase == "done")
+            return
+        # a log or a pipe: each phase and every 10 % (a new high: the next layer lowers it)
+        step = (p.percent or 0) // 10
+        if p.phase != shown["phase"] or step > shown["step"]:
+            shown.update(phase=p.phase, step=step)
+            typer.echo(text)
+
+    try:
+        pulled = pull_missing(settings, on_start=on_start, on_progress=on_progress)
+    except KeyboardInterrupt:
+        typer.echo("\ncancelled; Ollama keeps what it has downloaded, `models pull` continues")
+        raise typer.Exit(130) from None
+    except PullError as exc:
+        typer.echo(f"\nerror: {exc}", err=True)
+        raise typer.Exit(1) from None
+    if settings.vlm.backend != "ollama":
+        typer.echo(f"vlm.backend = {settings.vlm.backend!r}: no Ollama models needed")
+    elif pulled:
+        typer.echo(f"downloaded: {', '.join(pulled)}")
+    else:
+        typer.echo("all models are there")
 
 
 @app.command()

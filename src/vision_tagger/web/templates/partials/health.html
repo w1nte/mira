@@ -9,13 +9,18 @@
       <div class="note warn">{{ icon('alert', 'sm') }}<small>{{ _('CUDA not available – InsightFace will run on the CPU. Run %(command)s and make sure a recent NVIDIA driver is installed.', command='<code>uv sync --extra gpu</code>' | safe) }}</small></div>
     {% endif %}
   </dd>
-  <dt>VLM</dt>
+  {% if models.enabled %}
+  <dt>Ollama</dt>
   <dd>
-    {{ vlm_health.get('backend', settings.vlm.backend) }} · <code>{{ vlm_health.get('model', settings.vlm.model) }}</code>
-    {% if vlm_health.get('ok') %}<span class="badge ok">{{ _('ready') }}</span>{% else %}<span class="badge err">{{ _('not ready') }}</span>{% endif %}
-    {% if vlm_health.get('version') %}<small>Ollama {{ vlm_health.version }}</small>{% endif %}
-    {% if vlm_health.get('error') %}<div class="note err">{{ icon('alert', 'sm') }}<small>{{ vlm_health.error }}</small></div>{% endif %}
+    <code>{{ models.url }}</code>{% if models.version %} · {{ models.version }}{% endif %}
+    {% if models.reachable %}<span class="badge ok">{{ _('running') }}</span>{% else %}<span class="badge err">{{ _('not reachable') }}</span>
+      <div class="note err">{{ icon('alert', 'sm') }}<small>{% if remote %}{{ _('Start the Ollama service on the server; Mira then downloads the models it needs by itself.') }}{% else %}{% set link %}<a href="https://ollama.com/download" target="_blank" rel="noopener">ollama.com/download</a>{% endset %}{{ _('Install Ollama from %(link)s and start it; Mira then downloads the models it needs by itself.', link=link) }}{% endif %}</small></div>
+    {% endif %}
   </dd>
-  <dt>{{ _('Search') }}</dt><dd>{{ _('embeddings') }} <code>{{ settings.search.embed_model }}</code>{% if vlm_health.get('installed') is not none %}{% set em = settings.search.embed_model if ':' in settings.search.embed_model else settings.search.embed_model ~ ':latest' %}{% if em in vlm_health.installed %} <span class="badge ok">{{ _('ready') }}</span>{% else %} <span class="badge warn">{{ _('not pulled') }}</span> <small>ollama pull {{ settings.search.embed_model }}</small>{% endif %}{% endif %} · LLM <code>{{ settings.search.model or settings.vlm.model }}</code></dd>
+  <dt>{{ _('AI models') }}</dt>
+  <dd>{% include "partials/models.html" %}</dd>
+  {% else %}
+  <dt>VLM</dt><dd>{{ settings.vlm.backend }} <span class="badge ok">{{ _('no models needed') }}</span></dd>
+  {% endif %}
   <dt>{{ _('Data directory') }}</dt><dd><code>{{ settings.data_dir }}</code></dd>
 </dl>
