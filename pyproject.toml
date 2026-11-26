@@ -48,7 +48,7 @@ dev = [
     "pytest-timeout>=2.3",
     "ruff>=0.6",
 ]
-# builds the Windows app (packaging/windows): uv sync --extra gpu --extra desktop --group packaging
+# builds the desktop apps (packaging/): uv sync --extra cpu --extra desktop --group packaging
 packaging = ["pyinstaller>=6.11"]
 
 [build-system]

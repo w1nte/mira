@@ -117,32 +117,81 @@ are never moved or modified.
 
 ## Installation
 
-### Windows app (setup program)
+### Desktop app (Windows, macOS, Linux)
 
-The simplest way on Windows: download the setup program from the
-[releases](https://github.com/w1nte/vision-tagger/releases) (or from the artifacts of the
-*Windows installer* workflow) and run it. No administrator rights are needed.
+The simplest way: download the app for your system from the
+[releases](https://github.com/w1nte/vision-tagger/releases) and install it. No administrator
+rights are needed on Windows and Linux.
 
-- **gpu** for an NVIDIA graphics card (CUDA and cuDNN are included; needs driver R580 or newer).
-  It comes as a `.exe` plus `.bin` files: keep them in one folder and start the `.exe`.
-- **cpu** for every other PC (slower face detection, much smaller download).
+| System | File | Flavours |
+| --- | --- | --- |
+| Windows 10/11 (x64) | `Mira-setup-<version>-<flavour>.exe` | cpu, gpu |
+| macOS 15 or newer, Apple silicon | `Mira-<version>-macos-arm64.pkg` | cpu |
+| Linux x86_64 (glibc 2.35+, e.g. Ubuntu 22.04, Debian 12, Fedora 36) | `Mira-<version>-linux-x86_64-<flavour>.tar.gz` | cpu, gpu |
 
-Mira then starts from the Start menu like any other application, in a window of its
-own. Closing the window stops it (a running pipeline is paused and continues on the next start);
-starting it again while it runs opens another window. Install **Ollama** as well (step 4 below)
-for properties and search.
+- **gpu**: for an NVIDIA graphics card (CUDA and cuDNN are included; needs driver R580 or newer).
+- **cpu**: for every other computer (slower face detection, much smaller download).
 
-- The library (settings, database, thumbnails) is kept in `%LOCALAPPDATA%\vision-tagger`. It
-  stays when you update or uninstall the app; settings are in `config.toml` there.
-- `vision-tagger-cli.exe` in the install folder is the command line (`vision-tagger-cli index
-  D:\Photos`, `vision-tagger-cli run`, …).
-- Logs: `%LOCALAPPDATA%\vision-tagger\data\logs\desktop.log`.
+Mira then starts like any other application, in a window of its own. Closing the window stops
+it (a running pipeline is paused and continues on the next start); starting it again while it
+runs opens another window. Install **Ollama** as well (step 4 below) for properties and search.
+
+**Windows.** Run the setup program; it installs into `%LOCALAPPDATA%\Programs\Mira` and adds
+Mira to the Start menu. The gpu setup comes as a `.exe` plus `.bin` files: keep them in one
+folder and start the `.exe`. The setup is not signed, so SmartScreen may warn about an
+"unrecognized app": click **More info → Run anyway**.
+
+**macOS.** Open the `.pkg`; it installs `Mira.app` into the Applications folder (macOS asks for
+an administrator password). The package is not signed by Apple, so macOS first refuses to open
+it: open **System Settings → Privacy & Security** and click **Open Anyway** next to the message
+about the package (the same applies if macOS blocks Mira.app at its first start).
+Alternatively remove the quarantine flag in the Terminal: `xattr -dr com.apple.quarantine
+~/Downloads/Mira-*.pkg`. Intel Macs are not supported (there is no ONNX Runtime for them any
+more).
+
+**Linux.** Unpack the archive and run its installer as your own user (not root):
+
+```bash
+tar -xzf Mira-<version>-linux-x86_64-cpu.tar.gz
+cd Mira-<version>-linux-x86_64-cpu
+./install.sh                  # into ~/.local/share/mira; --prefix DIR for another folder
+```
+
+It adds `mira` and `vision-tagger-cli` to `~/.local/bin` and Mira to the applications menu.
+`./install.sh --uninstall` removes the app again (the library is kept). The gpu archive is
+bigger than GitHub allows for one file, so it comes in parts: download all
+`….tar.gz.partNN` files and unpack them with `cat Mira-<version>-linux-x86_64-gpu.tar.gz.part* |
+tar -xz`. On Linux, Mira's window is Chrome, Chromium or Edge in app mode (the app does not
+bundle GTK or Qt for a native window); without one of them it opens in your default browser.
+
+**Updating.** Run the new setup program, the new `.pkg`, or the new `install.sh`. They detect the
+installed version and update it: a running Mira is asked to quit first (a running pipeline is
+paused and continues on the next start), the program files are replaced, and your library is
+kept and its database migrated to the new version (a backup copy is made first,
+`vision_tagger.sqlite3.bak-<version>-<time>`). If the migration fails, the installation is kept
+and Mira tries again when it starts; the details are in `logs/migrate.log` in the data folder.
+
+Where things are:
+
+| | Windows | macOS | Linux |
+| --- | --- | --- | --- |
+| Library (`config.toml`, `data/`) | `%LOCALAPPDATA%\vision-tagger` | `~/Library/Application Support/vision-tagger` | `~/.local/share/vision-tagger` |
+| Command line | `vision-tagger-cli.exe` in the install folder | `/Applications/Mira.app/Contents/MacOS/vision-tagger-cli` | `vision-tagger-cli` |
+| Logs | `data\logs\desktop.log` in the library | `data/logs/desktop.log` in the library | `data/logs/desktop.log` in the library |
+
+The library (settings, database, thumbnails) stays when you update or uninstall the app;
+settings are in its `config.toml`. The command line works like `vision-tagger` from a source
+checkout (`vision-tagger-cli index D:\Photos`, `vision-tagger-cli run`, …); `vision-tagger-cli
+quit-app` closes a running app gracefully and `vision-tagger-cli migrate --desktop` migrates the
+app's library (the installers use both).
 
 From a source checkout the same window opens with `uv run vision-tagger desktop` (add
 `--extra desktop` to `uv sync` for a native window; without it, Edge or Chrome opens in app mode).
-The setup program is built by [`.github/workflows/installer.yml`](.github/workflows/installer.yml)
-from [`packaging/windows`](packaging/windows): PyInstaller makes the app folder, a self-test
-checks it, and Inno Setup packs it.
+The apps are built by [`.github/workflows/desktop.yml`](.github/workflows/desktop.yml) from
+[`packaging`](packaging): PyInstaller makes the app ([`vision-tagger.spec`](packaging/vision-tagger.spec)),
+its self-test checks it, and Inno Setup ([`windows`](packaging/windows)), `pkgbuild`
+([`macos`](packaging/macos)) or a tar archive with an install script ([`linux`](packaging/linux))
+packs it. See [Releases](#releases).
 
 ### From source (Windows + NVIDIA GPU)
 
@@ -177,6 +226,9 @@ For CPU-only machines (or Linux/macOS) use `uv sync --extra cpu` and set
 
 ## Upgrading
 
+The desktop app: run the installer of the new version (see [Updating](#desktop-app-windows-macos-linux)).
+From source:
+
 ```powershell
 git pull
 uv sync --extra gpu
@@ -190,6 +242,8 @@ uv run vision-tagger migrate          # upgrades the database schema; writes a b
 - The backup is written next to the database as `vision_tagger.sqlite3.bak-<version>-<time>`.
 - Databases from the very first version are upgraded too.
 - `vision-tagger migrate --check` only reports whether an upgrade is needed.
+- A database from a *newer* version (after going back to an older one) is never touched: Mira
+  refuses to open it, and `migrate` exits with code 3. A failed migration exits with code 4.
 
 ## Moving a library to another computer (export / import)
 
@@ -668,6 +722,30 @@ uv run python -m vision_tagger.i18n_extract check de -v  # what is missing or br
 Schema changes always need an Alembic migration in `src/vision_tagger/migrations/versions/`.
 See [CLAUDE.md](CLAUDE.md#database-migrations-mandatory) for the workflow.
 `tests/test_migrations.py` fails when the models and the migrations disagree.
+
+## Releases
+
+Publishing a GitHub release builds the desktop apps and attaches them to it, in about an hour:
+
+1. On GitHub, *Releases → Draft a new release*, create a tag `vX.Y.Z` (pre-releases:
+   `vX.Y.Z-rc.1`, `-beta.2`, `-alpha.1`) on `main`, and publish it (a pre-release counts too;
+   a draft does not).
+2. [`.github/workflows/desktop.yml`](.github/workflows/desktop.yml) builds Windows (cpu, gpu),
+   Linux (cpu, gpu) and macOS (Apple silicon) with the tag as the version
+   ([`packaging/version.py`](packaging/version.py): `v1.2.3-rc.1` → `1.2.3rc1`), runs each
+   app's self-test, packs the installers and uploads them to the release.
+3. If a build fails, re-run the failed jobs; the upload replaces files of the same name.
+
+The version in `pyproject.toml` is only used for builds without a release (manual runs of the
+workflow, and the cpu builds it makes as a check on pull requests and pushes to `main` that touch
+the packaging). Build locally with:
+
+```bash
+uv sync --extra cpu --extra desktop --group packaging
+uv run pyinstaller packaging/vision-tagger.spec --noconfirm --clean
+dist/vision-tagger/vision-tagger-cli self-test
+packaging/linux/build_tarball.sh 0.0.0 cpu     # Linux; macOS: packaging/macos/build_pkg.sh 0.0.0
+```
 
 ## Security
 

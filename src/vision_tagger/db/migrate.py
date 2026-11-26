@@ -36,6 +36,10 @@ class MigrationRequired(RuntimeError):
     """The database schema is older than this version of vision-tagger."""
 
 
+class DatabaseTooNew(MigrationRequired):
+    """A newer version of vision-tagger migrated the database; this one cannot use it."""
+
+
 class MigrationError(RuntimeError):
     pass
 
@@ -82,6 +86,13 @@ def head_revision() -> str:
     return head
 
 
+def known_revisions() -> set[str]:
+    from alembic.script import ScriptDirectory
+
+    script = ScriptDirectory.from_config(alembic_config("sqlite://"))
+    return {rev.revision for rev in script.walk_revisions()}
+
+
 def current_revision(engine: Engine) -> str | None:
     from alembic.migration import MigrationContext
 
@@ -91,13 +102,20 @@ def current_revision(engine: Engine) -> str | None:
 
 @dataclass
 class SchemaStatus:
-    state: str  # "new" | "current" | "outdated" | "unversioned"
+    state: str  # "new" | "current" | "outdated" | "unversioned" | "newer"
     current: str | None
     head: str
 
     @property
     def needs_upgrade(self) -> bool:
         return self.state in ("outdated", "unversioned")
+
+    def too_new(self, where: object) -> DatabaseTooNew:
+        return DatabaseTooNew(
+            f"The database {where} has schema version {self.current} from a newer version of "
+            f"Mira; this version knows schema versions up to {self.head}. Install the newer "
+            "version again, or restore a backup copy (vision_tagger.sqlite3.bak-*)."
+        )
 
 
 def schema_status(engine: Engine) -> SchemaStatus:
@@ -108,7 +126,9 @@ def schema_status(engine: Engine) -> SchemaStatus:
     rev = current_revision(engine)
     if rev is None:
         return SchemaStatus("unversioned", None, head)
-    return SchemaStatus("current" if rev == head else "outdated", rev, head)
+    if rev == head:
+        return SchemaStatus("current", rev, head)
+    return SchemaStatus("outdated" if rev in known_revisions() else "newer", rev, head)
 
 
 def _sqlite_path(url: str) -> Path | None:
@@ -151,6 +171,8 @@ def upgrade(url: str, *, backup: bool = True, revision: str = "head") -> Upgrade
     engine = migration_engine(url)
     try:
         status = schema_status(engine)
+        if status.state == "newer":
+            raise status.too_new(_sqlite_path(url) or url)
         target = status.head if revision == "head" else revision
         if status.state == "current" and target == status.head:
             return UpgradeResult(status.current, status.head, status.state)
@@ -179,6 +201,7 @@ def upgrade_if_needed(db_path: Path) -> UpgradeResult | None:
     """Upgrade an existing, outdated database (with a backup); a new one is left alone.
 
     For unattended starts (Docker, the desktop app), where nobody runs ``vision-tagger migrate``.
+    Raises :class:`DatabaseTooNew` for a database of a newer version.
     """
     url = f"sqlite:///{db_path.as_posix()}"
     engine = migration_engine(url)
@@ -186,6 +209,8 @@ def upgrade_if_needed(db_path: Path) -> UpgradeResult | None:
         status = schema_status(engine)
     finally:
         engine.dispose()
+    if status.state == "newer":
+        raise status.too_new(db_path)
     if not status.needs_upgrade:
         return None
     log.info("upgrading the database from %s to %s", status.current or "version 1", status.head)
@@ -218,7 +243,8 @@ def downgrade(url: str, revision: str, *, backup: bool = True) -> UpgradeResult:
 def ensure_schema(db: Database) -> None:
     """Create a new database, or check that an existing one is up to date.
 
-    Raises :class:`MigrationRequired` for older databases (run ``vision-tagger migrate``).
+    Raises :class:`MigrationRequired` for older databases (run ``vision-tagger migrate``) and
+    :class:`DatabaseTooNew` for databases of a newer version.
     """
     from alembic import command
 
@@ -239,6 +265,8 @@ def ensure_schema(db: Database) -> None:
             engine.dispose()
         return
     where = _sqlite_path(db.url) or db.url
+    if status.state == "newer":
+        raise status.too_new(where)
     raise MigrationRequired(
         f"The database {where} has schema version {status.current or 'pre-migrations'}, "
         f"this version of vision-tagger needs {status.head}. "

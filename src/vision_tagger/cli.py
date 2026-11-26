@@ -6,6 +6,7 @@ import logging
 import shutil
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated
 
@@ -68,30 +69,53 @@ def _db():
     return db
 
 
-def _report_config() -> bool:
+#: exit codes of `migrate` (installers rely on them)
+MIGRATE_NEEDED, MIGRATE_TOO_NEW, MIGRATE_FAILED = 1, 3, 4
+
+
+class _Report:
+    """What `migrate` says: on the console and, for the desktop library, in its log folder."""
+
+    def __init__(self, log_file: Path | None) -> None:
+        self.log_file = log_file
+        if log_file is not None:
+            from . import __version__
+
+            log_file.parent.mkdir(parents=True, exist_ok=True)
+            self.write(f"--- {time.strftime('%Y-%m-%d %H:%M:%S')} migrate, version {__version__}")
+
+    def __call__(self, message: str, *, err: bool = False) -> None:
+        typer.echo(message, err=err)
+        self.write(message)
+
+    def write(self, message: str) -> None:
+        if self.log_file is not None:
+            with self.log_file.open("a", encoding="utf-8") as f:
+                f.write(message + "\n")
+
+
+def _report_config(say: Callable[[str], None] = typer.echo) -> bool:
     """Say what loading config.toml did; True if it is outdated and could not be updated."""
     from . import config as config_mod
     from .config_migrate import CONFIG_VERSION, load_config
 
     path = config_mod._resolve_config_file()
     if path is None:
-        typer.echo("config:   none (defaults and VT_ environment variables)")
+        say("config:   none (defaults and VT_ environment variables)")
         return False
     done = config_mod.last_config_migration
     if done is not None and done.path == path:
         if not done.written:
-            typer.echo(
-                f"config:   {path}: version {done.before}, could not be updated: {done.error}"
-            )
+            say(f"config:   {path}: version {done.before}, could not be updated: {done.error}")
             return True
-        typer.echo(f"config:   {path}: version {done.before} -> {done.after}")
-        typer.echo(f"backup:   {done.backup}")
+        say(f"config:   {path}: version {done.before} -> {done.after}")
+        say(f"backup:   {done.backup}")
         for note in done.notes:
-            typer.echo(f"          - {note}")
+            say(f"          - {note}")
         return False
     _data, now = load_config(path, write=False)
     state = "up to date" if now.before == CONFIG_VERSION else f"newest: {CONFIG_VERSION}"
-    typer.echo(f"config:   {path}: version {now.before}, {state}")
+    say(f"config:   {path}: version {now.before}, {state}")
     return now.before < CONFIG_VERSION
 
 
@@ -107,14 +131,25 @@ def migrate(
         str | None,
         typer.Option("--to", help="Target revision (default: newest). Older = downgrade."),
     ] = None,
+    desktop: Annotated[
+        bool,
+        typer.Option(
+            "--desktop",
+            help="The desktop app's library, found as the app finds it (for installers). "
+            "Creates nothing when there is none yet; logs to its logs/migrate.log.",
+        ),
+    ] = False,
 ) -> None:
     """Upgrade the database schema (and config.toml) to this version of vision-tagger.
 
-    An outdated config.toml is updated whenever it is loaded, also with --check.
+    An outdated config.toml is updated whenever it is loaded, also with --check. Exit codes:
+    0 done or nothing to do, 1 an upgrade is needed (--check), 3 the database is from a newer
+    version, 4 the migration failed (the database is unchanged).
     """
-    config_outdated = _report_config()
+    import traceback
+
     from .db.migrate import (
-        MigrationError,
+        DatabaseTooNew,
         downgrade,
         head_revision,
         migration_engine,
@@ -122,37 +157,82 @@ def migrate(
         upgrade,
     )
 
-    settings = _settings()
-    settings.ensure_dirs()
+    if desktop:
+        from . import APP_NAME
+        from .desktop import find_desktop_settings, user_data_dir
+
+        found = find_desktop_settings()
+        if found is None:
+            typer.echo(f"no {APP_NAME} library yet ({user_data_dir()}): nothing to migrate")
+            return
+        if not found.db_path.is_file():
+            typer.echo(f"no database yet ({found.db_path}): nothing to migrate")
+            return
+        settings = found
+        report = _Report(settings.data_dir / "logs" / "migrate.log")
+        logging.getLogger("alembic").setLevel(logging.WARNING)  # the report says what matters
+    else:
+        settings = _settings()
+        settings.ensure_dirs()
+        report = _Report(None)
     url = f"sqlite:///{settings.db_path.as_posix()}"
-    engine = migration_engine(url)
-    status = schema_status(engine)
-    engine.dispose()
-    current = status.current or (
-        "none (new database)" if status.state == "new" else "pre-migrations"
-    )
-    typer.echo(f"database: {settings.db_path}")
-    typer.echo(f"schema:   {current}  ->  newest: {status.head}")
-    if check:
-        if status.needs_upgrade or config_outdated:
-            typer.echo("an upgrade is needed: run `vision-tagger migrate`")
-            raise typer.Exit(1)
-        typer.echo("up to date" if status.state == "current" else "new database")
-        return
+    report(f"database: {settings.db_path}")
+    config_outdated = _report_config(report)
     try:
+        engine = migration_engine(url)
+        try:
+            status = schema_status(engine)
+        finally:
+            engine.dispose()
+        current = status.current or (
+            "none (new database)" if status.state == "new" else "pre-migrations"
+        )
+        report(f"schema:   {current}  ->  newest: {status.head}")
+        if status.state == "newer":
+            raise status.too_new(settings.db_path)
+        if check:
+            if status.needs_upgrade or config_outdated:
+                report("an upgrade is needed: run `vision-tagger migrate`")
+                raise typer.Exit(MIGRATE_NEEDED)
+            report("up to date" if status.state == "current" else "new database")
+            return
         if to is not None and to != "head" and status.current and to != head_revision():
             result = downgrade(url, to, backup=backup)
         else:
             result = upgrade(url, backup=backup)
-    except MigrationError as exc:
-        typer.echo(f"migration failed, database unchanged: {exc}", err=True)
-        raise typer.Exit(1) from None
+    except DatabaseTooNew as exc:
+        report(f"error: {exc}", err=True)
+        raise typer.Exit(MIGRATE_TOO_NEW) from None
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        report(f"migration failed, database unchanged: {exc}", err=True)
+        report.write(traceback.format_exc())
+        logging.getLogger(__name__).debug("migration failed", exc_info=True)  # with --verbose
+        raise typer.Exit(MIGRATE_FAILED) from None
     if result.backup:
-        typer.echo(f"backup:   {result.backup}")
+        report(f"backup:   {result.backup}")
     if result.changed:
-        typer.echo(f"migrated: {result.before or 'pre-migrations'} -> {result.after}")
+        report(f"migrated: {result.before or 'pre-migrations'} -> {result.after}")
     else:
-        typer.echo("already up to date")
+        report("already up to date")
+
+
+@app.command("quit-app")
+def quit_app(
+    timeout: Annotated[
+        float, typer.Option(help="Seconds to wait until the app has exited.")
+    ] = 120.0,
+) -> None:
+    """Quit the running desktop app as if its window was closed (for installers).
+
+    A running pipeline is paused and continues on the next start. Exit codes: 0 it has quit or
+    was not running, 1 still running after --timeout, 3 the running app is too old to quit on
+    request.
+    """
+    from .desktop import quit_app as quit_desktop_app
+
+    raise typer.Exit(quit_desktop_app(timeout, echo=typer.echo))
 
 
 db_app = typer.Typer(
