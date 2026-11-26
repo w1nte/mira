@@ -824,10 +824,6 @@ body {
   color: var(--muted);
 }
 
-.systems dd p {
-  margin: 10px 0 0;
-}
-
 .card-note {
   margin: 20px 0 0;
   padding-top: 16px;
