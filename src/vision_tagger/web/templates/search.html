@@ -10,21 +10,21 @@
   </div>
 </div>
 
-<form class="card searchbox" method="get" action="/search">
-  <input type="search" name="q" value="{{ q }}" autofocus
+<form class="searchbox" method="get" action="/search" role="search">
+  <input type="search" name="q" value="{{ q }}" {{ 'autofocus' if not q }} aria-label="Search request"
          placeholder="e.g. “Anna and Ben at the beach in summer 2021, no work photos”">
   <label title="The LLM re-ranks the top results and explains each choice (slower)">
     <input type="checkbox" name="deep" value="1" {{ 'checked' if deep }}> Deep search</label>
-  <button class="primary">Search</button>
+  <button class="primary">{{ icon('search', 'sm') }}Search</button>
 </form>
 
 {% if not q %}
-  <div class="chips" style="margin-top:1rem">
-    <small class="muted" style="margin-right:.3rem">Try:</small>
+  <div class="chips examples">
+    <small class="muted">Try:</small>
     {% for ex in examples %}<a class="chip" href="/search?q={{ ex | urlencode }}">{{ ex }}</a>{% endfor %}
   </div>
 {% else %}
-  <div id="results" style="margin-top:1rem" hx-get="{{ results_url }}" hx-trigger="load" hx-swap="innerHTML">
+  <div id="results" class="results" hx-get="{{ results_url }}" hx-trigger="load" hx-swap="innerHTML">
     <div class="card empty"><span class="spinner"></span>
       Interpreting your request{% if deep %}, ranking and asking the LLM about the best matches{% endif %}…</div>
   </div>
