@@ -1,9 +1,10 @@
 """Turn a natural-language search request into a structured query.
 
 The local LLM receives the real vocabulary (allowed values, the most frequent free-text
-values, person names, the date range) and answers a fixed JSON schema. Everything it returns
-is validated against the database, so it can only refer to persons and values that exist;
-anything else becomes a free-text keyword (and still counts through the semantic index).
+values, person and pet names, the date range) and answers a fixed JSON schema. Everything it
+returns is validated against the database, so it can only refer to persons, pets and values that
+exist; anything else becomes a free-text keyword (and still counts through the semantic index).
+Persons and pets are strict filters ("Anna with Bello": photos with both).
 
 Without a usable LLM, :class:`KeywordInterpreter` does a simpler dictionary-based mapping.
 """
@@ -19,7 +20,8 @@ from datetime import date
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..db.models import Image, Person, PropertyAlias
+from ..animals import SPECIES
+from ..db.models import Image, Person, Pet, PropertyAlias
 from ..i18n import Lazy
 from ..query import ImageFilter, _parse_date, property_counts
 from ..vlm.normalize import Normalizer, singularize
@@ -48,8 +50,10 @@ class PropTerm:
 class Interpretation:
     query: str
     persons: list[tuple[int, str]] = field(default_factory=list)
-    persons_mode: str = "all"
+    persons_mode: str = "all"  # persons and pets together
     exclude_persons: list[tuple[int, str]] = field(default_factory=list)
+    pets: list[tuple[int, str]] = field(default_factory=list)
+    exclude_pets: list[tuple[int, str]] = field(default_factory=list)
     must: list[PropTerm] = field(default_factory=list)
     should: list[PropTerm] = field(default_factory=list)
     exclude: list[PropTerm] = field(default_factory=list)
@@ -62,11 +66,13 @@ class Interpretation:
     notes: list[str | Lazy] = field(default_factory=list)
 
     def hard_filter(self, relaxed: bool = False) -> ImageFilter:
-        """The strict part: persons, required / excluded properties and the date range."""
+        """The strict part: persons, pets, required / excluded properties and the date range."""
         return ImageFilter(
             persons=[pid for pid, _ in self.persons],
+            pets=[pid for pid, _ in self.pets],
             persons_mode=self.persons_mode,
             exclude_persons=[pid for pid, _ in self.exclude_persons],
+            exclude_pets=[pid for pid, _ in self.exclude_pets],
             props=[] if relaxed else [(t.key, t.value) for t in self.must],
             exclude_props=[(t.key, t.value) for t in self.exclude],
             date_from=self.date_from,
@@ -88,6 +94,8 @@ class SearchContext:
     year_range: tuple[int, int] | None
     normalizer: Normalizer
     fingerprint: str = ""
+    pets: list[tuple[int, str]] = field(default_factory=list)  # named pets
+    pet_species: dict[int, str] = field(default_factory=dict)
 
     @property
     def keys(self) -> list[str]:
@@ -117,18 +125,24 @@ def build_context(
     if counts is None:
         counts = property_counts(s)
     existing = {k: {v for v, _ in vals} for k, vals in counts.items()}
+    if existing.get("animal"):  # the animal detector ran: its species are a closed vocabulary
+        allowed["animal"] = list(SPECIES)
     examples = {
         k: [v for v, _ in counts.get(k, [])[:FREE_TEXT_EXAMPLES]] for k in [*free_keys, "year"]
     }
     examples = {k: v for k, v in examples.items() if v}
     persons = [(p.id, p.name) for p in s.scalars(select(Person).order_by(Person.name))]
+    named_pets = list(s.scalars(select(Pet).where(Pet.name.is_not(None)).order_by(Pet.name)))
+    pets = [(p.id, p.name or "") for p in named_pets]
     lo, hi = s.execute(
         select(func.min(Image.recorded_at), func.max(Image.recorded_at)).where(
             Image.missing.is_(False)
         )
     ).one()
     aliases = {(a.key, a.from_value): a.to_value for a in s.scalars(select(PropertyAlias))}
-    fingerprint = f"{vocab.fingerprint}:{len(persons)}:{sum(len(v) for v in existing.values())}"
+    fingerprint = (
+        f"{vocab.fingerprint}:{len(persons)}:{len(pets)}:{sum(len(v) for v in existing.values())}"
+    )
     return SearchContext(
         allowed=allowed,
         examples=examples,
@@ -137,20 +151,30 @@ def build_context(
         year_range=(lo.year, hi.year) if lo and hi else None,
         normalizer=Normalizer.from_file(synonyms_path, aliases),
         fingerprint=fingerprint,
+        pets=pets,
+        pet_species={p.id: p.species for p in named_pets},
     )
 
 
 # --------------------------------------------------------------------------- validation
-def _find_person(ctx: SearchContext, name: str) -> tuple[int, str] | None:
+def _find_name(names: list[tuple[int, str]], name: str) -> tuple[int, str] | None:
     key = " ".join(str(name).split()).casefold()
     if not key:
         return None
-    exact = [p for p in ctx.persons if p[1].casefold() == key]
+    exact = [p for p in names if p[1].casefold() == key]
     if exact:
         return exact[0]
     # first-name match if unambiguous ("Anna" -> "Anna Example")
-    partial = [p for p in ctx.persons if p[1].casefold().split()[0] == key]
+    partial = [p for p in names if p[1].casefold().split()[0] == key]
     return partial[0] if len(partial) == 1 else None
+
+
+def _find_person(ctx: SearchContext, name: str) -> tuple[int, str] | None:
+    return _find_name(ctx.persons, name)
+
+
+def _find_pet(ctx: SearchContext, name: str) -> tuple[int, str] | None:
+    return _find_name(ctx.pets, name)
 
 
 def canonical_term(ctx: SearchContext, key: str, value: str) -> str | None:
@@ -178,21 +202,27 @@ def validate(raw: dict, ctx: SearchContext, query: str) -> Interpretation:
     it = Interpretation(query=query, mode="llm")
     keywords: list[str] = [str(k) for k in raw.get("keywords") or [] if str(k).strip()]
 
-    def persons(names: Iterable[object]) -> list[tuple[int, str]]:
-        out: list[tuple[int, str]] = []
-        for name in names or []:
-            p = _find_person(ctx, str(name))
-            if p is None:
+    def who(names: Iterable[object], pets: Iterable[object]) -> tuple[list, list]:
+        """Persons and pets; a name the LLM put into the wrong list still counts."""
+        found_persons: list[tuple[int, str]] = []
+        found_pets: list[tuple[int, str]] = []
+        for name, pet_first in [(n, False) for n in names or []] + [(n, True) for n in pets or []]:
+            person, pet = _find_person(ctx, str(name)), _find_pet(ctx, str(name))
+            if pet is not None and (pet_first or person is None):
+                if pet not in found_pets:
+                    found_pets.append(pet)
+            elif person is not None:
+                if person not in found_persons:
+                    found_persons.append(person)
+            else:
                 it.notes.append(Lazy("unknown person '%(name)s' searched as text", name=name))
                 keywords.append(str(name))
-            elif p not in out:
-                out.append(p)
-        return out
+        return found_persons, found_pets
 
-    it.persons = persons(raw.get("persons") or [])
-    it.exclude_persons = [
-        p for p in persons(raw.get("exclude_persons") or []) if p not in it.persons
-    ]
+    it.persons, it.pets = who(raw.get("persons") or [], raw.get("pets") or [])
+    not_persons, not_pets = who(raw.get("exclude_persons") or [], raw.get("exclude_pets") or [])
+    it.exclude_persons = [p for p in not_persons if p not in it.persons]
+    it.exclude_pets = [p for p in not_pets if p not in it.pets]
     it.persons_mode = "any" if raw.get("persons_mode") == "any" else "all"
 
     def terms(items: Iterable[object], with_weight: bool) -> list[PropTerm]:
@@ -250,7 +280,9 @@ Rules:
   (1 = very important). "exclude": things the user does not want ("no", "without", "not").
 - Prefer "should" over "must" unless the request is explicit; never invent constraints.
 - persons: only names from the person list (any spelling the user used maps to that name).
-  persons_mode "all" = all of them together, "any" = at least one of them.
+  pets: only names from the pet list (animals the user named; never put a pet in persons).
+  persons_mode "all" = all of them (persons and pets) together, "any" = at least one of them.
+- An animal without a name ("dogs", "a cat") is a property (animal or animals), not a pet.
 - Dates as YYYY, YYYY-MM or YYYY-MM-DD; use "" when there is no date. Resolve relative
   dates ("last summer", "letzten Winter") using today's date. A season without a year is the
   season property, not a date.
@@ -265,6 +297,7 @@ Free-text keys (frequent values; other values may exist):
 {examples}
 
 Persons: {persons}
+Pets: {pets}
 """
 
 TERM = {
@@ -287,6 +320,8 @@ SCHEMA = {
         "persons": {"type": "array", "items": {"type": "string"}},
         "persons_mode": {"type": "string", "enum": ["all", "any"]},
         "exclude_persons": {"type": "array", "items": {"type": "string"}},
+        "pets": {"type": "array", "items": {"type": "string"}},
+        "exclude_pets": {"type": "array", "items": {"type": "string"}},
         "must": {"type": "array", "items": TERM},
         "should": {"type": "array", "items": WEIGHTED_TERM},
         "exclude": {"type": "array", "items": TERM},
@@ -299,6 +334,8 @@ SCHEMA = {
         "persons",
         "persons_mode",
         "exclude_persons",
+        "pets",
+        "exclude_pets",
         "must",
         "should",
         "exclude",
@@ -316,8 +353,17 @@ def system_prompt(ctx: SearchContext, today: date | None = None) -> str:
     allowed = "\n".join(f"- {k}: {', '.join(v)}" for k, v in sorted(ctx.allowed.items()))
     examples = "\n".join(f"- {k}: {', '.join(v)}" for k, v in sorted(ctx.examples.items()))
     persons = ", ".join(name for _, name in ctx.persons) or "(none named yet)"
+    pets = (
+        ", ".join(f"{name} ({ctx.pet_species.get(pid, 'animal')})" for pid, name in ctx.pets)
+        or "(none named yet)"
+    )
     return SYSTEM.format(
-        today=today.isoformat(), years=years, allowed=allowed, examples=examples, persons=persons
+        today=today.isoformat(),
+        years=years,
+        allowed=allowed,
+        examples=examples,
+        persons=persons,
+        pets=pets,
     )
 
 
@@ -544,6 +590,18 @@ class KeywordInterpreter:
             if m and (pid, name) not in it.persons + it.exclude_persons:
                 negated = _negated(lowered[: m.start()])
                 (it.exclude_persons if negated else it.persons).append((pid, name))
+                semantic = re.sub(re.escape(m.group(0)), "", semantic, flags=re.IGNORECASE)
+                lowered = lowered[: m.start()] + " " * (m.end() - m.start()) + lowered[m.end() :]
+        # pets, the same way (persons first: a name both have is the person's)
+        for pid, name in sorted(ctx.pets, key=lambda p: -len(p[1])):
+            pattern = r"(?<!\w)" + re.escape(name.casefold()) + r"(?!\w)"
+            first = r"(?<!\w)" + re.escape(name.casefold().split()[0]) + r"(?!\w)"
+            m = re.search(pattern, lowered) or (
+                re.search(first, lowered) if _find_pet(ctx, name.split()[0]) else None
+            )
+            if m and (pid, name) not in it.pets + it.exclude_pets:
+                negated = _negated(lowered[: m.start()])
+                (it.exclude_pets if negated else it.pets).append((pid, name))
                 semantic = re.sub(re.escape(m.group(0)), "", semantic, flags=re.IGNORECASE)
                 lowered = lowered[: m.start()] + " " * (m.end() - m.start()) + lowered[m.end() :]
         # dates

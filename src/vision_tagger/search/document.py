@@ -1,7 +1,7 @@
 """The text document that represents an image in the semantic search index.
 
-It contains everything extracted about the image except person names: persons are matched
-through the structured part of a query, so renaming a person never requires re-embedding.
+It contains everything extracted about the image except person and pet names: those are matched
+through the structured part of a query, so renaming a person or pet never requires re-embedding.
 """
 
 from __future__ import annotations
@@ -40,6 +40,7 @@ _ORDER = [
     "main_activity",
     "people",
     "objects",
+    "animal",
     "animals",
     "vehicles",
     "food",
@@ -63,7 +64,7 @@ _ORDER = [
     "capture_device",
     "year",
 ]
-_SKIP = {"has_gps", "text_present"}
+_SKIP = {"has_gps", "text_present", "pet"}
 
 
 def _label(key: str) -> str:

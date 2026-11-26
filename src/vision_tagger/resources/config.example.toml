@@ -20,7 +20,7 @@ dhash_max_distance = 5              # duplicate = same pHash AND dHash differing
 [pipeline]
 batch_size = 16                     # images claimed per batch
 max_attempts = 3                    # automatic retries per image and stage
-stages = ["faces", "ages", "vlm", "embed"]   # "ages" is added automatically with "faces"
+stages = ["faces", "ages", "animals", "vlm", "embed"]   # "ages" is added automatically with "faces"
 resume_on_start = true              # closing the app pauses a run; the next start continues it
 
 [faces]
@@ -39,6 +39,21 @@ auto_accept_threshold = 0.6         # similarity to *assign* a person automatica
 references_per_named_cluster = 10   # faces added as references when you name a cluster
 age_model = "blend"                 # "blend" (AgeNet for children/teens + InsightFace for adults),
                                     # "agenet" or "insightface"
+
+[animals]
+# Stage "animals": YOLOX-s finds animals (bird, cat, dog, horse, sheep, cow, elephant, bear,
+# zebra, giraffe), DINOv2-small tells them apart, photos of the same animal are grouped and can
+# be named ("Bello"). Both models (Apache-2.0, 125 MB) are downloaded once; runs on [faces].providers.
+# model_dir = 'D:\Models\animals'  # default: <faces.model_root or ~/.insightface>/models/animals
+max_image_px = 1600                 # photos are downscaled before detection
+min_score = 0.5                     # weaker detections are dropped
+min_box_px = 32                     # smaller animals are dropped (short side, original pixels)
+group_min_score = 0.6               # weaker / smaller animals are kept but not grouped
+group_min_px = 64
+cluster_eps = 0.3                   # DBSCAN cosine distance; lower = stricter groups
+cluster_min_samples = 2             # photos needed to form a group
+assign_threshold = 0.7              # similarity to join an existing (named) pet
+species_pools = [["cat", "dog", "bear", "sheep"]]   # species grouped together (the detector mixes them up)
 
 [vlm]
 backend = "ollama"                  # "ollama" or "fake" (no model, for trying the UI)

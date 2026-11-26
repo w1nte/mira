@@ -19,6 +19,7 @@ from typing import Any
 import imagehash
 from sqlalchemy import delete, exists, insert, literal, select, update
 
+from .animals.grouping import delete_image_animals
 from .config import Settings
 from .db.models import (
     AppSetting,
@@ -502,6 +503,7 @@ class Indexer:
             by_hash.setdefault(r.phash, []).append(img)
             # Results are stale -> drop them (faces with consistent cluster stats) and re-queue.
             delete_image_faces(s, img.id, self.settings.face_crops_dir)
+            delete_image_animals(s, img.id, self.settings.animal_crops_dir)
             s.execute(
                 delete(ImageProperty).where(
                     ImageProperty.image_id == img.id,

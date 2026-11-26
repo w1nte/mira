@@ -63,7 +63,7 @@ class IndexConfig(BaseModel):
 class PipelineConfig(BaseModel):
     batch_size: int = 16
     max_attempts: int = 3
-    stages: list[str] = Field(default_factory=lambda: ["faces", "ages", "vlm", "embed"])
+    stages: list[str] = Field(default_factory=lambda: ["faces", "ages", "animals", "vlm", "embed"])
     heartbeat_seconds: float = 5.0
     # closing the app pauses a running pipeline; the next start continues paused pipelines
     resume_on_start: bool = True
@@ -101,6 +101,36 @@ class FacesConfig(BaseModel):
     reference_threshold: float = 0.45
     auto_accept_threshold: float = 0.6
     references_per_named_cluster: int = 10
+
+
+class AnimalsConfig(BaseModel):
+    """Animal detection and pets (see ``animals``). Runs on ``faces.providers``.
+
+    The thresholds were chosen on real photos (9 dogs and cats with 5-6 photos each, plus 60
+    photos of 10 breeds); see the README section "Animals and pets".
+    """
+
+    model_dir: Path | None = None  # defaults to <faces.model_root>/models/animals
+    max_image_px: int = 1600  # photos are downscaled before detection and embedding
+    # detections weaker or smaller than this are dropped (short side, original pixels)
+    min_score: float = 0.5
+    min_box_px: int = 32
+    nms_iou: float = 0.45
+    # weaker or smaller animals are kept, but not grouped automatically
+    group_min_score: float = 0.6
+    group_min_px: int = 64
+    # grouping: cosine distance (1 - similarity) between photos of the same animal
+    cluster_eps: float = 0.3
+    cluster_min_samples: int = 2
+    # similarity to a pet's average to join it (named and edited pets keep their photos)
+    assign_threshold: float = 0.7
+    # species the detector mixes up on pets (a chow chow as a bear, a poodle as a sheep) are
+    # grouped together; the pet's species is what most of its photos say
+    species_pools: list[list[str]] = Field(
+        default_factory=lambda: [["cat", "dog", "bear", "sheep"]]
+    )
+    crop_size: int = 160  # pictures of the animals in the web UI
+    crop_margin: float = 0.1
 
 
 class VlmConfig(BaseModel):
@@ -248,6 +278,7 @@ class Settings(BaseSettings):
     index: IndexConfig = Field(default_factory=IndexConfig)
     pipeline: PipelineConfig = Field(default_factory=PipelineConfig)
     faces: FacesConfig = Field(default_factory=FacesConfig)
+    animals: AnimalsConfig = Field(default_factory=AnimalsConfig)
     vlm: VlmConfig = Field(default_factory=VlmConfig)
     derived: DerivedConfig = Field(default_factory=DerivedConfig)
     search: SearchConfig = Field(default_factory=SearchConfig)
@@ -292,6 +323,10 @@ class Settings(BaseSettings):
         return self.cache_dir / "faces"
 
     @property
+    def animal_crops_dir(self) -> Path:
+        return self.cache_dir / "animals"
+
+    @property
     def remote_mode(self) -> bool:
         return self.mode == "remote"
 
@@ -315,7 +350,7 @@ class Settings(BaseSettings):
         return self.data_dir / "exports"
 
     def ensure_dirs(self) -> None:
-        for d in (self.data_dir, self.thumbs_dir, self.face_crops_dir):
+        for d in (self.data_dir, self.thumbs_dir, self.face_crops_dir, self.animal_crops_dir):
             d.mkdir(parents=True, exist_ok=True)
         if self.remote_mode:
             for d in (self.upload_dir, self.uploads_tmp_dir, self.exports_dir):

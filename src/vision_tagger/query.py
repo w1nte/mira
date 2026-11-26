@@ -7,10 +7,12 @@ parameter  meaning                                                example
 =========  =====================================================  =========
 ``p``      person id (repeatable)                                 ``p=3``
 ``c``      face cluster id (repeatable, for unnamed clusters)     ``c=17``
-``pm``     combine persons/clusters with ``all`` (AND) / ``any``  ``pm=any``
+``pet``    pet id (repeatable; see ``animals``)                   ``pet=5``
+``pm``     combine persons/clusters/pets: ``all`` (AND) / ``any`` ``pm=any``
 ``t``      property ``key:value`` (repeatable)                    ``t=location_type:beach``
 ``tm``     combine properties with ``all`` (AND) / ``any`` (OR)   ``tm=all``
 ``xp``     exclude person id                                      ``xp=4``
+``xpet``   exclude pet id                                         ``xpet=5``
 ``xt``     exclude property ``key:value``                         ``xt=work_image:yes``
 ``from``   recorded on/after date (YYYY-MM-DD, YYYY-MM or YYYY)   ``from=2021``
 ``to``     recorded on/before date                                ``to=2021-08``
@@ -38,7 +40,17 @@ from urllib.parse import urlencode
 from sqlalchemy import Select, and_, exists, func, not_, or_, select
 from sqlalchemy.orm import Session
 
-from .db.models import Cluster, Face, Image, ImageProperty, Person, StageStatus, VlmResult
+from .db.models import (
+    Animal,
+    Cluster,
+    Face,
+    Image,
+    ImageProperty,
+    Person,
+    Pet,
+    StageStatus,
+    VlmResult,
+)
 from .db.util import like_escape
 
 SORTS = ("date_desc", "date_asc", "name", "path", "faces", "size")
@@ -113,10 +125,12 @@ def _getlist(params: Mapping[str, Any], key: str) -> list[str]:
 class ImageFilter:
     persons: list[int] = field(default_factory=list)
     clusters: list[int] = field(default_factory=list)
-    persons_mode: str = "all"
+    pets: list[int] = field(default_factory=list)
+    persons_mode: str = "all"  # persons, clusters and pets together
     props: list[tuple[str, str]] = field(default_factory=list)
     props_mode: str = "all"
     exclude_persons: list[int] = field(default_factory=list)
+    exclude_pets: list[int] = field(default_factory=list)
     exclude_props: list[tuple[str, str]] = field(default_factory=list)
     date_from: str | None = None
     date_to: str | None = None
@@ -139,10 +153,12 @@ class ImageFilter:
         return cls(
             persons=_ints(_getlist(params, "p")),
             clusters=_ints(_getlist(params, "c")),
+            pets=_ints(_getlist(params, "pet")),
             persons_mode="any" if params.get("pm") == "any" else "all",
             props=_pairs(_getlist(params, "t")),
             props_mode="any" if params.get("tm") == "any" else "all",
             exclude_persons=_ints(_getlist(params, "xp")),
+            exclude_pets=_ints(_getlist(params, "xpet")),
             exclude_props=_pairs(_getlist(params, "xt")),
             date_from=params.get("from") or None,
             date_to=params.get("to") or None,
@@ -162,12 +178,14 @@ class ImageFilter:
         out: list[tuple[str, str]] = []
         out += [("p", str(p)) for p in self.persons]
         out += [("c", str(c)) for c in self.clusters]
-        if self.persons_mode == "any" and (len(self.persons) + len(self.clusters)) > 1:
+        out += [("pet", str(p)) for p in self.pets]
+        if self.persons_mode == "any" and self.who_count > 1:
             out.append(("pm", "any"))
         out += [("t", f"{k}:{v}") for k, v in self.props]
         if self.props_mode == "any" and len(self.props) > 1:
             out.append(("tm", "any"))
         out += [("xp", str(p)) for p in self.exclude_persons]
+        out += [("xpet", str(p)) for p in self.exclude_pets]
         out += [("xt", f"{k}:{v}") for k, v in self.exclude_props]
         for key, val in (
             ("from", self.date_from),
@@ -202,6 +220,11 @@ class ImageFilter:
         return ImageFilter(**data)
 
     @property
+    def who_count(self) -> int:
+        """Persons, clusters and pets: the filters ``persons_mode`` combines."""
+        return len(self.persons) + len(self.clusters) + len(self.pets)
+
+    @property
     def is_empty(self) -> bool:
         return not [p for p in self.to_params() if p[0] != "sort"]
 
@@ -211,6 +234,17 @@ class ImageFilter:
 
     def without_cluster(self, cid: int) -> str:
         return self.query_string(clusters=[c for c in self.clusters if c != cid])
+
+    def without_pet(self, pid: int) -> str:
+        return self.query_string(pets=[p for p in self.pets if p != pid])
+
+    def without_exclude_pet(self, pid: int) -> str:
+        return self.query_string(exclude_pets=[p for p in self.exclude_pets if p != pid])
+
+    def with_pet(self, pid: int) -> str:
+        if pid in self.pets:
+            return self.query_string()
+        return self.query_string(pets=[*self.pets, pid])
 
     def without_prop(self, key: str, value: str) -> str:
         return self.query_string(props=[p for p in self.props if p != (key, value)])
@@ -254,6 +288,12 @@ def _cluster_images(cluster_id: int):
     )
 
 
+def _pet_images(pet_id: int):
+    return Image.id.in_(
+        select(Animal.image_id).where(Animal.ignored.is_(False), Animal.pet_id == pet_id)
+    )
+
+
 def _prop_images(key: str, value: str):
     return Image.id.in_(
         select(ImageProperty.image_id).where(ImageProperty.key == key, ImageProperty.value == value)
@@ -264,13 +304,18 @@ def conditions(f: ImageFilter) -> list[Any]:
     conds: list[Any] = []
     if not f.include_missing:
         conds.append(Image.missing.is_(False))
-    people = [_person_images(p) for p in f.persons] + [_cluster_images(c) for c in f.clusters]
+    people = (
+        [_person_images(p) for p in f.persons]
+        + [_cluster_images(c) for c in f.clusters]
+        + [_pet_images(p) for p in f.pets]
+    )
     if people:
         conds.append(or_(*people) if f.persons_mode == "any" else and_(*people))
     props = [_prop_images(k, v) for k, v in f.props]
     if props:
         conds.append(or_(*props) if f.props_mode == "any" else and_(*props))
     conds += [not_(_person_images(p)) for p in f.exclude_persons]
+    conds += [not_(_pet_images(p)) for p in f.exclude_pets]
     conds += [not_(_prop_images(k, v)) for k, v in f.exclude_props]
     start, end = _parse_date(f.date_from), _parse_date(f.date_to, end=True)
     if start:
@@ -515,6 +560,20 @@ def person_counts(s: Session, f: ImageFilter | None = None) -> list[tuple[Person
     stmt = stmt.group_by(Person.id).order_by(
         func.count(func.distinct(Face.image_id)).desc(), Person.id
     )
+    return [(p, n) for p, n in s.execute(stmt)]
+
+
+def pet_counts(s: Session, f: ImageFilter | None = None) -> list[tuple[Pet, int]]:
+    """Named pets with the number of (filtered) photos they are in, most first."""
+    photos = func.count(func.distinct(Animal.image_id))
+    stmt = (
+        select(Pet, photos)
+        .join(Animal, Animal.pet_id == Pet.id)
+        .where(Animal.ignored.is_(False), Pet.name.is_not(None))
+    )
+    if f is not None and not f.is_empty:
+        stmt = stmt.where(Animal.image_id.in_(image_ids_subquery(f)))
+    stmt = stmt.group_by(Pet.id).order_by(photos.desc(), Pet.id)
     return [(p, n) for p, n in s.execute(stmt)]
 
 

@@ -41,6 +41,7 @@
       <div class="navgroup">{{ pgettext('sidebar', 'People') }}</div>
       {{ navlink('/faces', 'scan-face', _('Faces'), path.startswith('/faces') or path.startswith('/clusters')) }}
       {{ navlink('/persons', 'users', _('Persons'), path.startswith('/persons')) }}
+      {{ navlink('/animals', 'paw', _('Animals'), path.startswith('/animals') or path.startswith('/pets'), _('Pets and other animals in your photos')) }}
       {{ navlink('/generations', 'growth', _('Generations'), path.startswith('/generations'), _('Watch people grow up, compare family members at the same age')) }}
       {{ navlink('/quiz', 'dice', _('Quiz'), path.startswith('/quiz'), _("Who's that? – face quiz")) }}
       <div class="navgroup">{{ _('Organize') }}</div>

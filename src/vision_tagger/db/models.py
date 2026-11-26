@@ -92,6 +92,12 @@ class Image(Base):
         passive_deletes=True,
         order_by="Face.id",
     )
+    animals: Mapped[list[Animal]] = relationship(
+        back_populates="image",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="Animal.id",
+    )
     properties: Mapped[list[ImageProperty]] = relationship(
         back_populates="image", cascade="all, delete-orphan", passive_deletes=True
     )
@@ -315,6 +321,58 @@ class PersonReference(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     person: Mapped[Person] = relationship(back_populates="references")
+
+
+# --------------------------------------------------------------------------- animals
+class Pet(Base):
+    """A group of photos of one animal (see ``animals.grouping``); a name makes it a pet.
+
+    Unnamed, unlocked pets are made by automatic grouping and may be dissolved when the animals
+    are grouped again; ``locked`` pets (named, merged or edited by the user) are kept, like
+    locked face clusters.
+    """
+
+    __tablename__ = "pets"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str | None] = mapped_column(Text)
+    species: Mapped[str] = mapped_column(String(32))
+    locked: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    centroid: Mapped[bytes | None] = mapped_column(LargeBinary)
+    animal_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    cover_animal_id: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    animals: Mapped[list[Animal]] = relationship(back_populates="pet")
+
+
+class Animal(Base):
+    """An animal found in a photo: box, species, detector score and DINOv2 embedding."""
+
+    __tablename__ = "animals"
+    # covering indexes like the faces ones: animal rows are large (embedding)
+    __table_args__ = (
+        Index("ix_animals_image_ignored_pet", "image_id", "ignored", "pet_id"),
+        Index("ix_animals_pet_ignored_image", "pet_id", "ignored", "image_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    image_id: Mapped[int] = mapped_column(ForeignKey("images.id", ondelete="CASCADE"))
+    x1: Mapped[float] = mapped_column(Float)
+    y1: Mapped[float] = mapped_column(Float)
+    x2: Mapped[float] = mapped_column(Float)
+    y2: Mapped[float] = mapped_column(Float)
+    species: Mapped[str] = mapped_column(String(32))
+    score: Mapped[float] = mapped_column(Float)
+    embedding: Mapped[bytes] = mapped_column(LargeBinary)
+    box_px: Mapped[int] = mapped_column(Integer, default=0)
+    pet_id: Mapped[int | None] = mapped_column(ForeignKey("pets.id", ondelete="SET NULL"))
+    assignment: Mapped[str] = mapped_column(String(16), default=Assignment.AUTO)
+    ignored: Mapped[bool] = mapped_column(Boolean, default=False)
+    groupable: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    image: Mapped[Image] = relationship(back_populates="animals")
+    pet: Mapped[Pet | None] = relationship(back_populates="animals")
 
 
 # --------------------------------------------------------------------------- properties

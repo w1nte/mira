@@ -1,9 +1,9 @@
 """What the home page shows: library statistics, memories and collections.
 
 A *collection* is a named gallery filter (an :class:`~vision_tagger.query.ImageFilter` query
-string). Some are suggested from what the pipeline found (beach, birthdays, pets, the people
-with the most photos, …) and only appear when there are photos for them; others are saved by
-the user from any gallery filter (table ``collections``).
+string). Some are suggested from what the pipeline found (beach, birthdays, dogs, the people
+and named pets with the most photos, …) and only appear when there are photos for them; others
+are saved by the user from any gallery filter (table ``collections``).
 
 Everything returned here is plain data, so it can be cached (see ``db.cache``). Cached data is
 shared by requests in every language: suggestion names stay English and are translated when
@@ -20,14 +20,22 @@ from sqlalchemy import extract, func, select
 from sqlalchemy.orm import Session
 from starlette.datastructures import QueryParams
 
-from .db.models import Cluster, Collection, Face, Image, ImageProperty, Person
+from .db.models import Cluster, Collection, Face, Image, ImageProperty, Person, Pet
 from .i18n import N_, _
-from .query import ImageFilter, count_images, page_images, person_counts, property_counts
+from .query import (
+    ImageFilter,
+    count_images,
+    page_images,
+    person_counts,
+    pet_counts,
+    property_counts,
+)
 
 MIN_PHOTOS = 3  # a suggestion needs at least this many photos
 
 # (key, value, title, icon): suggested when the pipeline found the value (titles are translated
-# when shown)
+# when shown). Values of the vision model's "animals" also count when the animal detector found
+# them ("animal"): both mean the same photos.
 SUGGESTIONS: list[tuple[str, str, str, str]] = [
     ("event_type", "vacation", N_("Vacations"), "image"),
     ("location_type", "beach", N_("At the beach"), "image"),
@@ -38,8 +46,8 @@ SUGGESTIONS: list[tuple[str, str, str, str]] = [
     ("event_type", "family_gathering", N_("Family gatherings"), "users"),
     ("composition", "group", N_("Group photos"), "users"),
     ("composition", "selfie", N_("Selfies"), "user"),
-    ("animals", "dog", N_("Dogs"), "image"),
-    ("animals", "cat", N_("Cats"), "image"),
+    ("animals", "dog", N_("Dogs"), "paw"),
+    ("animals", "cat", N_("Cats"), "paw"),
     ("composition", "food", N_("Food"), "image"),
     ("season", "winter", N_("Winter"), "calendar"),
     ("time_of_day", "night", N_("At night"), "image"),
@@ -76,6 +84,7 @@ class LibraryStats:
     faces: int
     with_faces: int
     unnamed_clusters: int
+    unnamed_pets: int  # animal groups without a name
     size_bytes: int
     places: int  # distinct kinds of places
 
@@ -103,6 +112,9 @@ def stats(s: Session) -> LibraryStats:
         or 0
     )
     unnamed = s.scalar(select(func.count(Cluster.id)).where(Cluster.person_id.is_(None))) or 0
+    unnamed_pets = (
+        s.scalar(select(func.count(Pet.id)).where(Pet.name.is_(None), Pet.animal_count > 0)) or 0
+    )
     places = (
         s.scalar(
             select(func.count(func.distinct(ImageProperty.value))).where(
@@ -120,6 +132,7 @@ def stats(s: Session) -> LibraryStats:
         faces=faces,
         with_faces=with_faces,
         unnamed_clusters=unnamed,
+        unnamed_pets=unnamed_pets,
         size_bytes=size or 0,
         places=places,
     )
@@ -177,17 +190,33 @@ def saved(s: Session) -> list[CollectionView]:
     ]
 
 
-def suggested(s: Session, limit: int = 12, people: int = 4) -> list[CollectionView]:
+SAME_AS = {"animals": "animal"}  # suggestion key -> another key with the same values
+
+
+def suggested(s: Session, limit: int = 12, people: int = 4, pets: int = 3) -> list[CollectionView]:
     """Collections worth looking at, from what the pipeline found in *this* library."""
-    counts = property_counts(s, None, keys={k for k, *_rest in SUGGESTIONS})
+    keys = {k for k, *_rest in SUGGESTIONS}
+    counts = property_counts(s, None, keys=keys | {SAME_AS[k] for k in keys if k in SAME_AS})
     out: list[CollectionView] = []
     for person, n in person_counts(s, ImageFilter())[:people]:
         if n >= MIN_PHOTOS:
             out.append(
                 _view_for(s, f"auto:person-{person.id}", person.name, f"p={person.id}", icon="user")
             )
+    for pet, n in pet_counts(s, ImageFilter())[:pets]:
+        if n >= MIN_PHOTOS and pet.name:
+            out.append(_view_for(s, f"auto:pet-{pet.id}", pet.name, f"pet={pet.id}", icon="paw"))
     for key, value, title, icon in SUGGESTIONS:
         n = dict(counts.get(key, [])).get(value, 0)
+        other = SAME_AS.get(key)
+        if other and dict(counts.get(other, [])).get(value, 0):
+            # the detector found them too: one collection for both keys
+            both = [("t", f"{key}:{value}"), ("t", f"{other}:{value}"), ("tm", "any")]
+            query = str(QueryParams(both))
+            view = _view_for(s, f"auto:{key}-{value}", title, query, icon=icon, msgid=title)
+            if view.count >= MIN_PHOTOS:
+                out.append(view)
+            continue
         if n < MIN_PHOTOS:
             continue
         covers = list(

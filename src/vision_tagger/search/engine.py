@@ -1,8 +1,8 @@
 """Hybrid search: structured filters + property matches + keywords + semantic similarity.
 
-1. The query is interpreted (LLM, or keyword fallback) into persons, dates, required /
+1. The query is interpreted (LLM, or keyword fallback) into persons, pets, dates, required /
    preferred / excluded properties, keywords and an English "semantic" rewrite.
-2. The strict part (persons, required and excluded properties, dates) selects candidates via
+2. The strict part (persons, pets, required and excluded properties, dates) selects candidates via
    the normal gallery filter (``query.conditions``). If nothing matches, required properties
    are relaxed into preferences.
 3. Candidates are scored by: semantic similarity of the rewrite to each image's document
@@ -23,7 +23,15 @@ from sqlalchemy import and_, func, or_, select
 
 from ..config import Settings
 from ..db.cache import VersionedCache
-from ..db.models import Cluster, Face, Image, ImageEmbedding, ImageProperty, VlmResult
+from ..db.models import (
+    Animal,
+    Cluster,
+    Face,
+    Image,
+    ImageEmbedding,
+    ImageProperty,
+    VlmResult,
+)
 from ..db.session import Database
 from ..db.util import chunked, like_escape
 from ..i18n import Lazy
@@ -127,10 +135,13 @@ class SearchEngine:
     def _property_scores(
         self, terms: list[PropTerm], it: Interpretation, candidates: set[int]
     ) -> dict[int, float] | None:
-        any_persons = it.persons_mode == "any" and len(it.persons) > 1
+        # "Anna or Bello": photos with more of them rank higher
+        any_persons = it.persons_mode == "any" and len(it.persons) + len(it.pets) > 1
         if not terms and not any_persons:
             return None
-        total = sum(t.weight for t in terms) + (len(it.persons) if any_persons else 0)
+        total = sum(t.weight for t in terms) + (
+            len(it.persons) + len(it.pets) if any_persons else 0
+        )
         scores: dict[int, float] = {}
         with self.db.session() as s:
             if terms:
@@ -162,6 +173,15 @@ class SearchEngine:
                     .join(Cluster, Cluster.id == Face.cluster_id)
                     .where(Cluster.person_id.in_(pids), Face.ignored.is_(False))
                     .group_by(Face.image_id)
+                )
+                for image_id, n in rows:
+                    if image_id in candidates:
+                        scores[image_id] = scores.get(image_id, 0.0) + n
+                pet_ids = [pid for pid, _ in it.pets]
+                rows = s.execute(
+                    select(Animal.image_id, func.count(func.distinct(Animal.pet_id)))
+                    .where(Animal.pet_id.in_(pet_ids), Animal.ignored.is_(False))
+                    .group_by(Animal.image_id)
                 )
                 for image_id, n in rows:
                     if image_id in candidates:

@@ -32,12 +32,17 @@
     <div class="stat"><div class="v">{{ st.size_bytes | bytes }}</div><div class="l">{{ _('On disk') }}</div></div>
   </div>
 
-  {% if st.unnamed_clusters or d.pending %}
+  {% if st.unnamed_clusters or st.unnamed_pets or d.pending %}
   <div class="nudges">
     {% if st.unnamed_clusters %}
     <a class="nudge" href="/quiz?mode=name">{{ icon('scan-face') }}
       <span><b>{{ ngettext('%(num)d face group has no name yet', '%(num)d face groups have no name yet', st.unnamed_clusters) }}</b>
       <small>{{ _('Name them in a quick game – every name helps to find more photos.') }}</small></span>{{ icon('arrow-right', 'sm') }}</a>
+    {% endif %}
+    {% if st.unnamed_pets %}
+    <a class="nudge" href="/animals?show=unnamed">{{ icon('paw') }}
+      <span><b>{{ ngettext('%(num)d animal group has no name yet', '%(num)d animal groups have no name yet', st.unnamed_pets) }}</b>
+      <small>{{ _('Name your pets to find them in search, like “Bello at the beach”.') }}</small></span>{{ icon('arrow-right', 'sm') }}</a>
     {% endif %}
     {% if d.pending %}
     <a class="nudge" href="/pipeline">{{ icon('gauge') }}

@@ -94,3 +94,73 @@ class FakeAgeEstimator:
         if insightface_ages is not None:
             return [None if a is None else round(a) for a in insightface_ages]
         return [self.default] * len(boxes)
+
+
+# --------------------------------------------------------------------------- animals
+ANIMAL_DIM = 384
+
+
+def animal_centers(n: int, seed: int = 7) -> np.ndarray:
+    """``n`` well separated unit vectors (one per animal), DINOv2-sized."""
+    rng = np.random.default_rng(seed)
+    return normalize(rng.normal(size=(n, ANIMAL_DIM)))
+
+
+def near(center: np.ndarray, rng: np.random.Generator, r: float = 0.4) -> np.ndarray:
+    """A photo of the animal ``center``: cosine similarity about 1 / sqrt(1 + r**2)."""
+    noise = rng.normal(size=center.shape)
+    return normalize(center + noise / np.linalg.norm(noise) * r)
+
+
+class FakeAnimalAnalyzer:
+    """Stands in for ``AnimalAnalyzer`` (no model download, no onnxruntime).
+
+    ``animals(image)`` returns ``[(species, (x1, y1, x2, y2) as fractions, embedding), ...]``;
+    by default every photo shows the same dog in its lower left quarter.
+    """
+
+    def __init__(self, animals=None, score: float = 0.9):
+        self.providers = ["CPUExecutionProvider"]
+        self.using_gpu = False
+        self.loaded = False
+        self.calls = 0
+        self.score = score
+        center = animal_centers(1)[0]
+        self.animals = animals or (lambda image: [("dog", (0.05, 0.45, 0.5, 0.95), center)])
+
+    def load(self):
+        self.loaded = True
+
+    def unload(self):
+        self.loaded = False
+
+    def detect(self, image):
+        from vision_tagger.animals.analyzer import DetectedAnimal
+
+        self.calls += 1
+        w, h = image.size
+        return [
+            DetectedAnimal((x1 * w, y1 * h, x2 * w, y2 * h), species, self.score, emb)
+            for species, (x1, y1, x2, y2), emb in self.animals(image)
+        ]
+
+
+def add_animal(s, image_id: int, emb: np.ndarray, **kw):
+    from vision_tagger.animals.grouping import to_blob
+    from vision_tagger.db.models import Animal
+
+    animal = Animal(
+        image_id=image_id,
+        x1=kw.pop("x1", 20),
+        y1=kw.pop("y1", 200),
+        x2=kw.pop("x2", 300),
+        y2=kw.pop("y2", 460),
+        species=kw.pop("species", "dog"),
+        score=kw.pop("score", 0.9),
+        embedding=to_blob(emb),
+        box_px=kw.pop("box_px", 260),
+        **kw,
+    )
+    s.add(animal)
+    s.flush()
+    return animal
