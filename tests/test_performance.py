@@ -442,3 +442,29 @@ def test_prefetched_guess_of_the_next_batch_is_dropped_when_it_changed(images, s
     assert [i for i, _ in stage.processed] == [1, 2, 3, 6, 7, 8, 9, 10]
     assert 4 in stage.prepared  # it was guessed and decoded, but never processed
     assert statuses(images)[4] == Status.SKIPPED
+
+
+def test_indexer_stores_chunks_in_order_and_stops_like_before(db, settings, photos):
+    from vision_tagger.indexer import Indexer
+
+    from .conftest import make_image
+
+    for i in range(8):  # commit_every = 3 in the test settings
+        make_image(photos / f"{i}.jpg", seed=i)
+    seen: list[int] = []
+
+    def progress(stats):
+        seen.append(stats.processed)
+
+    stats = Indexer(
+        db, settings, progress=progress, should_stop=lambda: bool(seen) and seen[-1] >= 3
+    ).run()
+    assert stats.processed == 3 and stats.new == 3  # the chunk in flight is not stored
+    with db.session() as s:
+        assert s.scalar(select(func.count()).select_from(Image)) == 3
+    stats = Indexer(db, settings).run()
+    assert stats.new == 5 and stats.unchanged == 3
+    with db.session() as s:
+        assert [i.filename for i in s.scalars(select(Image).order_by(Image.id))] == [
+            f"{i}.jpg" for i in range(8)
+        ]
