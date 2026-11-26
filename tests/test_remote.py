@@ -100,3 +100,17 @@ def test_local_mode_still_checks_hosts(settings):
     app = create_app(settings)
     with TestClient(app, base_url="http://evil.example") as c:
         assert c.get("/").status_code == 400
+
+
+def test_docker_env_file_instructions_work_on_windows():
+    """Windows PowerShell 5.1 writes UTF-16 with `echo … > .env`, which docker compose rejects."""
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    example = (root / ".env.example").read_bytes()
+    assert not example.startswith((b"\xef\xbb\xbf", b"\xff\xfe", b"\xfe\xff"))  # no BOM
+    assert b"\nVT_PASSWORD=" in example and example.decode("ascii")  # plain text
+    for doc in ("README.md", "docker-compose.yml"):
+        assert 'echo "VT_PASSWORD' not in (root / doc).read_text(encoding="utf-8"), doc
+    for ignore in (".gitignore", ".dockerignore"):  # the password never lands in git or images
+        assert ".env" in (root / ignore).read_text(encoding="utf-8").splitlines(), ignore
