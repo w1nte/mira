@@ -165,6 +165,33 @@ class ExportConfig(BaseModel):
     sidecar_naming: Literal["append", "replace"] = "append"
 
 
+class GeoConfig(BaseModel):
+    """GPS places and the map (see ``geo.places``)."""
+
+    # find places at the end of every index run (also: `vision-tagger places`, map page)
+    auto: bool = True
+    # photos closer than this (km) end up in the same place; larger groups are split
+    cluster_km: float = 0.75
+    max_place_km: float = 5.0
+    # offline names come from GeoNames; the data (3 MB) is downloaded once into
+    # <data_dir>/models/geo. A local GeoNames dump (cities500.zip, cities1000.txt, ...) can be
+    # used instead.
+    download_gazetteer: bool = True
+    cities_file: Path | None = None
+    # Optional OpenStreetMap names (e.g. "Prenzlauer Berg, Berlin") from Nominatim. Off by
+    # default: it sends the (rounded) position of every place to that server.
+    nominatim: bool = False
+    nominatim_url: str = "https://nominatim.openstreetmap.org"
+    language: str = "en"  # language of the OpenStreetMap names
+    # Map background. Tile requests tell the tile server which area you look at; point this
+    # at your own tile server, or set it to "" for a map without background.
+    tile_url: str = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+    tile_attribution: str = (
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    )
+    tile_max_zoom: int = 19
+
+
 class RemoteConfig(BaseModel):
     """Remote mode: the app runs on a server; photos are uploaded through the web UI."""
 
@@ -221,6 +248,7 @@ class Settings(BaseSettings):
     search: SearchConfig = Field(default_factory=SearchConfig)
     export: ExportConfig = Field(default_factory=ExportConfig)
     web: WebConfig = Field(default_factory=WebConfig)
+    geo: GeoConfig = Field(default_factory=GeoConfig)
 
     @classmethod
     def settings_customise_sources(

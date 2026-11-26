@@ -33,6 +33,7 @@ __all__ = [
     "ensure_face_crop",
     "ensure_thumbnail",
     "face_crop_path",
+    "gps_position",
     "load_image",
     "read_image_info",
     "remove_face_crops",
@@ -189,16 +190,29 @@ def _jsonable(value: Any) -> Any:
     return round(f, 6) if f == f else None  # drop NaN
 
 
-def _gps_to_decimal(values: Any, ref: Any) -> float | None:
+def _gps_to_decimal(values: Any, ref: Any, limit: float = 180.0) -> float | None:
+    """EXIF degrees / minutes / seconds and hemisphere (N, S, E, W) -> signed decimal degrees.
+
+    Tolerates writers that store fewer parts (decimal degrees only), negative degrees instead
+    of a hemisphere, NUL-padded references and zero denominators (NaN). Values beyond
+    ``limit`` (90 for latitudes, 180 for longitudes) are rejected.
+    """
+    parts = list(values)[:3] if isinstance(values, tuple | list) else [values]
     try:
-        d, m, s = (float(v) for v in values)
+        nums = [float(v) for v in parts]
     except (TypeError, ValueError, ZeroDivisionError):
         return None
-    dec = d + m / 60.0 + s / 3600.0
+    if not nums or not all(math.isfinite(v) for v in nums):
+        return None
+    d, m, s = [*nums, 0.0, 0.0][:3]
+    dec = abs(d) + abs(m) / 60.0 + abs(s) / 3600.0
     if isinstance(ref, bytes):
         ref = ref.decode("ascii", "ignore")
-    if str(ref).upper() in ("S", "W"):
+    hemisphere = str(ref or "").strip("\x00 ").upper()[:1]
+    if hemisphere in ("S", "W") or (hemisphere not in ("N", "E") and d < 0):
         dec = -dec
+    if abs(dec) > limit:
+        return None
     return round(dec, 7)
 
 
@@ -252,18 +266,37 @@ def _extract_exif(im: Image.Image) -> tuple[dict[str, Any], dict[str, datetime |
     except Exception:
         gps = {}
     if gps:
-        lat = _gps_to_decimal(gps.get(2), gps.get(1)) if 2 in gps else None
-        lon = _gps_to_decimal(gps.get(4), gps.get(3)) if 4 in gps else None
+        lat = _gps_to_decimal(gps.get(2), gps.get(1), 90.0) if 2 in gps else None
+        lon = _gps_to_decimal(gps.get(4), gps.get(3), 180.0) if 4 in gps else None
         if lat is not None and lon is not None and not (lat == 0 and lon == 0):
             meta["gps"] = {"lat": lat, "lon": lon}
             if 6 in gps:
                 alt = _jsonable(gps.get(6))
-                if isinstance(alt, float | int):
+                if isinstance(alt, float | int) and not isinstance(alt, bool):
+                    # GPSAltitudeRef 1 = below sea level
+                    if gps.get(5) in (1, b"\x01", "\x01"):
+                        alt = -abs(alt)
                     meta["gps"]["alt"] = alt
     meta["has_exif"] = True
     if orientation != 1:
         meta["orientation"] = orientation
     return meta, dates, orientation
+
+
+def gps_position(meta: dict[str, Any] | None) -> tuple[float, float] | None:
+    """``(lat, lon)`` from ``meta["gps"]`` if it is a usable position."""
+    gps = (meta or {}).get("gps")
+    if not isinstance(gps, dict):
+        return None
+    lat, lon = gps.get("lat"), gps.get("lon")
+    if not all(isinstance(v, int | float) and not isinstance(v, bool) for v in (lat, lon)):
+        return None
+    lat, lon = float(lat), float(lon)
+    if not (math.isfinite(lat) and math.isfinite(lon)):
+        return None
+    if abs(lat) > 90 or abs(lon) > 180 or (lat == 0 and lon == 0):
+        return None
+    return lat, lon
 
 
 def _camera_name(meta: dict[str, Any]) -> str | None:

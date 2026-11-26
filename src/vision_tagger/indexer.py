@@ -37,6 +37,7 @@ from .faces.clustering import delete_image_faces
 from .imaging import (
     encode_thumbnail,
     ensure_thumbnail,
+    gps_position,
     read_image_info,
     save_thumbnail_bytes,
     thumbnail_path,
@@ -489,7 +490,8 @@ class Indexer:
             delete_image_faces(s, img.id, self.settings.face_crops_dir)
             s.execute(
                 delete(ImageProperty).where(
-                    ImageProperty.image_id == img.id, ImageProperty.source != "exif"
+                    ImageProperty.image_id == img.id,
+                    ImageProperty.source.not_in(("exif", "place")),  # place: from the position
                 )
             )
             s.execute(delete(VlmResult).where(VlmResult.image_id == img.id))
@@ -532,6 +534,10 @@ class Indexer:
             img.date_source = info.date_source
         img.camera = info.camera
         img.meta = info.meta
+        lat, lon = gps_position(info.meta) or (None, None)
+        if (img.lat, img.lon) != (lat, lon):
+            img.lat, img.lon = lat, lon
+            img.place_id = None  # placed again by geo.places (a user-named place takes it back)
 
     def _mark_missing(self, roots: list[str]) -> int:
         """Flag vanished files without holding the write lock while touching the disk.

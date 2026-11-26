@@ -237,3 +237,81 @@ def test_0003_replaces_indexes_and_keeps_data(tmp_path):
         }
         & indexes
     )
+
+
+def test_0005_backfills_gps_columns_and_downgrades(tmp_path):
+    """0005 copies the GPS position from the metadata JSON into images.lat / images.lon."""
+    from vision_tagger.db.migrate import downgrade
+
+    path = tmp_path / "v4.sqlite3"
+    build_at(path, "0004")
+    fill_first_version(path)  # image 1: metadata '{}'
+    metadata = {
+        2: '{"gps": {"lat": 52.520008, "lon": 13.404954, "alt": 34.0}, "make": "Apple"}',
+        3: '{"gps": {"lat": -33.856784, "lon": 151.215297}}',
+        4: '{"gps": {"lat": 40.689247, "lon": -74.044502}}',
+        5: '{"gps": {"lat": 0, "lon": 0}}',  # "no fix"
+        6: '{"gps": {"lat": 123.0, "lon": 10.0}}',  # out of range
+        7: '{"gps": {"lat": "north", "lon": 10.0}}',  # not a number
+        8: '{"gps": {"lat": 10.0}}',  # half a position
+        9: 'not json, but mentions "gps"',  # must not abort the migration
+    }
+    con = sqlite3.connect(path)
+    for image_id, meta in metadata.items():
+        name = f"{image_id}.jpg"
+        con.execute(
+            "INSERT INTO images (id, path, path_key, root, rel_path, folder, filename, ext,"
+            " size_bytes, mtime, date_source, phash, metadata, indexed_at, missing)"
+            " VALUES (?, ?, ?, '/p', ?, '', ?, '.jpg', 1, 0, 'exif', ?, ?,"
+            " '2024-01-01 00:00:00', 0)",
+            (image_id, f"/p/{name}", f"/p/{name}", name, name, f"{image_id:016x}", meta),
+        )
+    con.commit()
+    con.close()
+    before = counts(path)
+
+    upgrade(url_of(path), backup=False)
+    assert counts(path) == before  # the images table rebuild keeps every row and child row
+    con = sqlite3.connect(path)
+    got = {i: (lat, lon) for i, lat, lon in con.execute("SELECT id, lat, lon FROM images")}
+    assert got[2] == (52.520008, 13.404954)
+    assert got[3] == (-33.856784, 151.215297)
+    assert got[4] == (40.689247, -74.044502)
+    for image_id in (1, 5, 6, 7, 8, 9):
+        assert got[image_id] == (None, None), image_id
+    assert con.execute("PRAGMA foreign_key_check").fetchall() == []
+    meta = con.execute("SELECT metadata FROM images WHERE id = 2").fetchone()[0]
+    assert '"make": "Apple"' in meta  # the metadata itself is untouched
+    # deleting a place leaves its photos without one (ON DELETE SET NULL)
+    con.execute("PRAGMA foreign_keys=ON")
+    con.execute(
+        "INSERT INTO places (id, name, lat, lon, created_at)"
+        " VALUES (1, 'Berlin, Germany', 52.52, 13.4, '2024-01-01 00:00:00')"
+    )
+    con.execute("UPDATE images SET place_id = 1 WHERE id = 2")
+    con.execute(
+        "INSERT INTO image_properties (image_id, key, value, source)"
+        " VALUES (2, 'place', 'Berlin, Germany', 'place')"
+    )
+    con.commit()
+    con.execute("DELETE FROM places WHERE id = 1")
+    assert con.execute("SELECT place_id FROM images WHERE id = 2").fetchone()[0] is None
+    con.execute(
+        "INSERT INTO places (id, name, lat, lon, created_at)"
+        " VALUES (2, 'Berlin', 52.5, 13.4, '2024-01-01 00:00:00')"
+    )
+    con.execute("UPDATE images SET place_id = 2 WHERE id = 2")
+    con.commit()
+    con.close()
+
+    downgrade(url_of(path), "0004", backup=False)
+    con = sqlite3.connect(path)
+    columns = {r[1] for r in con.execute("PRAGMA table_info(images)")}
+    assert not {"lat", "lon", "place_id"} & columns
+    tables = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    assert not {"places", "geocode_cache"} & tables
+    left = con.execute("SELECT count(*) FROM image_properties WHERE source = 'place'").fetchone()
+    assert left == (0,)
+    assert con.execute("SELECT count(*) FROM images").fetchone()[0] == before["images"]
+    assert con.execute("PRAGMA foreign_key_check").fetchall() == []
+    con.close()
