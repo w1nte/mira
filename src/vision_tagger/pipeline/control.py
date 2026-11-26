@@ -38,6 +38,19 @@ def desired_state(db: Database) -> str:
         return s.scalar(select(Control.desired_state).where(Control.id == 1)) or STOPPED
 
 
+#: key in ``Control.progress``: the model download a stage's set-up is waiting for (a dict as
+#: ``vlm.models.PullProgress.as_dict`` makes it, plus ``stage``), else ``None``
+PULL_PROGRESS = "pull"
+
+
+def pull_progress(db: Database) -> dict[str, Any] | None:
+    """The model download of the running pipeline (see :data:`PULL_PROGRESS`), if any."""
+    with db.session() as s:
+        progress = s.scalar(select(Control.progress).where(Control.id == 1)) or {}
+    value = progress.get(PULL_PROGRESS)
+    return value if isinstance(value, dict) else None
+
+
 def set_progress(db: Database, key: str, value: Any) -> None:
     with db.write() as s:
         ctrl = s.get(Control, 1)

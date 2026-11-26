@@ -908,6 +908,29 @@ details.more > summary { font-weight: 500; }
 .nudge > .i:first-child { width: 22px; height: 22px; color: var(--accent); }
 .nudge span { flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .nudge small { color: var(--text-2); }
+.nudge.static:hover { border-color: var(--line); background: var(--panel); }
+.models-nudge .nudge { flex-wrap: wrap; }
+.models-nudge .nudge > span { min-width: min(100%, 220px); }
+.models-nudge .nudge small.err { color: var(--err); }
+.models-nudge .nudge code { overflow-wrap: anywhere; }
+/* `.nudge span` above lays out the text column; the bar is a span in it too */
+.models-nudge .nudge .progress { flex: none; flex-direction: row; gap: 0; margin-top: 6px; }
+.models-nudge .nudge .progress > span { flex: none; display: block; }
+.models-nudge form { margin: 0; }
+.activity .what small.wrap { white-space: normal; overflow-wrap: anywhere; }
+
+/* ---------- Ollama models (Environment card) */
+.model-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.model-list li { display: flex; align-items: flex-start; gap: 8px 12px; min-width: 0; }
+.model-info { flex: 1; min-width: 0; display: grid; gap: 4px; }
+.model-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.model-head code { overflow-wrap: anywhere; }
+.model-list li > form { flex: none; margin: 0; }
+.models > form.row { margin-top: 12px; }
+.model-alt { display: block; margin-top: 10px; }
+.model-alt code { overflow-wrap: anywhere; }
+.pull-note { display: grid; gap: 6px; margin-top: 10px; }
+.progress > span { display: block; height: 100%; transition: width .5s ease; }
 .memories { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(200px, 260px); gap: 12px; overflow-x: auto; padding-bottom: 6px; }
 .memory { position: relative; display: block; aspect-ratio: 4 / 3; border-radius: var(--radius); overflow: hidden; background: var(--sunken); color: #fff; }
 .memory img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .25s ease; }

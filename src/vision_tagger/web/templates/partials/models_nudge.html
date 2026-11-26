@@ -1,0 +1,40 @@
+{# Home: the Ollama models are missing or downloading, or Ollama is not reachable.
+   Loaded after the page; polls itself while a download runs. #}
+<div class="nudges models-nudge" id="models-nudge"{% if busy %} hx-get="/partials/models-nudge?polling=1" hx-trigger="every 2s [document.visibilityState === 'visible']" hx-swap="outerHTML"{% endif %}>
+  {% if busy %}
+    {% set d = downloads.values() | rejectattr('phase', 'equalto', 'queued') | first %}
+    <div class="nudge static">{{ icon('download') }}
+      <span><b>{{ _('Downloading the AI models…') }}</b>
+        <small>{% if d %}{{ pull_message(d) }}{% elif download_job %}{{ download_job.message }}{% endif %}</small>
+        {% if d and d.percent is not none %}<span class="progress" role="progressbar" aria-label="{{ d.model }}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ d.percent }}"><span class="p-running" style="width: {{ d.percent }}%"></span></span>{% endif %}
+      </span>
+      <a class="btn small" href="/pipeline#health">{{ _('Details') }}</a>
+    </div>
+  {% elif not models.reachable %}
+    <div class="nudge static">{{ icon('info') }}
+      <span><b>{{ _('Install Ollama for properties and search') }}</b>
+        {% if remote %}
+        <small>{{ _('Mira cannot reach Ollama at %(url)s. Start the Ollama service on the server; Mira then downloads the models it needs by itself.', url=models.url) }}</small>
+        {% else %}
+        <small>{{ _('Mira describes and searches your photos with Ollama. Install it and start it; Mira then downloads the models it needs by itself.') }}</small>
+        {% endif %}
+      </span>
+      {% if not remote %}<a class="btn small" href="https://ollama.com/download" target="_blank" rel="noopener">{{ icon('external', 'sm') }}{{ _('Get Ollama') }}</a>{% endif %}
+    </div>
+  {% elif models.missing %}
+    {% set missing = models.missing %}
+    <div class="nudge static">{{ icon('download') }}
+      <span><b>{{ ngettext('Mira still needs %(num)d AI model', 'Mira still needs %(num)d AI models', missing | length) }}</b>
+        <small>{{ _('They describe your photos (properties) and make them searchable. The download is several GB and runs in the background.') }}</small>
+        <small class="muted">{% for m in missing %}<code>{{ m.name }}</code>{% if not loop.last %} · {% endif %}{% endfor %}</small>
+        {% if download_job and download_job.status == 'failed' %}<small class="err">{{ download_job.message }}</small>{% endif %}
+      </span>
+      <form method="post" action="/models/download"><button class="primary small">{{ icon('download', 'sm') }}{{ _('Download now') }}</button></form>
+    </div>
+  {% else %}
+    <div class="nudge static">{{ icon('check') }}
+      <span><b>{{ _('The AI models are ready') }}</b>
+        <small>{{ _('Mira can now describe your photos and search them.') }}</small></span>
+    </div>
+  {% endif %}
+</div>

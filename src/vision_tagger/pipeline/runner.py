@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 import traceback
 from collections.abc import Callable, Iterable
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -26,8 +27,8 @@ from ..config import Settings
 from ..db.models import Control, Image, Run, StageStatus, Status, utcnow
 from ..db.session import Database
 from . import control
-from .control import PAUSED, RUNNING, STOPPED, RunnerBusyError
-from .stages.base import Stage, StageAbort
+from .control import PAUSED, PULL_PROGRESS, RUNNING, STOPPED, RunnerBusyError
+from .stages.base import Stage, StageAbort, StageInterrupted
 
 log = logging.getLogger(__name__)
 
@@ -93,6 +94,10 @@ class PipelineRunner:
         self._lock = threading.Lock()
         self._hb: _Heartbeat
         self._shutdown = threading.Event()
+        # desired state as long set-up steps see it (re-read every half second)
+        self._state = RUNNING
+        self._state_at = 0.0
+        self._reported: tuple[str | None, float] = (None, 0.0)
 
     def shutdown(self) -> None:
         """The application is closing: end the run after the current image, but leave the
@@ -167,6 +172,8 @@ class PipelineRunner:
             if ctrl is not None and ctrl.active_run_id == summary.run_id:
                 ctrl.active_run_id = None
                 ctrl.active_stage = None
+                if (ctrl.progress or {}).get(PULL_PROGRESS) is not None:
+                    ctrl.progress = {**ctrl.progress, PULL_PROGRESS: None}
                 # closing the application pauses the pipeline; the next start resumes it
                 ctrl.desired_state = PAUSED if summary.status == PAUSED else STOPPED
                 ctrl.message = f"run {summary.run_id} {summary.status}"
@@ -204,6 +211,56 @@ class PipelineRunner:
             self._set_run_status(run_id, RUNNING if state == RUNNING else STOPPED)
             log.info("pipeline %s", "resumed" if state == RUNNING else "stopped")
         return RUNNING if state == RUNNING else STOPPED
+
+    def _interrupted(self) -> bool:
+        """Should a long set-up step (a model download) give way? Pause, stop or app exit.
+
+        Asked often and from other threads: the state is read at most every half second.
+        """
+        if self._shutdown.is_set():
+            return True
+        now = time.monotonic()
+        if now - self._state_at >= 0.5:
+            try:
+                self._state = control.desired_state(self.db)
+            except Exception as exc:  # pragma: no cover - a locked database: ask again
+                log.debug("reading the pipeline state failed: %s", exc)
+            self._state_at = now
+        return self._state != RUNNING
+
+    def _report(self, progress: dict[str, Any] | None) -> None:
+        """Progress of a long set-up step, for the UI of any process (``control.progress``).
+
+        At most one short write per second; a new phase and the end are written at once.
+        """
+        phase = progress.get("phase") if progress else None
+        now = time.monotonic()
+        if progress is not None and phase == self._reported[0] and now - self._reported[1] < 1:
+            return
+        self._reported = (phase, now)
+        try:
+            control.set_progress(self.db, PULL_PROGRESS, progress)
+        except Exception as exc:  # the UI misses one update, the download goes on
+            log.warning("could not store the download progress: %s", exc)
+
+    def _setup(self, stage: Stage, run_id: int, name: str) -> bool:
+        """Set a stage up; ``False`` if the run was stopped meanwhile.
+
+        A long set-up step (downloading a model) gives way to pause and stop requests with
+        :class:`StageInterrupted`; after a pause the stage is set up again.
+        """
+        stage.interrupted = self._interrupted
+        stage.report = self._report
+        self._state_at = 0.0
+        while True:
+            try:
+                stage.setup()
+                return True
+            except StageInterrupted as exc:
+                log.info("%s", exc)
+                if self._wait_if_paused(run_id, name) == STOPPED:
+                    return False
+                self._state_at = 0.0  # resumed: don't trust the cached state
 
     def _set_run_status(self, run_id: int, status: str) -> None:
         with self.db.write() as s:
@@ -391,7 +448,10 @@ class PipelineRunner:
                     break
                 if not set_up:
                     log.info("setting up stage %s", name)
-                    stage.setup()
+                    if not self._setup(stage, run_id, name):
+                        stopped = True
+                        self._release(name, ids)
+                        break
                     set_up = True
                 remaining = list(ids)
                 if prefetch is not None:

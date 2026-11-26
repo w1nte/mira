@@ -15,6 +15,9 @@
   </div>
 </div>
 
+{# missing Ollama models / Ollama not installed: loaded after the page, Ollama may be slow #}
+<div hx-get="/partials/models-nudge" hx-trigger="load" hx-swap="outerHTML"></div>
+
 {% if not st.photos %}
   <section class="hero card">
     {{ icon('folder-plus', 'lg') }}

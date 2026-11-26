@@ -156,6 +156,10 @@ class VlmConfig(BaseModel):
     max_list_items: int = 15
     vocabulary_file: Path | None = None
     synonyms_file: Path | None = None
+    # A pipeline run that needs a model Ollama does not have (vlm.model, search.embed_model)
+    # lets Ollama download it first. Off: the run stops and asks for `ollama pull`. The web UI
+    # and `vision-tagger models pull` download models on request either way.
+    auto_pull: bool = True
 
 
 class SearchWeights(BaseModel):

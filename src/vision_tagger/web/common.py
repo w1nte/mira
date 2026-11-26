@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from .. import APP_NAME, i18n
 from ..i18n import N_, _
 from ..query import ImageFilter, property_counts
+from ..vlm.models import phase_text, pull_message
 from .context import AppContext
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -200,6 +201,7 @@ JOB_TITLES = {
     "references": N_("References"),
     "export": N_("Export"),
     "sidecars": N_("Sidecars"),
+    "models": N_("Downloading AI models"),
     "import": N_("Database import"),
     "locations": N_("Location check"),
 }
@@ -263,4 +265,6 @@ templates.env.globals.update(
     status_title=status_title,
     job_title=job_title,
     pet_label=pet_label,
+    pull_message=pull_message,
+    pull_phase=phase_text,
 )

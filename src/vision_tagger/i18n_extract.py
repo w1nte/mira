@@ -117,6 +117,13 @@ NOTES: dict[str, str] = {
     "orientation|panorama": "Property value: picture orientation, very wide.",
     "landscape": "Property value: composition / genre of the photo (a landscape photo).",
     "portrait": "Property value: composition / genre of the photo (a portrait photo).",
+    "Download": "Button next to an AI model: let Ollama download it.",
+    "queued": "State of an AI model that waits for its download (badge).",
+    "starting the download": "Phase of an AI model download, after the model name.",
+    "checking the download": "Phase of an AI model download, after the model name.",
+    "finishing": "Phase of an AI model download, after the model name.",
+    "Downloading AI models": "Name of the job that downloads the AI models (shown while it runs).",
+    "Search queries": "What an AI model is used for: understanding what the user searches for.",
 }
 
 PLACEHOLDER = re.compile(r"%\(\w+\)[sd]")

@@ -18,6 +18,7 @@ from ...vlm.prompt import USER_PROMPT, prompt_version, system_prompt
 from ...vlm.schema import CONFIDENCE_SUFFIX, Vocabulary, default_synonyms_path
 from ..control import mark_pending
 from .base import Stage, StageAbort
+from .ollama import ensure_model
 
 log = logging.getLogger(__name__)
 
@@ -90,6 +91,7 @@ class VlmStage(Stage):
         return self.backend.health()
 
     def setup(self) -> None:
+        ensure_model(self, self.backend, self.backend.model)  # downloads it (vlm.auto_pull)
         health = self.backend.health()
         if not health.get("ok", False):
             raise RuntimeError(f"VLM backend not ready: {health.get('error', health)}")

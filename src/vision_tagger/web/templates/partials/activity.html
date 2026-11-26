@@ -1,9 +1,11 @@
-{# Sidebar activity indicator, polled every few seconds. Expects state, stage, percent, job. #}
+{# Sidebar activity indicator, polled every few seconds. Expects state, stage, percent, job and
+   download (a model download: of the pipeline's set-up, or of the models job). #}
 <a class="activity" href="/pipeline" title="{{ _('Open the pipeline') }}">
   {% if state == 'running' %}
     <span class="dot run"></span>
     <div class="what">
       <b>{{ _('Running') }}{% if stage %} · {{ stage_title(stage) }}{% endif %}</b>
+      {% if download %}{% set percent = download.percent %}<small class="wrap" title="{{ job_title('models') }}">{{ pull_message(download) }}</small>{% endif %}
       {% if percent is not none %}<div class="bar" role="progressbar" aria-label="{{ _('Progress') }}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ percent }}" title="{{ _('%(percent)s %% done', percent=percent) }}"><span style="width: {{ percent }}%"></span></div>{% endif %}
     </div>
   {% elif state == 'paused' %}
@@ -13,8 +15,10 @@
     <span class="dot pause"></span>
     <div class="what"><b>{{ _('Stopping…') }}</b></div>
   {% elif job %}
+    {% set job_percent = (job.progress.get('current') or {}).get('percent') if job.progress else none %}
     <span class="dot run"></span>
-    <div class="what"><b>{{ job_title(job.name) }}</b>{% if job.message %}<small title="{{ job.message }}">{{ job.message }}</small>{% endif %}</div>
+    <div class="what"><b>{{ job_title(job.name) }}</b>{% if job.message %}<small title="{{ job.message }}"{% if job.name == 'models' %} class="wrap"{% endif %}>{{ job.message }}</small>{% endif %}
+      {% if job_percent is not none %}<div class="bar" role="progressbar" aria-label="{{ _('Progress') }}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ job_percent }}"><span style="width: {{ job_percent }}%"></span></div>{% endif %}</div>
   {% else %}
     <span class="dot"></span>
     <div class="what">{{ _('Pipeline idle') }}</div>

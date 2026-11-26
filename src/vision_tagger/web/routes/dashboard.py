@@ -15,6 +15,7 @@ from ...pipeline import control
 from ...pipeline.stages import STAGE_NAMES
 from ..common import ctx, redirect, render
 from ..context import Job
+from .models import models_context
 
 router = APIRouter()
 
@@ -53,6 +54,12 @@ def status_context(request: Request) -> dict[str, Any]:
             or 0,
         }
     alive = c.runner.running or control.is_runner_alive(c.db)
+    # model downloads run beside the other jobs; show the one that is running
+    job = c.jobs.current
+    if not c.jobs.busy and c.downloads.busy:
+        job = c.downloads.current
+    finished = [*c.jobs.history, *c.downloads.history]
+    finished.sort(key=lambda j: j.finished_at or j.started_at, reverse=True)
     return {
         "counts": counts,
         # every stage; the ones config.toml turns off are shown unticked and can still be run
@@ -67,8 +74,10 @@ def status_context(request: Request) -> dict[str, Any]:
         "rate": rate,
         "eta": eta,
         "totals": totals,
-        "job": c.jobs.current,
-        "jobs": list(c.jobs.history)[:5],
+        "job": job,
+        "jobs": finished[:5],
+        # a stage's set-up waits for a model download (vlm.auto_pull)
+        "pull": control.pull_progress(c.db) if alive else None,
         "runner_error": c.runner.last_error,
         "errors": control.recent_errors(c.db, limit=20),
     }
@@ -82,8 +91,8 @@ def pipeline_page(request: Request) -> Response:
         "pipeline.html",
         roots=_roots(request),
         settings=c.settings,
-        vlm_health=c.vlm_health(),
         providers=c.onnx_providers(),
+        **models_context(c),
         **status_context(request),
     )
 
@@ -114,8 +123,20 @@ def activity_partial(request: Request) -> Response:
         total = cnt.get("total", 0)
         percent = round(100 * cnt.get("done", 0) / total) if total else None
     job = c.jobs.current if c.jobs.busy else None
+    if job is None and c.downloads.busy:
+        job = c.downloads.current
+    # a model download: of the running pipeline (vlm.auto_pull), else of the models job
+    download = control.pull_progress(c.db) if alive else None
+    if download is None and alive and c.downloads.busy and c.downloads.current is not None:
+        download = c.downloads.current.progress.get("current")
     return render(
-        request, "partials/activity.html", state=state, stage=stage, percent=percent, job=job
+        request,
+        "partials/activity.html",
+        state=state,
+        stage=stage,
+        percent=percent,
+        job=job,
+        download=download,
     )
 
 
@@ -125,9 +146,9 @@ def health_partial(request: Request) -> Response:
     return render(
         request,
         "partials/health.html",
-        vlm_health=c.vlm_health(max_age=0),
         providers=c.onnx_providers(),
         settings=c.settings,
+        **models_context(c, fresh=True),
     )
 
 
@@ -203,6 +224,7 @@ def start_run(
     if c.importing:
         return redirect(request, "/pipeline", err=_("Wait until the database import has finished."))
     lim = int(limit) if limit.strip().isdigit() and int(limit) > 0 else None
+    c.forget_models_status()  # the run may download a model (vlm.auto_pull)
     c.runner.start(stages, batch_size=batch_size or None, limit=lim)
     return redirect(
         request, "/pipeline", msg=_("Run started: %(stages)s.", stages=", ".join(stages))

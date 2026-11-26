@@ -134,7 +134,8 @@ rights are needed on Windows and Linux.
 
 Mira then starts like any other application, in a window of its own. Closing the window stops
 it (a running pipeline is paused and continues on the next start); starting it again while it
-runs opens another window. Install **Ollama** as well (step 4 below) for properties and search.
+runs opens another window. Install **Ollama** as well (step 4 below) for properties and search;
+Mira then downloads the models it needs by itself.
 
 **Windows.** Run the setup program; it installs into `%LOCALAPPDATA%\Programs\Mira` and adds
 Mira to the Start menu. The gpu setup comes as a `.exe` plus `.bin` files: keep them in one
@@ -208,11 +209,10 @@ packs it. See [Releases](#releases).
    onnxruntime-gpu builds target CUDA 13, which needs driver R580 or newer. If CUDA can't be
    loaded, InsightFace falls back to the CPU and the dashboard shows a warning. Check
    **Environment** on the dashboard.
-4. **Ollama** from <https://ollama.com/download>, then pull the model:
-   ```powershell
-   ollama pull qwen2.5vl:7b      # ~6 GB VRAM; qwen2.5vl:3b for smaller GPUs, qwen3-vl:8b also works
-   ollama pull nomic-embed-text  # small text-embedding model for the search index
-   ```
+4. **Ollama** from <https://ollama.com/download>. Install and start it; no `ollama pull` is
+   needed. Mira lets Ollama download the models it needs (see [AI models](#ai-models)):
+   `qwen2.5vl:7b` for properties (~6 GB VRAM; `qwen2.5vl:3b` for smaller GPUs, `qwen3-vl:8b`
+   also works) and `nomic-embed-text` for the search index.
 5. **Mira:**
    ```powershell
    git clone https://github.com/w1nte/vision-tagger.git
@@ -311,6 +311,7 @@ Everything also works headless:
 uv run vision-tagger index "D:\Photos"
 uv run vision-tagger run --stage faces --stage vlm --batch-size 16 --limit 500
 uv run vision-tagger status
+uv run vision-tagger models [pull]               # Ollama models: list / download missing ones
 uv run vision-tagger pause | resume | stop       # from a second terminal
 uv run vision-tagger refs                        # import reference DB + name clusters
 uv run vision-tagger cluster [--full]
@@ -327,14 +328,39 @@ uv run vision-tagger db export | import FILE     # whole database (see "Moving a
 
 `Ctrl+C` during `run` stops gracefully. Running `run` again continues where it stopped.
 
+### AI models
+
+Properties and search use models that Ollama keeps (`vlm.model`, `search.embed_model` and
+`search.model` if you set one). You don't have to pull them in a terminal; Mira asks Ollama to
+download them:
+
+- **Home** shows a card while models are missing, with **Download now**. If Ollama isn't
+  installed or not running, the card links to the Ollama download instead.
+- **Pipeline → Environment** lists every model with its state (*ready*, *missing*,
+  *downloading 42 %*) and a **Download** button, and **Download missing models** when several are
+  missing. The download runs in the background, one model after another, and the sidebar shows
+  its progress (model, GB done of the total, percent). **Cancel download** stops it; Ollama keeps
+  what it has downloaded, so the next download continues there.
+- **A pipeline run** that needs a missing model downloads it first (the Pipeline page shows the
+  progress), then carries on. Pause and Stop work during the download. Turn this off with
+  `vlm.auto_pull = false`: the run then stops and asks you to download the model.
+- **Command line:** `vision-tagger models` lists the models and whether Ollama has them (exit
+  code 1 if some are missing); `vision-tagger models pull` downloads the missing ones with a
+  progress line. The desktop app's `vision-tagger-cli.exe` has the same commands.
+
+The models need several GB of disk space (qwen2.5vl:7b about 6 GB). Mira never starts a download
+on its own when it starts, only on a button or for a run that needs the model. In remote mode
+and with Docker, the server's Ollama downloads them. `ollama pull <model>` still works if you
+prefer it.
+
 ## The web UI
 
 | Page | What you can do |
 |---|---|
-| **Home** | Your library at a glance: number of photos, people, places and years, *On this day* memories, recently added photos, and collections. Nudges you when face or animal groups still need a name. |
+| **Home** | Your library at a glance: number of photos, people, places and years, *On this day* memories, recently added photos, and collections. Nudges you when face or animal groups still need a name, and while AI models are missing (with **Download now**). |
 | **Collections** | A collection is a saved filter: it stays up to date as new photos arrive. Suggested ones (people, places, events, this year) appear by themselves; **Save as collection** in *Images* adds your own. Rename, reorder and delete them here. |
 | **Import** | Local mode: your photo folders, with a folder browser, and **Scan now**. Remote mode: upload photos, folders or ZIP files (see [Remote mode](#remote-mode-and-docker)). Shows what is being indexed and analysed right now. |
-| **Pipeline** | The technical part: start/pause/resume/stop runs (stages, batch size, limit), per-stage progress, ETA, errors (retry/skip), outdated results, jobs, recent runs, environment check (CUDA, Ollama, model). |
+| **Pipeline** | The technical part: start/pause/resume/stop runs (stages, batch size, limit), per-stage progress, ETA, errors (retry/skip), outdated results, jobs, recent runs, environment check (CUDA, Ollama, and the AI models with their state and **Download** buttons). |
 | **Database** | Export the whole library database (backup, another computer) and import one (see [Moving a library](#moving-a-library-to-another-computer-export--import)). **Missing files** lists photos that are not where Mira last saw them; scanning their new folder re-links them. |
 | **Faces** | All clusters with cover face and size. Name inline (autocomplete), accept reference suggestions, select several to **merge**. Views for unclustered and ignored faces. |
 | **Cluster** | All faces of a cluster. Select faces to **split** into a new cluster, **assign to a person**, **move** to another cluster, or **remove**. **Auto-split** mixed clusters. Similar clusters with one-click merge. |
@@ -397,11 +423,12 @@ Open `.env` in a text editor and choose a password (`VT_PASSWORD=…`), then:
 
 ```bash
 docker compose up -d
-docker compose exec ollama ollama pull qwen2.5vl:7b
-docker compose exec ollama ollama pull nomic-embed-text
 ```
 
-Then open `http://<server>:8765`, log in and upload photos on the *Import* page.
+Then open `http://<server>:8765`, log in and upload photos on the *Import* page. The `ollama`
+service downloads the AI models the first time they are needed: click **Download now** on
+*Home*, or let the first run do it (see [AI models](#ai-models)). By hand it is
+`docker compose exec ollama ollama pull qwen2.5vl:7b` (and `nomic-embed-text`).
 
 On Windows, don't create `.env` with `echo … > .env` in Windows PowerShell 5.1: it writes UTF-16,
 and Docker Compose stops with `unexpected character "�" in variable name`. Copy the example and
@@ -647,6 +674,9 @@ Important knobs:
   detection are (see [Animals and pets](#animals-and-pets)).
 - `vlm.model`, `vlm.concurrency`: set `concurrency` to match `OLLAMA_NUM_PARALLEL` for
   parallel requests.
+- `vlm.auto_pull` (default `true`): a pipeline run downloads a missing Ollama model first. With
+  `false` it stops and asks for the download (the buttons and `vision-tagger models pull` still
+  work).
 - `derived.work_path_keywords`: folder or file-name hints for work images.
 - `geo.cluster_km`, `geo.nominatim`, `geo.tile_url`: places and the map (see
   [Places and map](#places-and-map)).

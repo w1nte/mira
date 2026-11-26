@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from typing import Any, ClassVar
 
 from ...config import Settings
@@ -15,6 +16,15 @@ class StageAbort(RuntimeError):
 
     The runner stops the run, releases the claimed images without counting an attempt and
     reports the message.
+    """
+
+
+class StageInterrupted(RuntimeError):
+    """Raised by :meth:`Stage.setup` when a long set-up step (a model download) gave way to a
+    pause or stop request (:attr:`Stage.interrupted`).
+
+    The runner waits while the pipeline is paused and then sets the stage up again; a stop ends
+    the run. Nothing was processed, so nothing is lost.
     """
 
 
@@ -37,6 +47,11 @@ class Stage(ABC):
     def __init__(self, db: Database, settings: Settings) -> None:
         self.db = db
         self.settings = settings
+        #: set by the runner: True once the run is to pause or stop. Long set-up steps (model
+        #: downloads) ask it, also from other threads, and raise :class:`StageInterrupted`.
+        self.interrupted: Callable[[], bool] = lambda: False
+        #: set by the runner: progress of a long set-up step for the UI (``None`` clears it)
+        self.report: Callable[[dict[str, Any] | None], None] = lambda _progress: None
 
     @property
     def version(self) -> str:
@@ -44,7 +59,10 @@ class Stage(ABC):
         return "1"
 
     def setup(self) -> None:  # noqa: B027 - optional hook
-        """Load models etc. Called once before the first batch of a run."""
+        """Load models etc. Called once before the first batch of a run.
+
+        May raise :class:`StageInterrupted` (then it is called again after a pause).
+        """
 
     @abstractmethod
     def process(self, image_id: int) -> None:
