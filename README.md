@@ -58,13 +58,24 @@ start and control it from a local web UI. Originals are never moved or modified.
   - **Deep search** lets the LLM double-check the best ~40 results and explain why each fits.
   - Without an LLM, a keyword fallback (English and German) still works.
 - **Ages and doubtful dates.** Give a person a birth year, or let vision-tagger estimate one
-  from photo dates and InsightFace's face ages: a weighted median that trusts EXIF dates more
-  than file times and drops outliers.
+  from photo dates and face ages.
+  - **Face ages from two models.** InsightFace's age model turns babies and children into young
+    adults (a 12-year-old easily comes out as 40). vision-tagger adds AgeNet, a small network
+    from [face-api](https://github.com/vladmandic/face-api) (MIT license) trained on many
+    children and old people, and combines both. AgeNet is used alone for children and teenagers,
+    and both count equally from about 35 years on.
+  - **Your birth years make it better.** Every birth year you set also shows how far off the
+    face model is on *your* photos. vision-tagger learns a correction per age range from those
+    faces and applies it to everyone else.
+  - **Robust estimate.** The birth year is a weighted median of "photo year − face age". It
+    trusts EXIF dates more than file times, faces of children more than those of adults (their
+    age is easier to see), and sharp faces more than tiny ones, and it drops outliers.
   - Every face shows the person's age in that photo, and each person gets a "through the years"
     timeline.
   - Photos where the date can't be right (camera clock reset to 2000, scans that only carry the
-    file date, "taken" before birth) are flagged with a suggested year and a one-click fix.
-    Fixed dates survive re-scans.
+    file date, "taken" before birth) are flagged with a suggested year and a one-click fix. A
+    date is only doubted when the faces disagree far beyond the model's typical error at that
+    age; dates you set by hand are never doubted. Fixed dates survive re-scans.
 - **"Who's that?" quiz** 🎲. Name unnamed clusters as a game, or test yourself on the people you
   already named.
   - After each answer you see how sure the face recognition was.
@@ -300,3 +311,10 @@ name to `web.allowed_hosts`. There is no login, so only do that on a trusted net
   copying.
 - InsightFace's pretrained `buffalo_l` models are licensed for **non-commercial research
   purposes** only.
+- Face ages: the first faces run downloads AgeNet (430 KB, MIT license) from GitHub into
+  `~/.insightface/models/agegender_faceapi`. The download is checked against a SHA-256 checksum
+  and turned into an ONNX model locally. The **ages** stage re-estimates faces that were found
+  before (no new face detection). It is added automatically whenever **faces** runs. Set
+  `faces.age_model = "insightface"` to keep the old behaviour.
+- Face ages are estimates. Expect about ±2 years for children and ±5–10 years for adults. Set
+  the birth years of a few people for exact ages; vision-tagger then also corrects the others.

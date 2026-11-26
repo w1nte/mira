@@ -6,6 +6,7 @@ from PIL import Image as PILImage
 from PIL import ImageOps
 from sqlalchemy import func, select
 
+from vision_tagger.config import Settings
 from vision_tagger.db.models import Cluster, Face, Image, Person, StageStatus, Status
 from vision_tagger.faces.analyzer import DetectedFace
 from vision_tagger.faces.references import import_references
@@ -15,7 +16,7 @@ from vision_tagger.pipeline.runner import PipelineRunner
 from vision_tagger.pipeline.stages.faces import FacesStage, cluster_and_match
 
 from .conftest import make_image
-from .helpers import person_centers
+from .helpers import FakeAgeEstimator, person_centers
 
 
 class FakeAnalyzer:
@@ -54,7 +55,7 @@ def test_faces_stage_with_fake_analyzer(db, settings, photos):
         make_image(photos / f"{i}.jpg", seed=i, size=(800, 600))
     Indexer(db, settings, stages=["faces"]).run()
     analyzer = FakeAnalyzer()
-    stage = FacesStage(db, settings, analyzer=analyzer)
+    stage = FacesStage(db, settings, analyzer=analyzer, age_estimator=FakeAgeEstimator())
     summary = PipelineRunner(db, settings, lambda _n: stage).run(["faces"])
     assert summary.status == "completed"
     assert "full clustering" in summary.messages[0]
@@ -148,7 +149,7 @@ def test_rerun_keeps_names_ignores_and_manual_moves(db, settings, photos):
         make_image(photos / f"{i}.jpg", seed=i, size=(800, 600))
     Indexer(db, settings, stages=["faces"]).run()
     analyzer = FakeAnalyzer()
-    stage = FacesStage(db, settings, analyzer=analyzer)
+    stage = FacesStage(db, settings, analyzer=analyzer, age_estimator=FakeAgeEstimator())
     runner = PipelineRunner(db, settings, lambda _n: stage)
     runner.run(["faces"])
     with db.write() as s:
@@ -191,3 +192,47 @@ def test_reference_folder_with_non_ascii_name(db, settings, tmp_path):
     assert stats.added == 3 and not stats.errors
     with db.session() as s:
         assert sorted(p.name for p in s.scalars(select(Person))) == ["Özlem", "Анна"]
+
+
+def test_faces_stage_sets_ages_and_marks_the_ages_stage_done(db, settings, photos):
+    from vision_tagger.db.models import StageStatus, Status
+    from vision_tagger.indexer import Indexer, ensure_stage_rows
+    from vision_tagger.pipeline.stages import stage_versions
+
+    make_image(photos / "a.jpg", seed=1)
+    Indexer(db, settings).run()
+    ensure_stage_rows(db, settings.pipeline.stages)
+    ages = FakeAgeEstimator()
+    stage = FacesStage(db, settings, analyzer=FakeAnalyzer(), age_estimator=ages)
+    stage.process(1)
+    assert ages.calls == 1
+    with db.session() as s:
+        assert sorted(f.age for f in s.scalars(select(Face))) == [30, 40]
+        row = s.get(StageStatus, (1, "ages"))
+        assert row.status == Status.DONE
+        assert row.stage_version == stage_versions(settings)["ages"]
+
+
+def test_ages_stage_updates_existing_faces(db, settings, photos):
+    from vision_tagger.pipeline.stages.ages import AgesStage
+
+    make_image(photos / "a.jpg", seed=1)
+    from vision_tagger.indexer import Indexer
+
+    Indexer(db, settings).run()
+    FacesStage(db, settings, analyzer=FakeAnalyzer(), age_estimator=FakeAgeEstimator()).process(1)
+    stage = AgesStage(db, settings, estimator=FakeAgeEstimator(default=7))
+    stage.process(1)
+    stage.process(1)  # idempotent
+    with db.session() as s:
+        assert [f.age for f in s.scalars(select(Face))] == [7, 7]
+
+
+def test_ages_stage_is_added_with_faces():
+    from vision_tagger.config import PipelineConfig
+    from vision_tagger.pipeline.stages import STAGE_NAMES, stage_versions
+
+    assert PipelineConfig(stages=["faces", "vlm"]).stages == ["faces", "ages", "vlm"]
+    assert PipelineConfig(stages=["vlm"]).stages == ["vlm"]
+    assert "ages" in STAGE_NAMES and STAGE_NAMES.index("ages") == STAGE_NAMES.index("faces") + 1
+    assert "ages" in stage_versions(Settings())

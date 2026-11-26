@@ -1,5 +1,5 @@
 {# Sidebar activity indicator, polled every few seconds. Expects state, stage, percent, job. #}
-{% set labels = {'faces': 'Faces', 'vlm': 'Properties', 'embed': 'Search index'} %}
+{% set labels = {'faces': 'Faces', 'ages': 'Face ages', 'vlm': 'Properties', 'embed': 'Search index'} %}
 <a class="activity" href="/" title="Open the dashboard">
   {% if state == 'running' %}
     <span class="dot run"></span>

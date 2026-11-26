@@ -74,3 +74,23 @@ def make_face_dataset(s, persons: int = 3, per_person: int = 6, seed: int = 0):
             n += 1
             out.setdefault(p, []).append(add_face(s, img.id, noisy(centers[p], rng)).id)
     return out, centers
+
+
+class FakeAgeEstimator:
+    """Stands in for ``FaceAgeEstimator`` (no model download): keeps given ages, else 25."""
+
+    def __init__(self, default: int = 25):
+        self.default = default
+        self.calls = 0
+
+    def load(self):
+        pass
+
+    def unload(self):
+        pass
+
+    def estimate(self, image, boxes, insightface_ages=None):
+        self.calls += 1
+        if insightface_ages is not None:
+            return [None if a is None else round(a) for a in insightface_ages]
+        return [self.default] * len(boxes)
