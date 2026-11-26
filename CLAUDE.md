@@ -1,6 +1,8 @@
 # CLAUDE.md
 
-Guidance for Claude Code (and humans) working on this repository.
+Guidance for Claude Code (and humans) working on this repository. Read
+[`MEMORY.md`](MEMORY.md) too: decisions and lessons from earlier work. Keep it short and
+current: add what will matter again, delete what no longer holds.
 
 ## Project
 
