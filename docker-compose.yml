@@ -1,6 +1,6 @@
 # Mira (remote mode) with Ollama for the vision model.
 #
-#   1. echo "VT_PASSWORD=choose-a-good-one" > .env
+#   1. cp .env.example .env (Windows: copy .env.example .env) and set the password in it
 #   2. docker compose up -d
 #   3. docker compose exec ollama ollama pull qwen2.5vl:7b
 #      docker compose exec ollama ollama pull nomic-embed-text
@@ -17,7 +17,7 @@ services:
     ports:
       - "8765:8765"
     environment:
-      VT_WEB__PASSWORD: ${VT_PASSWORD:?set VT_PASSWORD in the .env file}
+      VT_WEB__PASSWORD: ${VT_PASSWORD:?set VT_PASSWORD in the .env file (see .env.example)}
     volumes:
       - vt-data:/data # database, thumbnails, face crops, models
       - vt-photos:/photos # the uploaded photos (a host folder works too: ./photos:/photos)
