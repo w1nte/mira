@@ -1,4 +1,4 @@
-"""The windowed desktop app (vision-tagger.exe)."""
+"""The windowed desktop app (Mira.exe on Windows, Mira.app on macOS, Mira on Linux)."""
 
 import sys
 

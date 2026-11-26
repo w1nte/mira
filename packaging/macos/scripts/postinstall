@@ -1,0 +1,22 @@
+#!/bin/sh
+# Runs as root after the macOS Installer has put Mira.app into /Applications: migrates the
+# logged-in user's library to the new version (a backup copy of the database is made first).
+# It runs as that user, so no file in the library ends up owned by root. Output goes to the
+# installer log; this never fails the installation (the app also migrates when it starts).
+target=${2:-/Applications}
+cli=$target/Mira.app/Contents/MacOS/vision-tagger-cli
+user=$(stat -f%Su /dev/console 2>/dev/null || true)
+
+if [ -z "$user" ] || [ "$user" = root ] || [ "$user" = loginwindow ]; then
+  echo "Mira postinstall: nobody is logged in; the library is migrated when Mira starts"
+  exit 0
+fi
+echo "Mira postinstall: migrating the library of $user (if there is one)"
+cd / && /usr/bin/sudo -u "$user" -H "$cli" migrate --desktop 2>&1
+rc=$?
+case $rc in
+  0) echo "Mira postinstall: done" ;;
+  3) echo "Mira postinstall: the database is from a newer version of Mira; left as it is" ;;
+  *) echo "Mira postinstall: migration failed (exit code $rc); Mira tries again when it starts" ;;
+esac
+exit 0

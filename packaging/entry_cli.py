@@ -1,4 +1,4 @@
-"""The command line next to the app (vision-tagger-cli.exe).
+"""The command line next to the app (vision-tagger-cli, vision-tagger-cli.exe on Windows).
 
 Example: ``vision-tagger-cli index D:\\Photos``
 """
