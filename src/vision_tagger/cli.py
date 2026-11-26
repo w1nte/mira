@@ -307,22 +307,67 @@ def export(
     ] = "",
     mode: Annotated[str, typer.Option(help="copy / hardlink / symlink")] = "",
     layout: Annotated[str, typer.Option(help="flat / date / folder")] = "flat",
+    xmp: Annotated[bool, typer.Option(help="Write XMP sidecar files.")] = True,
+    embed: Annotated[bool, typer.Option(help="Write XMP into copied JPEG/PNG files.")] = True,
+    index: Annotated[
+        bool, typer.Option(help="Write vision-tagger.csv / .json into the target.")
+    ] = True,
 ) -> None:
-    """Export the images matching a filter (originals are never touched)."""
+    """Export the images matching a filter (originals are never touched).
+
+    Keywords, caption, people (with face areas) and dates go along as XMP, so other photo
+    applications can use them.
+    """
     from starlette.datastructures import QueryParams
 
     from .export import export_images
     from .query import ImageFilter
 
     settings = _settings()
+    metadata = [name for name, on in (("xmp", xmp), ("embed", embed), ("index", index)) if on]
     stats = export_images(
         _db(),
         ImageFilter.from_params(QueryParams(query)),
         target,
         mode=(mode or settings.export.mode),  # type: ignore[arg-type]
         layout=layout,  # type: ignore[arg-type]
+        metadata=metadata,
+        sidecar_naming=settings.export.sidecar_naming,
     )
-    typer.echo(f"exported {stats.exported} files to {stats.target} ({stats.skipped} skipped)")
+    typer.echo(
+        f"exported {stats.exported} files to {stats.target} ({stats.skipped} skipped, "
+        f"{stats.sidecars} sidecars, metadata in {stats.embedded} copies)"
+    )
+    for e in stats.errors[:10]:
+        typer.echo(f"  ! {e}", err=True)
+
+
+@app.command()
+def sidecars(
+    query: Annotated[
+        str,
+        typer.Option("--filter", "-f", help="Filter as URL query, e.g. 'p=1'. Default: all."),
+    ] = "",
+) -> None:
+    """Write XMP sidecars next to the original photos (the photos are not changed).
+
+    For libraries managed in place by digiKam, darktable, Immich or PhotoPrism. Sidecars
+    written by other applications are left alone.
+    """
+    from starlette.datastructures import QueryParams
+
+    from .export import write_sidecars_in_place
+    from .query import ImageFilter
+
+    stats = write_sidecars_in_place(
+        _db(),
+        ImageFilter.from_params(QueryParams(query)),
+        naming=_settings().export.sidecar_naming,
+    )
+    typer.echo(
+        f"{stats.sidecars} sidecars written, {stats.kept} of other apps kept, "
+        f"{stats.skipped} photos missing"
+    )
     for e in stats.errors[:10]:
         typer.echo(f"  ! {e}", err=True)
 

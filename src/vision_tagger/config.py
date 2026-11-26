@@ -160,6 +160,9 @@ class DerivedConfig(BaseModel):
 
 class ExportConfig(BaseModel):
     mode: Literal["copy", "hardlink", "symlink"] = "copy"
+    # XMP sidecar names: "append" = photo.jpg.xmp (digiKam, darktable, Immich, PhotoPrism),
+    # "replace" = photo.xmp (Lightroom style; two photos named alike share one then)
+    sidecar_naming: Literal["append", "replace"] = "append"
 
 
 class WebConfig(BaseModel):

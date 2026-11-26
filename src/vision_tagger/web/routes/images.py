@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from ...db.models import Cluster, Face, Image, ImageProperty, Person, VlmResult
-from ...export import export_images
+from ...export import METADATA, ExportStats, export_images, write_sidecars_in_place
 from ...faces.ages import age_label, check_image_date, correct_image_date
 from ...pipeline import control
 from ...query import (
@@ -210,6 +210,7 @@ def export(
     mode: str = Form("copy"),
     layout: str = Form("flat"),
     query: str = Form(""),
+    metadata: list[str] = Form([]),
 ) -> Response:
     from starlette.datastructures import QueryParams
 
@@ -222,13 +223,53 @@ def export(
 
     def job(j: Job) -> str:
         j.message = f"exporting to {target}"
-        stats = export_images(c.db, f, target.strip(), mode=mode, layout=layout)  # type: ignore[arg-type]
-        extra = f", {stats.fallbacks} copied instead of linked" if stats.fallbacks else ""
-        return (
-            f"Export to {stats.target}: {stats.exported} files, {stats.skipped} skipped, "
-            f"{len(stats.errors)} errors{extra}"
+        stats = export_images(
+            c.db,
+            f,
+            target.strip(),
+            mode=mode,  # type: ignore[arg-type]
+            layout=layout,  # type: ignore[arg-type]
+            metadata=[m for m in metadata if m in METADATA],
+            sidecar_naming=c.settings.export.sidecar_naming,
         )
+        return export_summary(stats)
 
     if not c.jobs.start("export", job):
         return redirect(request, f"/images?{query}", err="Another job is running.")
     return redirect(request, f"/images?{query}", msg="Export started – see dashboard for progress.")
+
+
+def export_summary(stats: ExportStats, what: str = "Export") -> str:
+    parts = [f"{what} to {stats.target}: {stats.exported} files"]
+    if stats.sidecars:
+        parts.append(f"{stats.sidecars} XMP sidecars")
+    if stats.embedded:
+        parts.append(f"metadata written into {stats.embedded} copies")
+    if stats.fallbacks:
+        parts.append(f"{stats.fallbacks} copied instead of linked")
+    parts.append(f"{stats.skipped} skipped, {len(stats.errors)} errors")
+    return ", ".join(parts)
+
+
+@router.post("/images/sidecars")
+def sidecars(request: Request, query: str = Form("")) -> Response:
+    """XMP sidecars next to the originals, for libraries managed in place by other apps."""
+    from starlette.datastructures import QueryParams
+
+    c = ctx(request)
+    f = ImageFilter.from_params(QueryParams(query))
+
+    def job(j: Job) -> str:
+        j.message = "writing XMP sidecars next to the originals"
+        stats = write_sidecars_in_place(c.db, f, naming=c.settings.export.sidecar_naming)
+        kept = f", {stats.kept} sidecars of other apps kept" if stats.kept else ""
+        return (
+            f"XMP sidecars: {stats.sidecars} written{kept}, {stats.skipped} photos missing, "
+            f"{len(stats.errors)} errors"
+        )
+
+    if not c.jobs.start("sidecars", job):
+        return redirect(request, f"/images?{query}", err="Another job is running.")
+    return redirect(
+        request, f"/images?{query}", msg="Writing XMP sidecars – see dashboard for progress."
+    )
