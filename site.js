@@ -8,6 +8,9 @@
  *
  * Language: ?lang=xx, then the choice saved from the language menu, then the browser's
  * languages, then English.
+ *
+ * The main button depends on the visitor's system: the Windows setup program (what the HTML
+ * shows without the script), or the setup section on macOS and Linux.
  */
 (() => {
   'use strict';
@@ -19,9 +22,9 @@
       "lang_label": "Language",
       "hero_badge": "Private, local and open source",
       "hero_title": "Find any photo by who, where and what.",
-      "hero_sub": "Mira recognises faces and describes every photo, right on your own computer. Then you just search in plain words.",
+      "hero_sub": "Mira brings order to huge, messy photo collections. It reads everything it can from each picture – who, where, when and what – right on your own computer.",
       "cta_primary": "Download for Windows",
-      "cta_secondary": "Run with Docker or from source",
+      "cta_secondary": "Run with Docker",
       "search_label": "Search photos",
       "query": "Vacation by the sea in summer 2021, no work photos",
       "understood": "Understood as",
@@ -41,8 +44,8 @@
       "feat_title": "What Mira does for you",
       "f1_t": "Search the way you remember",
       "f1_d": "Type what you remember, like “Anna at the beach, summer 2021”, in any language. Mira finds the matching photos.",
-      "f2_t": "Every photo of a person",
-      "f2_d": "Mira recognises faces and groups them by person. Name someone once and see all their photos.",
+      "f2_t": "Every photo of a person or pet",
+      "f2_d": "Mira recognises faces and tells your dogs, cats and other pets apart. Name someone once and see all their photos.",
       "f3_t": "See where you were",
       "f3_d": "Photos with a location are grouped into places and shown on a map.",
       "f4_t": "Watch them grow up",
@@ -91,7 +94,21 @@
       "foot_docs": "Documentation",
       "foot_note": "The pretrained InsightFace face models are licensed for non-commercial research use only. Map data © OpenStreetMap contributors. Sample photos from the Kodak Lossless True Color Image Suite.",
       "ai_lead": "Made with AI.",
-      "ai_text": "Mira’s code is AI-generated. It exists because it solves a huge problem for its creator: finding the photos of his loved ones."
+      "ai_text": "Mira’s code is AI-generated. It exists because it solves a huge problem for its creator: finding the photos of his loved ones.",
+      "browse_eyebrow": "Browse",
+      "browse_title": "Five ways into your photos",
+      "b1_t": "AI tags",
+      "b1_d": "The vision model tags every photo – place, season, event, objects. Combine tags to filter.",
+      "b2_t": "Timeline",
+      "b2_d": "Slide through the years and months to any point in time.",
+      "b3_t": "Faces and pets",
+      "b3_d": "Pick a person or pet and see every photo they appear in.",
+      "b4_t": "Heatmap",
+      "b4_d": "See where your photos were taken and zoom into any area.",
+      "b5_t": "Collections",
+      "b5_d": "Saved filters that update themselves when new photos arrive.",
+      "cta_macos": "Install on macOS",
+      "cta_linux": "Install on Linux"
     },
     "de": {
       "nav_features": "Funktionen",
@@ -99,9 +116,9 @@
       "lang_label": "Sprache",
       "hero_badge": "Privat, lokal und Open Source",
       "hero_title": "Finde jedes Foto – nach Person, Ort und Inhalt.",
-      "hero_sub": "Mira erkennt Gesichter und beschreibt jedes Foto – direkt auf deinem Computer. Dann suchst du einfach in ganzen Sätzen.",
+      "hero_sub": "Mira bringt Ordnung in riesige, ungeordnete Fotosammlungen. Es liest aus jedem Bild so viel heraus wie möglich – wer, wo, wann und was – direkt auf deinem Computer.",
       "cta_primary": "Für Windows herunterladen",
-      "cta_secondary": "Mit Docker oder aus dem Quellcode",
+      "cta_secondary": "Mit Docker betreiben",
       "search_label": "Fotos durchsuchen",
       "query": "Urlaub am Meer im Sommer 2021, ohne Arbeitsfotos",
       "understood": "Verstanden als",
@@ -121,8 +138,8 @@
       "feat_title": "Was Mira für dich tut",
       "f1_t": "Suchen, wie du dich erinnerst",
       "f1_d": "Tipp ein, woran du dich erinnerst, etwa „Anna am Strand, Sommer 2021“ – in jeder Sprache. Mira findet die passenden Fotos.",
-      "f2_t": "Alle Fotos einer Person",
-      "f2_d": "Mira erkennt Gesichter und gruppiert sie nach Person. Gib jemandem einmal einen Namen, und du siehst alle Fotos dieser Person.",
+      "f2_t": "Alle Fotos einer Person oder eines Haustiers",
+      "f2_d": "Mira erkennt Gesichter und unterscheidet deine Hunde, Katzen und anderen Haustiere. Gib einmal einen Namen, und du siehst alle Fotos.",
       "f3_t": "Sieh, wo du warst",
       "f3_d": "Fotos mit Standort werden zu Orten zusammengefasst und auf einer Karte gezeigt.",
       "f4_t": "Sieh sie aufwachsen",
@@ -171,7 +188,21 @@
       "foot_docs": "Dokumentation",
       "foot_note": "Die vortrainierten InsightFace-Gesichtsmodelle sind nur für nicht-kommerzielle Forschung lizenziert. Kartendaten © OpenStreetMap-Mitwirkende. Beispielfotos aus der Kodak Lossless True Color Image Suite.",
       "ai_lead": "Mit KI entstanden.",
-      "ai_text": "Der Code von Mira ist KI-generiert. Es gibt Mira, weil es ein riesiges Problem seines Erstellers löst: die Fotos seiner Liebsten wiederzufinden."
+      "ai_text": "Der Code von Mira ist KI-generiert. Es gibt Mira, weil es ein riesiges Problem seines Erstellers löst: die Fotos seiner Liebsten wiederzufinden.",
+      "browse_eyebrow": "Durchstöbern",
+      "browse_title": "Fünf Wege zu deinen Fotos",
+      "b1_t": "KI-Schlagwörter",
+      "b1_d": "Das Bildmodell verschlagwortet jedes Foto – Ort, Jahreszeit, Anlass, Objekte. Kombiniere Schlagwörter zum Filtern.",
+      "b2_t": "Zeitleiste",
+      "b2_d": "Gleite durch Jahre und Monate zu jedem Zeitpunkt.",
+      "b3_t": "Gesichter und Haustiere",
+      "b3_d": "Wähle eine Person oder ein Haustier und sieh alle Fotos, auf denen sie vorkommen.",
+      "b4_t": "Heatmap",
+      "b4_d": "Sieh, wo deine Fotos entstanden sind, und zoome in jede Gegend.",
+      "b5_t": "Sammlungen",
+      "b5_d": "Gespeicherte Filter, die sich selbst aktualisieren, wenn neue Fotos dazukommen.",
+      "cta_macos": "Auf macOS installieren",
+      "cta_linux": "Auf Linux installieren"
     },
     "fr": {
       "nav_features": "Fonctionnalités",
@@ -179,9 +210,9 @@
       "lang_label": "Langue",
       "hero_badge": "Privé, local et open source",
       "hero_title": "Retrouvez n’importe quelle photo par personne, lieu et sujet.",
-      "hero_sub": "Mira reconnaît les visages et décrit chaque photo, directement sur votre ordinateur. Ensuite, il suffit de chercher avec vos mots.",
+      "hero_sub": "Mira met de l’ordre dans les immenses collections de photos en vrac. Il extrait de chaque image tout ce qu’il peut – qui, où, quand et quoi – directement sur votre ordinateur.",
       "cta_primary": "Télécharger pour Windows",
-      "cta_secondary": "Avec Docker ou depuis les sources",
+      "cta_secondary": "Lancer avec Docker",
       "search_label": "Rechercher des photos",
       "query": "Vacances à la mer à l’été 2021, sans photos de travail",
       "understood": "Compris comme",
@@ -201,8 +232,8 @@
       "feat_title": "Ce que Mira fait pour vous",
       "f1_t": "Cherchez comme vous vous souvenez",
       "f1_d": "Tapez ce dont vous vous souvenez, par exemple « Anna à la plage, été 2021 », dans n’importe quelle langue. Mira trouve les photos qui correspondent.",
-      "f2_t": "Toutes les photos d’une personne",
-      "f2_d": "Mira reconnaît les visages et les regroupe par personne. Nommez quelqu’un une fois et retrouvez toutes ses photos.",
+      "f2_t": "Toutes les photos d’une personne ou d’un animal",
+      "f2_d": "Mira reconnaît les visages et distingue vos chiens, chats et autres animaux de compagnie. Nommez-les une fois et retrouvez toutes leurs photos.",
       "f3_t": "Voyez où vous étiez",
       "f3_d": "Les photos géolocalisées sont regroupées par lieu et affichées sur une carte.",
       "f4_t": "Regardez-les grandir",
@@ -251,7 +282,21 @@
       "foot_docs": "Documentation",
       "foot_note": "Les modèles de visage pré-entraînés d’InsightFace sont sous licence pour la recherche non commerciale uniquement. Données cartographiques © les contributeurs d’OpenStreetMap. Photos d’exemple : Kodak Lossless True Color Image Suite.",
       "ai_lead": "Créé avec l’IA.",
-      "ai_text": "Le code de Mira a été généré par IA. Mira existe parce qu’il résout un énorme problème pour son créateur : retrouver les photos de ses proches."
+      "ai_text": "Le code de Mira a été généré par IA. Mira existe parce qu’il résout un énorme problème pour son créateur : retrouver les photos de ses proches.",
+      "browse_eyebrow": "Parcourir",
+      "browse_title": "Cinq façons d’accéder à vos photos",
+      "b1_t": "Tags par IA",
+      "b1_d": "Le modèle de vision étiquette chaque photo : lieu, saison, événement, objets. Combinez les tags pour filtrer.",
+      "b2_t": "Chronologie",
+      "b2_d": "Faites défiler les années et les mois jusqu’à n’importe quel moment.",
+      "b3_t": "Visages et animaux",
+      "b3_d": "Choisissez une personne ou un animal et voyez toutes les photos où il apparaît.",
+      "b4_t": "Carte de chaleur",
+      "b4_d": "Voyez où vos photos ont été prises et zoomez sur n’importe quelle zone.",
+      "b5_t": "Collections",
+      "b5_d": "Des filtres enregistrés qui se mettent à jour quand de nouvelles photos arrivent.",
+      "cta_macos": "Installer sur macOS",
+      "cta_linux": "Installer sur Linux"
     },
     "es": {
       "nav_features": "Funciones",
@@ -259,9 +304,9 @@
       "lang_label": "Idioma",
       "hero_badge": "Privado, local y de código abierto",
       "hero_title": "Encuentra cualquier foto por quién, dónde y qué.",
-      "hero_sub": "Mira reconoce las caras y describe cada foto, directamente en tu ordenador. Después solo tienes que buscar con tus palabras.",
+      "hero_sub": "Mira pone orden en colecciones de fotos enormes y desordenadas. Extrae de cada imagen todo lo posible —quién, dónde, cuándo y qué— directamente en tu ordenador.",
       "cta_primary": "Descargar para Windows",
-      "cta_secondary": "Con Docker o desde el código fuente",
+      "cta_secondary": "Ejecutar con Docker",
       "search_label": "Buscar fotos",
       "query": "Vacaciones en el mar en verano de 2021, sin fotos de trabajo",
       "understood": "Entendido como",
@@ -281,8 +326,8 @@
       "feat_title": "Lo que Mira hace por ti",
       "f1_t": "Busca como lo recuerdas",
       "f1_d": "Escribe lo que recuerdas, por ejemplo «Anna en la playa, verano de 2021», en cualquier idioma. Mira encuentra las fotos que encajan.",
-      "f2_t": "Todas las fotos de una persona",
-      "f2_d": "Mira reconoce las caras y las agrupa por persona. Ponle nombre a alguien una vez y verás todas sus fotos.",
+      "f2_t": "Todas las fotos de una persona o mascota",
+      "f2_d": "Mira reconoce caras y distingue a tus perros, gatos y otras mascotas. Ponles nombre una vez y verás todas sus fotos.",
       "f3_t": "Mira dónde estuviste",
       "f3_d": "Las fotos con ubicación se agrupan por lugar y aparecen en un mapa.",
       "f4_t": "Míralos crecer",
@@ -331,7 +376,21 @@
       "foot_docs": "Documentación",
       "foot_note": "Los modelos faciales preentrenados de InsightFace solo tienen licencia para investigación no comercial. Datos del mapa © colaboradores de OpenStreetMap. Fotos de ejemplo de la Kodak Lossless True Color Image Suite.",
       "ai_lead": "Hecho con IA.",
-      "ai_text": "El código de Mira está generado por IA. Mira existe porque resuelve un problema enorme de su creador: encontrar las fotos de sus seres queridos."
+      "ai_text": "El código de Mira está generado por IA. Mira existe porque resuelve un problema enorme de su creador: encontrar las fotos de sus seres queridos.",
+      "browse_eyebrow": "Explorar",
+      "browse_title": "Cinco formas de llegar a tus fotos",
+      "b1_t": "Etiquetas de IA",
+      "b1_d": "El modelo de visión etiqueta cada foto: lugar, estación, evento, objetos. Combina etiquetas para filtrar.",
+      "b2_t": "Línea de tiempo",
+      "b2_d": "Desliza por años y meses hasta cualquier momento.",
+      "b3_t": "Caras y mascotas",
+      "b3_d": "Elige a una persona o mascota y ve todas las fotos en las que aparece.",
+      "b4_t": "Mapa de calor",
+      "b4_d": "Mira dónde se tomaron tus fotos y acércate a cualquier zona.",
+      "b5_t": "Colecciones",
+      "b5_d": "Filtros guardados que se actualizan solos cuando llegan fotos nuevas.",
+      "cta_macos": "Instalar en macOS",
+      "cta_linux": "Instalar en Linux"
     },
     "it": {
       "nav_features": "Funzionalità",
@@ -339,9 +398,9 @@
       "lang_label": "Lingua",
       "hero_badge": "Privato, locale e open source",
       "hero_title": "Trova qualsiasi foto per chi, dove e cosa.",
-      "hero_sub": "Mira riconosce i volti e descrive ogni foto, direttamente sul tuo computer. Poi basta cercare con parole tue.",
+      "hero_sub": "Mira mette ordine in enormi raccolte di foto disordinate. Da ogni immagine ricava tutto il possibile – chi, dove, quando e cosa – direttamente sul tuo computer.",
       "cta_primary": "Scarica per Windows",
-      "cta_secondary": "Con Docker o dai sorgenti",
+      "cta_secondary": "Avvia con Docker",
       "search_label": "Cerca foto",
       "query": "Vacanze al mare nell’estate 2021, niente foto di lavoro",
       "understood": "Interpretato come",
@@ -361,8 +420,8 @@
       "feat_title": "Cosa fa Mira per te",
       "f1_t": "Cerca come ricordi",
       "f1_d": "Scrivi quello che ricordi, per esempio «Anna al mare, estate 2021», in qualsiasi lingua. Mira trova le foto giuste.",
-      "f2_t": "Tutte le foto di una persona",
-      "f2_d": "Mira riconosce i volti e li raggruppa per persona. Dai un nome a qualcuno una volta e vedi tutte le sue foto.",
+      "f2_t": "Tutte le foto di una persona o di un animale",
+      "f2_d": "Mira riconosce i volti e distingue i tuoi cani, gatti e altri animali domestici. Dai un nome una volta e vedi tutte le loro foto.",
       "f3_t": "I tuoi luoghi sulla mappa",
       "f3_d": "Le foto con posizione vengono raggruppate per luogo e mostrate su una mappa.",
       "f4_t": "Guardali crescere",
@@ -411,7 +470,21 @@
       "foot_docs": "Documentazione",
       "foot_note": "I modelli facciali preaddestrati di InsightFace sono concessi in licenza solo per la ricerca non commerciale. Dati della mappa © contributori di OpenStreetMap. Foto di esempio dalla Kodak Lossless True Color Image Suite.",
       "ai_lead": "Creato con l’IA.",
-      "ai_text": "Il codice di Mira è generato dall’IA. Mira esiste perché risolve un problema enorme del suo autore: ritrovare le foto delle persone che ama."
+      "ai_text": "Il codice di Mira è generato dall’IA. Mira esiste perché risolve un problema enorme del suo autore: ritrovare le foto delle persone che ama.",
+      "browse_eyebrow": "Esplora",
+      "browse_title": "Cinque modi per arrivare alle tue foto",
+      "b1_t": "Tag dall’IA",
+      "b1_d": "Il modello di visione etichetta ogni foto: luogo, stagione, evento, oggetti. Combina i tag per filtrare.",
+      "b2_t": "Cronologia",
+      "b2_d": "Scorri anni e mesi fino a qualsiasi momento.",
+      "b3_t": "Volti e animali",
+      "b3_d": "Scegli una persona o un animale e vedi tutte le foto in cui compare.",
+      "b4_t": "Mappa di calore",
+      "b4_d": "Guarda dove sono state scattate le tue foto e ingrandisci qualsiasi zona.",
+      "b5_t": "Raccolte",
+      "b5_d": "Filtri salvati che si aggiornano da soli quando arrivano nuove foto.",
+      "cta_macos": "Installa su macOS",
+      "cta_linux": "Installa su Linux"
     },
     "pt": {
       "nav_features": "Recursos",
@@ -419,9 +492,9 @@
       "lang_label": "Idioma",
       "hero_badge": "Privado, local e de código aberto",
       "hero_title": "Encontre qualquer foto por quem, onde e o quê.",
-      "hero_sub": "O Mira reconhece rostos e descreve cada foto, direto no seu computador. Depois é só buscar com suas palavras.",
+      "hero_sub": "O Mira põe ordem em coleções de fotos enormes e bagunçadas. Ele extrai de cada imagem tudo o que pode – quem, onde, quando e o quê – direto no seu computador.",
       "cta_primary": "Baixar para Windows",
-      "cta_secondary": "Com Docker ou pelo código-fonte",
+      "cta_secondary": "Rodar com Docker",
       "search_label": "Buscar fotos",
       "query": "Férias à beira-mar no verão de 2021, sem fotos de trabalho",
       "understood": "Entendido como",
@@ -441,8 +514,8 @@
       "feat_title": "O que o Mira faz por você",
       "f1_t": "Busque do jeito que você lembra",
       "f1_d": "Digite o que você lembra, como “Anna na praia, verão de 2021”, em qualquer idioma. O Mira encontra as fotos certas.",
-      "f2_t": "Todas as fotos de uma pessoa",
-      "f2_d": "O Mira reconhece rostos e os agrupa por pessoa. Dê nome a alguém uma vez e veja todas as fotos dela.",
+      "f2_t": "Todas as fotos de uma pessoa ou pet",
+      "f2_d": "O Mira reconhece rostos e diferencia seus cachorros, gatos e outros pets. Dê um nome uma vez e veja todas as fotos.",
       "f3_t": "Veja onde você esteve",
       "f3_d": "Fotos com localização são agrupadas por lugar e mostradas num mapa.",
       "f4_t": "Veja-os crescer",
@@ -491,7 +564,21 @@
       "foot_docs": "Documentação",
       "foot_note": "Os modelos faciais pré-treinados do InsightFace são licenciados apenas para pesquisa não comercial. Dados do mapa © colaboradores do OpenStreetMap. Fotos de exemplo da Kodak Lossless True Color Image Suite.",
       "ai_lead": "Feito com IA.",
-      "ai_text": "O código do Mira foi gerado por IA. O Mira existe porque resolve um problema enorme do seu criador: encontrar as fotos das pessoas que ele ama."
+      "ai_text": "O código do Mira foi gerado por IA. O Mira existe porque resolve um problema enorme do seu criador: encontrar as fotos das pessoas que ele ama.",
+      "browse_eyebrow": "Explorar",
+      "browse_title": "Cinco jeitos de chegar às suas fotos",
+      "b1_t": "Tags por IA",
+      "b1_d": "O modelo de visão marca cada foto: local, estação, evento, objetos. Combine tags para filtrar.",
+      "b2_t": "Linha do tempo",
+      "b2_d": "Deslize por anos e meses até qualquer momento.",
+      "b3_t": "Rostos e pets",
+      "b3_d": "Escolha uma pessoa ou pet e veja todas as fotos em que aparece.",
+      "b4_t": "Mapa de calor",
+      "b4_d": "Veja onde suas fotos foram tiradas e aproxime qualquer região.",
+      "b5_t": "Coleções",
+      "b5_d": "Filtros salvos que se atualizam sozinhos quando chegam fotos novas.",
+      "cta_macos": "Instalar no macOS",
+      "cta_linux": "Instalar no Linux"
     },
     "nl": {
       "nav_features": "Functies",
@@ -499,9 +586,9 @@
       "lang_label": "Taal",
       "hero_badge": "Privé, lokaal en open source",
       "hero_title": "Vind elke foto op wie, waar en wat.",
-      "hero_sub": "Mira herkent gezichten en beschrijft elke foto, gewoon op je eigen computer. Daarna zoek je in je eigen woorden.",
+      "hero_sub": "Mira brengt orde in enorme, rommelige fotoverzamelingen. Het haalt uit elke foto zoveel mogelijk – wie, waar, wanneer en wat – gewoon op je eigen computer.",
       "cta_primary": "Downloaden voor Windows",
-      "cta_secondary": "Met Docker of vanuit de broncode",
+      "cta_secondary": "Draaien met Docker",
       "search_label": "Foto’s zoeken",
       "query": "Vakantie aan zee in de zomer van 2021, geen werkfoto’s",
       "understood": "Begrepen als",
@@ -521,8 +608,8 @@
       "feat_title": "Wat Mira voor je doet",
       "f1_t": "Zoek zoals je het je herinnert",
       "f1_d": "Typ wat je je herinnert, zoals ‘Anna op het strand, zomer 2021’, in elke taal. Mira vindt de foto’s die erbij passen.",
-      "f2_t": "Alle foto’s van iemand",
-      "f2_d": "Mira herkent gezichten en groepeert ze per persoon. Geef iemand één keer een naam en je ziet alle foto’s van die persoon.",
+      "f2_t": "Alle foto’s van iemand of je huisdier",
+      "f2_d": "Mira herkent gezichten en houdt je honden, katten en andere huisdieren uit elkaar. Geef één keer een naam en je ziet alle foto’s.",
       "f3_t": "Zie waar je was",
       "f3_d": "Foto’s met een locatie worden gegroepeerd per plaats en op een kaart getoond.",
       "f4_t": "Zie ze opgroeien",
@@ -571,7 +658,21 @@
       "foot_docs": "Documentatie",
       "foot_note": "De voorgetrainde gezichtsmodellen van InsightFace zijn alleen gelicentieerd voor niet-commercieel onderzoek. Kaartgegevens © OpenStreetMap-bijdragers. Voorbeeldfoto’s uit de Kodak Lossless True Color Image Suite.",
       "ai_lead": "Gemaakt met AI.",
-      "ai_text": "De code van Mira is door AI gegenereerd. Mira bestaat omdat het een enorm probleem van zijn maker oplost: de foto’s van zijn dierbaren terugvinden."
+      "ai_text": "De code van Mira is door AI gegenereerd. Mira bestaat omdat het een enorm probleem van zijn maker oplost: de foto’s van zijn dierbaren terugvinden.",
+      "browse_eyebrow": "Bladeren",
+      "browse_title": "Vijf manieren om bij je foto’s te komen",
+      "b1_t": "AI-labels",
+      "b1_d": "Het beeldmodel labelt elke foto: plaats, seizoen, gebeurtenis, objecten. Combineer labels om te filteren.",
+      "b2_t": "Tijdlijn",
+      "b2_d": "Schuif door jaren en maanden naar elk moment.",
+      "b3_t": "Gezichten en huisdieren",
+      "b3_d": "Kies iemand of een huisdier en zie elke foto waarop die staat.",
+      "b4_t": "Heatmap",
+      "b4_d": "Zie waar je foto’s zijn gemaakt en zoom in op elk gebied.",
+      "b5_t": "Collecties",
+      "b5_d": "Bewaarde filters die zichzelf bijwerken als er nieuwe foto’s bijkomen.",
+      "cta_macos": "Installeren op macOS",
+      "cta_linux": "Installeren op Linux"
     },
     "pl": {
       "nav_features": "Funkcje",
@@ -579,9 +680,9 @@
       "lang_label": "Język",
       "hero_badge": "Prywatna, lokalna i otwartoźródłowa",
       "hero_title": "Znajdź każde zdjęcie według tego, kto, gdzie i co.",
-      "hero_sub": "Mira rozpoznaje twarze i opisuje każde zdjęcie bezpośrednio na twoim komputerze. Potem po prostu szukasz zwykłymi słowami.",
+      "hero_sub": "Mira porządkuje ogromne, nieuporządkowane kolekcje zdjęć. Z każdego zdjęcia wyciąga jak najwięcej – kto, gdzie, kiedy i co – bezpośrednio na twoim komputerze.",
       "cta_primary": "Pobierz dla Windows",
-      "cta_secondary": "Z Dockerem lub ze źródeł",
+      "cta_secondary": "Uruchom z Dockerem",
       "search_label": "Szukaj zdjęć",
       "query": "Wakacje nad morzem latem 2021, bez zdjęć służbowych",
       "understood": "Zrozumiano jako",
@@ -601,8 +702,8 @@
       "feat_title": "Co Mira dla ciebie robi",
       "f1_t": "Szukaj tak, jak pamiętasz",
       "f1_d": "Wpisz to, co pamiętasz, np. „Anna na plaży, lato 2021” – w dowolnym języku. Mira znajdzie pasujące zdjęcia.",
-      "f2_t": "Wszystkie zdjęcia danej osoby",
-      "f2_d": "Mira rozpoznaje twarze i grupuje je według osób. Nazwij kogoś raz, a zobaczysz wszystkie zdjęcia tej osoby.",
+      "f2_t": "Wszystkie zdjęcia osoby lub zwierzaka",
+      "f2_d": "Mira rozpoznaje twarze i odróżnia twoje psy, koty i inne zwierzaki. Nadaj imię raz, a zobaczysz wszystkie zdjęcia.",
       "f3_t": "Twoje miejsca na mapie",
       "f3_d": "Zdjęcia z lokalizacją są grupowane według miejsc i pokazywane na mapie.",
       "f4_t": "Zobacz, jak dorastają",
@@ -651,7 +752,21 @@
       "foot_docs": "Dokumentacja",
       "foot_note": "Wstępnie wytrenowane modele twarzy InsightFace są licencjonowane wyłącznie do niekomercyjnych badań. Dane mapy © współtwórcy OpenStreetMap. Przykładowe zdjęcia z Kodak Lossless True Color Image Suite.",
       "ai_lead": "Stworzone z pomocą AI.",
-      "ai_text": "Kod Miry został wygenerowany przez AI. Mira powstała, bo rozwiązuje ogromny problem jej twórcy: odnajdywanie zdjęć bliskich mu osób."
+      "ai_text": "Kod Miry został wygenerowany przez AI. Mira powstała, bo rozwiązuje ogromny problem jej twórcy: odnajdywanie zdjęć bliskich mu osób.",
+      "browse_eyebrow": "Przeglądaj",
+      "browse_title": "Pięć sposobów, by dotrzeć do zdjęć",
+      "b1_t": "Tagi z AI",
+      "b1_d": "Model wizyjny taguje każde zdjęcie: miejsce, pora roku, wydarzenie, obiekty. Łącz tagi, aby filtrować.",
+      "b2_t": "Oś czasu",
+      "b2_d": "Przewijaj lata i miesiące do dowolnego momentu.",
+      "b3_t": "Twarze i zwierzaki",
+      "b3_d": "Wybierz osobę lub zwierzaka i zobacz wszystkie zdjęcia, na których jest.",
+      "b4_t": "Mapa cieplna",
+      "b4_d": "Zobacz, gdzie zrobiono twoje zdjęcia, i przybliż dowolny obszar.",
+      "b5_t": "Kolekcje",
+      "b5_d": "Zapisane filtry, które same się aktualizują, gdy dochodzą nowe zdjęcia.",
+      "cta_macos": "Zainstaluj na macOS",
+      "cta_linux": "Zainstaluj na Linuksie"
     },
     "ru": {
       "nav_features": "Возможности",
@@ -659,9 +774,9 @@
       "lang_label": "Язык",
       "hero_badge": "Приватно, локально, с открытым кодом",
       "hero_title": "Найдите любое фото по тому, кто, где и что на нём.",
-      "hero_sub": "Mira распознаёт лица и описывает каждое фото прямо на вашем компьютере. А потом вы просто ищете обычными словами.",
+      "hero_sub": "Mira наводит порядок в огромных неразобранных фотоархивах. Она извлекает из каждого снимка всё, что можно, — кто, где, когда и что — прямо на вашем компьютере.",
       "cta_primary": "Скачать для Windows",
-      "cta_secondary": "Через Docker или из исходников",
+      "cta_secondary": "Запустить в Docker",
       "search_label": "Поиск фото",
       "query": "Отпуск на море летом 2021, без рабочих фото",
       "understood": "Понято как",
@@ -681,8 +796,8 @@
       "feat_title": "Что Mira делает для вас",
       "f1_t": "Ищите так, как помните",
       "f1_d": "Напишите, что помните, например «Анна на пляже, лето 2021», на любом языке. Mira найдёт подходящие фото.",
-      "f2_t": "Все фото одного человека",
-      "f2_d": "Mira распознаёт лица и группирует их по людям. Подпишите человека один раз — и увидите все фото этого человека.",
+      "f2_t": "Все фото человека или питомца",
+      "f2_d": "Mira распознаёт лица и различает ваших собак, кошек и других питомцев. Подпишите один раз — и увидите все их фото.",
       "f3_t": "Где вы побывали",
       "f3_d": "Фото с геометкой группируются по местам и показываются на карте.",
       "f4_t": "Смотрите, как они растут",
@@ -731,7 +846,21 @@
       "foot_docs": "Документация",
       "foot_note": "Предобученные модели лиц InsightFace лицензированы только для некоммерческих исследований. Картографические данные © участники OpenStreetMap. Примеры фото из Kodak Lossless True Color Image Suite.",
       "ai_lead": "Создано с помощью ИИ.",
-      "ai_text": "Код Mira сгенерирован ИИ. Mira появилась, потому что решает огромную проблему своего автора: находить фотографии близких ему людей."
+      "ai_text": "Код Mira сгенерирован ИИ. Mira появилась, потому что решает огромную проблему своего автора: находить фотографии близких ему людей.",
+      "browse_eyebrow": "Просмотр",
+      "browse_title": "Пять способов найти свои фото",
+      "b1_t": "Теги от ИИ",
+      "b1_d": "Модель зрения размечает каждое фото: место, время года, событие, объекты. Комбинируйте теги для фильтрации.",
+      "b2_t": "Хронология",
+      "b2_d": "Листайте годы и месяцы до любого момента.",
+      "b3_t": "Лица и питомцы",
+      "b3_d": "Выберите человека или питомца и смотрите все фото, где он есть.",
+      "b4_t": "Тепловая карта",
+      "b4_d": "Смотрите, где сделаны ваши фото, и приближайте любой район.",
+      "b5_t": "Коллекции",
+      "b5_d": "Сохранённые фильтры, которые сами обновляются при появлении новых фото.",
+      "cta_macos": "Установить на macOS",
+      "cta_linux": "Установить на Linux"
     },
     "zh": {
       "nav_features": "功能",
@@ -739,9 +868,9 @@
       "lang_label": "语言",
       "hero_badge": "私密、本地、开源",
       "hero_title": "按人物、地点和内容，找到任何一张照片。",
-      "hero_sub": "Mira 在你自己的电脑上识别人脸并描述每一张照片。之后，用日常语言搜索即可。",
+      "hero_sub": "Mira 能把庞大而杂乱的照片收藏整理得井井有条。它在你自己的电脑上，从每张照片中提取尽可能多的信息：谁、在哪里、什么时候、拍了什么。",
       "cta_primary": "下载 Windows 版",
-      "cta_secondary": "使用 Docker 或从源码运行",
+      "cta_secondary": "使用 Docker 运行",
       "search_label": "搜索照片",
       "query": "2021 年夏天的海边度假，不要工作照片",
       "understood": "理解为",
@@ -761,8 +890,8 @@
       "feat_title": "Mira 能为你做什么",
       "f1_t": "按记忆去搜索",
       "f1_d": "输入你记得的内容，比如“2021 年夏天，安娜在海滩”，任何语言都可以。Mira 会找到相符的照片。",
-      "f2_t": "一个人的所有照片",
-      "f2_d": "Mira 识别人脸并按人物分组。只需命名一次，就能看到此人的所有照片。",
+      "f2_t": "一个人或一只宠物的所有照片",
+      "f2_d": "Mira 能识别人脸，也能分辨你的猫、狗和其他宠物。只需命名一次，就能看到全部相关照片。",
       "f3_t": "看看你去过哪里",
       "f3_d": "带位置信息的照片会按地点归类，并显示在地图上。",
       "f4_t": "看着他们长大",
@@ -811,7 +940,21 @@
       "foot_docs": "文档",
       "foot_note": "InsightFace 预训练人脸模型仅授权用于非商业研究。地图数据 © OpenStreetMap 贡献者。示例照片来自 Kodak Lossless True Color Image Suite。",
       "ai_lead": "由 AI 生成。",
-      "ai_text": "Mira 的代码由 AI 生成。它之所以诞生，是因为它解决了作者的一个大难题：找到他所爱之人的照片。"
+      "ai_text": "Mira 的代码由 AI 生成。它之所以诞生，是因为它解决了作者的一个大难题：找到他所爱之人的照片。",
+      "browse_eyebrow": "浏览",
+      "browse_title": "五种方式找到你的照片",
+      "b1_t": "AI 标签",
+      "b1_d": "视觉模型为每张照片打上标签：地点、季节、事件、物体。组合标签即可筛选。",
+      "b2_t": "时间线",
+      "b2_d": "在年份和月份间滑动，直达任何时间点。",
+      "b3_t": "人脸与宠物",
+      "b3_d": "选择一个人或一只宠物，查看其出现过的所有照片。",
+      "b4_t": "热力图",
+      "b4_d": "查看照片的拍摄地点，并放大任意区域。",
+      "b5_t": "合集",
+      "b5_d": "保存的筛选条件，有新照片时会自动更新。",
+      "cta_macos": "在 macOS 上安装",
+      "cta_linux": "在 Linux 上安装"
     },
     "ja": {
       "nav_features": "機能",
@@ -819,9 +962,9 @@
       "lang_label": "言語",
       "hero_badge": "プライベート、ローカル、オープンソース",
       "hero_title": "誰が、どこで、何を。どんな写真もすぐ見つかる。",
-      "hero_sub": "Mira があなたのパソコン上で顔を認識し、写真を一枚ずつ説明します。あとは普段の言葉で検索するだけ。",
+      "hero_sub": "Mira は、膨大でばらばらな写真コレクションを整理します。あなたのパソコン上で、一枚一枚から「誰が・どこで・いつ・何を」をできる限り読み取ります。",
       "cta_primary": "Windows 版をダウンロード",
-      "cta_secondary": "Docker またはソースから",
+      "cta_secondary": "Docker で実行",
       "search_label": "写真を検索",
       "query": "2021年夏の海辺の休暇、仕事の写真は除く",
       "understood": "解釈",
@@ -841,8 +984,8 @@
       "feat_title": "Mira にできること",
       "f1_t": "覚えているままに検索",
       "f1_d": "「2021年の夏、ビーチのアンナ」のように、覚えていることをどの言語でも入力。Mira がぴったりの写真を見つけます。",
-      "f2_t": "その人の写真をすべて",
-      "f2_d": "Mira が顔を認識し、人物ごとにまとめます。一度名前を付ければ、その人の写真がすべて見られます。",
+      "f2_t": "人やペットの写真をすべて",
+      "f2_d": "Mira は顔を認識し、犬や猫などのペットも見分けます。一度名前を付ければ、その写真がすべて見られます。",
       "f3_t": "行った場所を地図で",
       "f3_d": "位置情報のある写真を場所ごとにまとめ、地図に表示します。",
       "f4_t": "成長をたどる",
@@ -891,7 +1034,21 @@
       "foot_docs": "ドキュメント",
       "foot_note": "InsightFace の学習済み顔モデルは非商用の研究目的にのみライセンスされています。地図データ © OpenStreetMap contributors。サンプル写真は Kodak Lossless True Color Image Suite より。",
       "ai_lead": "AI で生成。",
-      "ai_text": "Mira のコードは AI によって生成されています。Mira が生まれたのは、作者の大きな悩み――大切な人たちの写真を見つけること――を解決するためです。"
+      "ai_text": "Mira のコードは AI によって生成されています。Mira が生まれたのは、作者の大きな悩み――大切な人たちの写真を見つけること――を解決するためです。",
+      "browse_eyebrow": "見つけ方",
+      "browse_title": "写真にたどり着く5つの方法",
+      "b1_t": "AI タグ",
+      "b1_d": "ビジョンモデルが各写真にタグを付けます：場所、季節、イベント、物。タグを組み合わせて絞り込めます。",
+      "b2_t": "タイムライン",
+      "b2_d": "年や月をスライドして、好きな時点へ。",
+      "b3_t": "顔とペット",
+      "b3_d": "人物やペットを選ぶと、写っている写真がすべて見られます。",
+      "b4_t": "ヒートマップ",
+      "b4_d": "撮影場所を地図で確認し、好きなエリアを拡大できます。",
+      "b5_t": "コレクション",
+      "b5_d": "保存した絞り込み条件。新しい写真が届くと自動で更新されます。",
+      "cta_macos": "macOS にインストール",
+      "cta_linux": "Linux にインストール"
     }
   };
 
@@ -956,6 +1113,34 @@
     }
   };
 
+  const CTA = {
+    macos: { key: 'cta_macos', href: '#setup' },
+    linux: { key: 'cta_linux', href: '#setup' },
+  };
+
+  const detectOS = () => {
+    try {
+      const n = navigator;
+      const p = ((n.userAgentData && n.userAgentData.platform) || n.platform || n.userAgent || '')
+        .toLowerCase();
+      if (/mac|iphone|ipad/.test(p)) return 'macos';
+      if (/linux|x11|cros/.test(p)) return 'linux';
+    } catch (e) {
+      /* keep the Windows button */
+    }
+    return 'windows';
+  };
+
+  // Point the main button at the visitor's system; its text then follows the language.
+  const setupCta = () => {
+    const cta = CTA[detectOS()];
+    const link = document.getElementById('cta-primary');
+    if (!cta || !link) return;
+    link.setAttribute('href', cta.href);
+    const label = link.querySelector('[data-i18n]');
+    if (label) label.dataset.i18n = cta.key;
+  };
+
   const apply = (lang) => {
     const t = STRINGS[lang];
     root.lang = HTML_LANG[lang] || lang;
@@ -984,6 +1169,7 @@
   };
 
   const init = () => {
+    setupCta();
     apply(fromQuery() || fromStorage() || fromBrowser() || 'en');
 
     const select = document.getElementById('lang-select');
