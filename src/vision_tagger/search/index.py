@@ -2,8 +2,9 @@
 
 One class serves both kinds of vectors: the text embeddings of the search documents
 (``image_embeddings``) and the visual embeddings of the photos themselves
-(``visual_embeddings``). Only the vectors of one model are loaded, as float16: about 77 MB for
-50,000 photos with 768-d vectors.
+(``visual_embeddings``). Only the vectors of one model are loaded: as float16 (about 77 MB for
+50,000 photos with 768-d vectors) or as float32 (154 MB), which ranks all 50,000 photos in a few
+milliseconds instead of about 100 (numpy converts float16 slowly).
 """
 
 from __future__ import annotations
@@ -30,14 +31,15 @@ class EmbeddingMatrix:
     (``PRAGMA data_version``).
     """
 
-    def __init__(self, db: Database, table: Any = ImageEmbedding) -> None:
+    def __init__(self, db: Database, table: Any = ImageEmbedding, dtype: Any = np.float16) -> None:
         self.db = db
         self.table = table
+        self.dtype = np.dtype(dtype)
         self._lock = threading.Lock()
         self._model: str | None = None
         self._ids: list[int] = []
         self._pos: dict[int, int] = {}
-        self._mat = np.zeros((0, 0), dtype=np.float16)
+        self._mat = np.zeros((0, 0), dtype=self.dtype)
         self._count = 0
         self._newest: datetime | None = None
         self._data_version: int | None = None
@@ -59,9 +61,9 @@ class EmbeddingMatrix:
         self._ids = [r[0] for r in rows]
         self._pos = {image_id: i for i, image_id in enumerate(self._ids)}
         self._mat = (
-            np.vstack([np.frombuffer(r[1], dtype=np.float16) for r in rows])
+            np.vstack([np.frombuffer(r[1], dtype=np.float16) for r in rows]).astype(self.dtype)
             if rows
-            else np.zeros((0, 0), dtype=np.float16)
+            else np.zeros((0, 0), dtype=self.dtype)
         )
         self._count = len(rows)
         self._newest = max((r[2] for r in rows), default=None)
@@ -85,7 +87,7 @@ class EmbeddingMatrix:
             # incremental: rows created/updated since the last load
             new_vectors = []
             for image_id, blob, created in self._rows(model, t.created_at > self._newest):
-                vec = np.frombuffer(blob, dtype=np.float16)
+                vec = np.frombuffer(blob, dtype=np.float16).astype(self.dtype)
                 if vec.shape[0] != self._mat.shape[1]:
                     self._full_load(model)  # dimension changed (different model build)
                     return
@@ -116,8 +118,19 @@ class EmbeddingMatrix:
         pos = self._pos.get(image_id)
         return None if pos is None else self._mat[pos].astype(np.float32)
 
+    def _all_scores(self, query: np.ndarray) -> np.ndarray:
+        if self.dtype == np.float32:
+            return self._mat @ query
+        # float16: in contiguous chunks (a float32 copy of everything would double the memory)
+        sims = np.empty(len(self._mat), dtype=np.float32)
+        for start in range(0, len(self._mat), SIMILARITY_CHUNK):
+            part = self._mat[start : start + SIMILARITY_CHUNK]
+            sims[start : start + len(part)] = part.astype(np.float32) @ query
+        return sims
+
     def _scores(self, rows: np.ndarray, query: np.ndarray) -> np.ndarray:
-        # in chunks: a float32 copy of all rows would need ~300 MB for 100k images
+        if len(rows) * 4 > len(self._mat):  # most rows: one pass over all is faster
+            return self._all_scores(query)[rows]
         sims = np.empty(len(rows), dtype=np.float32)
         for start in range(0, len(rows), SIMILARITY_CHUNK):
             part = rows[start : start + SIMILARITY_CHUNK]
@@ -142,7 +155,7 @@ class EmbeddingMatrix:
         q = np.asarray(query, dtype=np.float32)
         if q.shape[0] != self._mat.shape[1]:
             return []
-        sims = self._scores(np.arange(len(self._ids), dtype=np.int64), q)
+        sims = self._all_scores(q)
         k = min(k, len(sims))
         top = np.argpartition(-sims, k - 1)[:k]
         top = top[np.argsort(-sims[top], kind="stable")]

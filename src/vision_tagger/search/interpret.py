@@ -1030,7 +1030,7 @@ class KeywordInterpreter:
             and len(t) > 2
         )
         it.semantic_query = _without_names(semantic) or query
-        it.visual_query = _visual_text(lowered, found)
+        it.visual_query = _visual_text(lowered, found, query)
         return it
 
     @staticmethod
@@ -1179,10 +1179,12 @@ def _trim(text: str) -> str:
     return " ".join(words)
 
 
-def _visual_text(lowered: str, found: list[_Match]) -> str:
+def _visual_text(lowered: str, found: list[_Match], query: str = "") -> str:
     """What the photos should show: the request without what the filters take care of
     (persons, pets, places, dates) and without the excluded things ("no dogs", "ohne Hund"):
-    the image-text model would look for them instead."""
+    the image-text model would look for them instead. In the letters of ``query`` when it
+    lines up with ``lowered`` (shown as "Looking for")."""
+    source = query if len(query) == len(lowered) else lowered
     covered = [False] * len(lowered)
     spans = [(f.start, f.end) for f in found if f.family in ("who", "place", "date") or f.negated]
     for m in re.finditer(r"\w+", lowered):  # a negation and the word after it
@@ -1192,7 +1194,7 @@ def _visual_text(lowered: str, found: list[_Match]) -> str:
     for start, end in spans:
         covered[start:end] = [True] * (end - start)
     out: list[str] = []
-    for i, ch in enumerate(lowered):
+    for i, ch in enumerate(source):
         if not covered[i]:
             out.append(ch)
         elif i == 0 or not covered[i - 1]:

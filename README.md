@@ -699,9 +699,12 @@ languages).
 - **Speed.** About 0.11 s per photo on a 4-core CPU, a few milliseconds on a GPU
   (`visual.providers`, by default `faces.providers`). The stage reads the gallery thumbnail
   when it is large enough (as good as the original in the measurements below), else the
-  original at a reduced size. Ranking 50,000 photos takes about 30 ms and 77 MB of memory; a new
-  request takes about 40 ms on the CPU (then it is cached). The text encoder always runs on the
-  CPU, so the GPU stays free for the pipeline.
+  original at a reduced size. The search keeps the vectors in memory (154 MB for 50,000 photos,
+  loaded in 0.4 s): comparing a request with all of them takes about 10 ms, a whole search over
+  50,000 photos about 0.1 s. A new request takes about 50 ms on the CPU (then it is cached); the
+  text encoder always runs on the CPU, so the GPU stays free for the pipeline. It needs about
+  0.8 GB of memory while it is loaded (the first search loads it in about 2 s) and is unloaded
+  after ten minutes without a new request.
 - **Privacy and downloads.** The model files (970 MB: the image encoder in float32, the text
   encoder in float16, the tokenizer) are downloaded once from Hugging Face
   (`onnx-community/siglip2-base-patch16-224-ONNX`, pinned to one commit and checked against

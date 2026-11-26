@@ -245,6 +245,22 @@ def test_text_encoder_lowercases_pads_caches_and_never_downloads(settings, monke
     assert len(session.inputs) == 1 and np.allclose(again[0], out[0])
     assert enc.low < enc.high and enc.model == SIGLIP2_BASE.key
 
+    # unloaded when it is not used for a while (the cache stays), loaded again when needed
+    enc.unload()
+    enc.idle_seconds = 0.2
+    enc.embed(["a car"])
+    assert enc.loaded
+    deadline = time.monotonic() + 5
+    while enc.loaded and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert not enc.loaded and len(opened) == 2
+    enc.embed(["red car"])  # cached: no model needed
+    assert not enc.loaded
+    enc.embed(["a red"])
+    assert enc.loaded and len(opened) == 3
+    enc.unload()
+    assert not enc.loaded
+
 
 # --------------------------------------------------------------------------- the stage
 def colour_photo(path, rgb, seed: int, size=(400, 300)):
@@ -551,10 +567,11 @@ def test_the_visual_query_leaves_out_names_places_dates_and_exclusions(visual_db
     assert eng.interpret("photos of Anna in red from 2021").visual_query == "red"
     assert eng.interpret("Anna oder Ben, blau").visual_query == "blau"
     assert eng.interpret("blue without green").visual_query == "blue"
-    assert eng.interpret("rote Autos ohne Anna").visual_query == "rote autos"
+    assert eng.interpret("Rote Autos ohne Anna").visual_query == "Rote Autos"  # as typed
+    assert eng.interpret("Straße ohne Anna").visual_query == "strasse"  # (case-folded)
     assert eng.interpret("Anna").visual_query == ""  # nothing to look at
     it = eng.interpret("Anna am Strand")
-    assert it.persons and it.visual_query == "strand"
+    assert it.persons and it.visual_query == "Strand"
 
 
 def test_hybrid_with_persons_alternatives_dates_and_exclusions(visual_db, settings):
@@ -616,7 +633,11 @@ def test_photos_are_scored_by_the_parts_they_have(visual_db, settings):
     with visual_db.write() as s:
         s.execute(ImageProperty.__table__.delete().where(ImageProperty.key == "dominant_colors"))
     r = visual_engine(visual_db, settings).search("red")
-    assert ids(r) == [4, 1]  # described without the colour: ranked after the unknown one
+    assert ids(r) == [1, 4]  # a property no photo has tells nothing
+    with visual_db.write() as s:
+        s.add(ImageProperty(image_id=6, key="dominant_colors", value="red", source="vlm"))
+    r = visual_engine(visual_db, settings).search("red")
+    assert ids(r) == [6, 4, 1]  # described without the colour: after the unknown one
 
 
 def test_deep_search_judges_described_photos_and_keeps_the_others_in_place(visual_db, settings):
@@ -654,9 +675,15 @@ def test_similar_photos_leave_out_the_photo_and_copies(visual_db, settings):
 
 
 def test_the_matrix_loads_one_model_and_follows_changes(visual_db):
-    m = EmbeddingMatrix(visual_db, VisualEmbedding)
+    m = EmbeddingMatrix(visual_db, VisualEmbedding, dtype=np.float32)
     m.ensure("fake-visual")
-    assert m.count == 5 and m.has(1) and not m.has(6) and m.nbytes == 5 * VISUAL_DIM * 2
+    assert m.count == 5 and m.has(1) and not m.has(6) and m.nbytes == 5 * VISUAL_DIM * 4
+    half = EmbeddingMatrix(visual_db, VisualEmbedding)  # float16: the same similarities
+    half.ensure("fake-visual")
+    assert half.nbytes == 5 * VISUAL_DIM * 2
+    for few in ([1], [1, 2, 3, 4, 5]):  # gathered rows / one pass over all
+        a, b = m.similarities(unit(1, 0, 0), few), half.similarities(unit(1, 0, 0), few)
+        assert a.keys() == b.keys() and all(abs(a[i] - b[i]) < 1e-3 for i in a)
     assert [i for i, _ in m.nearest(unit(1, 0, 0), 2)] == [1, 4]
     assert m.similarities(unit(1, 0, 0), [1, 6, 99]).keys() == {1}
     with visual_db.write() as s:

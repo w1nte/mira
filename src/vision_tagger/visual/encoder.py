@@ -6,14 +6,17 @@ resampling and the RGB values scaled to -1..1; the text lower-cased, as Gemma to
 product of a text and a photo vector is their cosine similarity.
 
 :class:`ImageEncoder` runs in the ``visual`` pipeline stage on ``visual.providers`` (CUDA, else
-CPU). :class:`TextEncoder` runs in the search, on the CPU: a request takes a few ten
-milliseconds there, and the GPU stays free for the pipeline.
+CPU). :class:`TextEncoder` runs in the search, on the CPU: a request takes about 50 ms there,
+and the GPU stays free for the pipeline. It needs about 0.8 GB of memory (onnxruntime keeps the
+float16 weights as float32), so it is unloaded after ten minutes without a new request.
 """
 
 from __future__ import annotations
 
+import gc
 import logging
 import threading
+import time
 from collections import OrderedDict
 from pathlib import Path
 
@@ -46,6 +49,8 @@ def _session(path: Path, providers: list[str], threads: int = 0):
     opts.log_severity_level = 3
     if threads:
         opts.intra_op_num_threads = threads
+        # no memory arena: unloading the (text) model gives its memory back
+        opts.enable_cpu_mem_arena = False
     return ort.InferenceSession(str(path), opts, providers=providers)
 
 
@@ -115,6 +120,8 @@ class TextEncoder:
     """
 
     cache_size = 256
+    #: unloaded after this many seconds without a new request (the cache stays)
+    idle_seconds = 600.0
 
     def __init__(self, settings) -> None:
         self.settings = settings
@@ -123,6 +130,8 @@ class TextEncoder:
         self._tokenizer = None
         self._lock = threading.Lock()
         self._cache: OrderedDict[str, np.ndarray] = OrderedDict()
+        self._used = 0.0
+        self._timer: threading.Timer | None = None
 
     @property
     def model(self) -> str:
@@ -160,10 +169,40 @@ class TextEncoder:
         self._session = _session(paths["text"], ["CPUExecutionProvider"], threads=4)
         log.info("%s text encoder loaded", self.spec.title)
 
+    @property
+    def loaded(self) -> bool:
+        return self._session is not None
+
     def unload(self) -> None:
         with self._lock:
             self._session = None
             self._tokenizer = None
+            if self._timer is not None:
+                self._timer.cancel()
+                self._timer = None
+        gc.collect()
+
+    def _watch_idle(self, delay: float) -> None:
+        """Unload the model once it was not used for ``idle_seconds`` (called with the lock)."""
+        timer = threading.Timer(delay, self._idle)
+        timer.daemon = True
+        timer.name = "vision-tagger-text-encoder-idle"
+        self._timer = timer
+        timer.start()
+
+    def _idle(self) -> None:
+        with self._lock:
+            if self._session is None:
+                return
+            left = self._used + self.idle_seconds - time.monotonic()
+            if left > 0:  # used meanwhile: look again later
+                self._watch_idle(left)
+                return
+            self._session = None
+            self._tokenizer = None
+            self._timer = None
+        gc.collect()
+        log.info("%s text encoder unloaded (not used for a while)", self.spec.title)
 
     def embed(self, texts: list[str]) -> np.ndarray:
         """One L2-normalised vector per text (cached)."""
@@ -177,6 +216,9 @@ class TextEncoder:
                 out = unit(self._session.run(["pooler_output"], {"input_ids": ids})[0])
                 for key, vec in zip(todo, out, strict=True):
                     self._cache[key] = vec
+                self._used = time.monotonic()
+                if self._timer is None:
+                    self._watch_idle(self.idle_seconds)
             for key in keys:
                 self._cache.move_to_end(key)
             while len(self._cache) > self.cache_size:

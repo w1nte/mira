@@ -31,6 +31,7 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Any
 
+import numpy as np
 from sqlalchemy import and_, func, or_, select
 
 from ..config import Settings
@@ -137,7 +138,8 @@ class SearchEngine:
         self.vocab = Vocabulary.load(settings.vlm.vocabulary_file)
         self.backend = backend or make_backend(settings.vlm, self.vocab)
         self.index = EmbeddingMatrix(db)
-        self.visual = EmbeddingMatrix(db, VisualEmbedding)
+        # float32: every search ranks the whole library (2-3 ms for 50,000 photos)
+        self.visual = EmbeddingMatrix(db, VisualEmbedding, dtype=np.float32)
         if text_encoder is None:
             from ..visual.encoder import TextEncoder
 
@@ -459,8 +461,10 @@ class SearchEngine:
                 (w.properties, props, props_for),
                 (w.keywords, words, None),
             )
-            if scores is not None and weight > 0
+            if scores and weight > 0  # a part nothing matched would only dilute the scores
         ]
+        # a request with something to match (else every candidate is a result, newest first)
+        soft = any(s is not None for s in (visual, semantic, props, words))
 
         ranked: list[tuple[float, int, int]] = []  # (-score, newest-first rank, image id)
         for rank, image_id in enumerate(candidates):  # candidates come newest first
@@ -470,7 +474,7 @@ class SearchEngine:
                     score += weight * scores.get(image_id, 0.0)
                     weight_sum += weight
             score = score / weight_sum if weight_sum else 0.0
-            if parts and score <= 0.0 and (open_search or image_id not in strict):
+            if soft and score <= 0.0 and (open_search or image_id not in strict):
                 continue  # nothing about this photo matches the request
             ranked.append((-score, rank, image_id))
         ranked.sort()
