@@ -55,6 +55,9 @@ class IndexConfig(BaseModel):
     skip_dirs: list[str] = Field(
         default_factory=lambda: ["$RECYCLE.BIN", "System Volume Information", "$WinREAgent"]
     )
+    # Write gallery thumbnails while indexing (from the image decoded for hashing anyway) and
+    # create missing ones for files indexed earlier, so the gallery never waits for them.
+    thumbnails: bool = True
 
 
 class PipelineConfig(BaseModel):

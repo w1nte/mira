@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import contextlib
+import io
+import math
 import re
 import time
 import uuid
@@ -68,13 +70,30 @@ def resize_max(im: Image.Image, max_px: int) -> Image.Image:
     return im.resize((max(1, round(w * scale)), max(1, round(h * scale))), Image.Resampling.LANCZOS)
 
 
-def load_image(path: str | Path, max_px: int | None = None) -> Image.Image:
+def _draft_box(size: tuple[int, int], long_edge: int) -> tuple[int, int]:
+    """``size`` scaled so that its longer side is ``long_edge`` (never enlarged)."""
+    w, h = size
+    scale = long_edge / max(w, h, 1)
+    if scale >= 1:
+        return w, h
+    return max(1, math.ceil(w * scale)), max(1, math.ceil(h * scale))
+
+
+def load_image(
+    path: str | Path, max_px: int | None = None, *, draft_px: int | None = None
+) -> Image.Image:
     """Open an image, apply EXIF orientation and return an RGB image.
 
     For JPEGs ``max_px`` enables a fast reduced-size decode via ``draft()``.
+
+    ``draft_px`` asks for a decode whose longer side is at least ``draft_px``, as small as the
+    format allows: JPEGs decode at 1/2, 1/4 or 1/8 size, and HEIC/HEIF files use their embedded
+    preview image when it is large enough (a few ms instead of decoding 12 megapixels).
     """
     with Image.open(path) as im:
-        if max_px and im.format == "JPEG":
+        if draft_px and im.format in ("JPEG", "HEIF"):
+            im.draft("RGB", _draft_box(im.size, draft_px))
+        elif max_px and im.format == "JPEG":
             im.draft("RGB", (max_px, max_px))
         if getattr(im, "is_animated", False):
             im.seek(0)
@@ -314,15 +333,27 @@ def thumbnail_path(thumbs_dir: Path, image_id: int, size: int) -> Path:
 
 
 def _atomic_save(im: Image.Image, target: Path, fmt: str, **params: object) -> None:
-    """Save via a unique temp file and an atomic replace.
+    """Save via a unique temp file and an atomic replace (see :func:`_atomic_replace`)."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_name(f"{target.stem}.{uuid.uuid4().hex}.tmp")
+    im.save(tmp, fmt, **params)
+    _atomic_replace(tmp, target)
+
+
+def _atomic_write(target: Path, data: bytes) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_name(f"{target.stem}.{uuid.uuid4().hex}.tmp")
+    tmp.write_bytes(data)
+    _atomic_replace(tmp, target)
+
+
+def _atomic_replace(tmp: Path, target: Path) -> None:
+    """Move ``tmp`` over ``target``.
 
     Concurrent requests for the same thumbnail each use their own temp name; on Windows a
     replace can fail while another process (viewer, antivirus) holds the target, so retry
     briefly and accept the existing file if one appeared meanwhile.
     """
-    target.parent.mkdir(parents=True, exist_ok=True)
-    tmp = target.with_name(f"{target.stem}.{uuid.uuid4().hex}.tmp")
-    im.save(tmp, fmt, **params)
     for attempt in range(5):
         try:
             tmp.replace(target)
@@ -337,17 +368,63 @@ def _atomic_save(im: Image.Image, target: Path, fmt: str, **params: object) -> N
         raise PermissionError(f"cannot write {target}")
 
 
-def ensure_thumbnail(thumbs_dir: Path, image_id: int, source: str | Path, size: int) -> Path:
+def thumbnail_is_fresh(target: Path, source: str | Path) -> bool:
+    """A cached thumbnail exists and is not older than its source file."""
+    try:
+        target_mtime = target.stat().st_mtime
+    except OSError:
+        return False
+    try:
+        return target_mtime >= Path(source).stat().st_mtime
+    except OSError:  # source unavailable (e.g. drive not mounted): keep showing the thumbnail
+        return True
+
+
+def ensure_thumbnail(
+    thumbs_dir: Path,
+    image_id: int,
+    source: str | Path,
+    size: int,
+    *,
+    base_size: int | None = None,
+) -> Path:
+    """Cached WebP thumbnail of ``source``, at most ``size`` pixels on the longer side.
+
+    Smaller sizes are made from the cached ``base_size`` thumbnail when there is one, which is
+    much cheaper than decoding the original photo again.
+    """
     target = thumbnail_path(thumbs_dir, image_id, size)
-    if target.exists():
-        try:
-            if target.stat().st_mtime >= Path(source).stat().st_mtime:
-                return target
-        except OSError:
-            return target
-    im = load_image(source, max_px=size * 2)
+    if thumbnail_is_fresh(target, source):
+        return target
+    im: Image.Image | None = None
+    if base_size and size < base_size:
+        base = thumbnail_path(thumbs_dir, image_id, base_size)
+        if thumbnail_is_fresh(base, source):
+            try:
+                with Image.open(base) as cached:
+                    cached.load()
+                    im = cached.convert("RGB")
+            except OSError:
+                im = None
+    if im is None:
+        im = load_image(source, max_px=size * 2, draft_px=size)
     im.thumbnail((size, size), Image.Resampling.LANCZOS)
     _atomic_save(im, target, "WEBP", quality=80, method=4)
+    return target
+
+
+def encode_thumbnail(im: Image.Image, size: int) -> bytes:
+    """WebP thumbnail bytes of an already decoded, oriented RGB image (same as on demand)."""
+    small = im.copy()
+    small.thumbnail((size, size), Image.Resampling.LANCZOS)
+    buf = io.BytesIO()
+    small.save(buf, "WEBP", quality=80, method=4)
+    return buf.getvalue()
+
+
+def save_thumbnail_bytes(thumbs_dir: Path, image_id: int, size: int, data: bytes) -> Path:
+    target = thumbnail_path(thumbs_dir, image_id, size)
+    _atomic_write(target, data)
     return target
 
 

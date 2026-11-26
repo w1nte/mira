@@ -268,6 +268,13 @@ Everything lives in `data/`:
 
 - `vision_tagger.sqlite3`: index, job state, faces, clusters, persons, properties.
 - `cache/thumbs`, `cache/faces`: thumbnails and face crops. These can be deleted at any time.
+  - Gallery thumbnails are written while indexing, from the image that is decoded for duplicate
+    detection anyway (about 5 % extra indexing time).
+  - **Scan & index** (or `vision-tagger index`) also creates the thumbnails that are missing,
+    e.g. for photos indexed with an older version or after deleting the cache.
+  - HEIC photos use their embedded preview when it is large enough (a few milliseconds instead
+    of decoding 12 megapixels).
+  - Turn this off with `index.thumbnails = false`.
 
 Main tables: `images` (+ `metadata` JSON), `duplicate_files`, `stage_status`, `runs`, `faces`,
 `clusters`, `persons`, `person_references`, `image_properties`, `property_aliases`,

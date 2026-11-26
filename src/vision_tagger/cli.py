@@ -154,13 +154,18 @@ def index(
             typer.echo(
                 f"  {stats.processed}/{stats.candidates} analysed · {stats.new} new · "
                 f"{stats.duplicates} duplicates · {stats.errors} errors"
+                + (
+                    f" · thumbnails {stats.thumbnails_warmed}/{stats.thumbnails_todo}"
+                    if stats.thumbnails_todo
+                    else ""
+                )
             )
 
     stats = Indexer(db, _settings(), progress=progress).run(roots or None)
     typer.echo(
         f"done: found {stats.found}, new {stats.new}, duplicates {stats.duplicates}, "
         f"moved {stats.moved}, updated {stats.updated}, unchanged {stats.unchanged}, "
-        f"missing {stats.missing}, errors {stats.errors}"
+        f"missing {stats.missing}, errors {stats.errors}, thumbnails {stats.thumbnails}"
     )
     for sample in stats.error_samples[:10]:
         typer.echo(f"  ! {sample}", err=True)

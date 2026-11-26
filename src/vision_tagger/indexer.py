@@ -34,7 +34,13 @@ from .db.session import Database
 from .db.util import chunked
 from .derived import metadata_properties
 from .faces.clustering import delete_image_faces
-from .imaging import read_image_info
+from .imaging import (
+    encode_thumbnail,
+    ensure_thumbnail,
+    read_image_info,
+    save_thumbnail_bytes,
+    thumbnail_path,
+)
 
 log = logging.getLogger(__name__)
 
@@ -91,6 +97,9 @@ class IndexStats:
     unchanged: int = 0
     errors: int = 0
     missing: int = 0
+    thumbnails: int = 0  # thumbnails written
+    thumbnails_todo: int = 0  # missing thumbnails of files indexed earlier
+    thumbnails_warmed: int = 0  # ... of which created so far
     error_samples: list[str] = field(default_factory=list)
     done: bool = False
 
@@ -114,6 +123,7 @@ class _Result:
     dhash: str = ""
     info: Any = None
     error: str | None = None
+    thumb: bytes | None = None  # encoded gallery thumbnail (written once the id is known)
 
 
 def _is_junction(entry: os.DirEntry[str]) -> bool:
@@ -260,6 +270,8 @@ class Indexer:
                 self._store_chunk(analysing, stats)
                 if mark_missing:
                     stats.missing = self._mark_missing(stats.roots)
+                if self.settings.index.thumbnails:
+                    self._warm_thumbnails(pool, stats)
 
         stats.done = True
         self.progress(stats)
@@ -270,9 +282,51 @@ class Indexer:
         if not futures:
             return
         results = [f.result() for f in futures]
-        self._store(results, stats)
+        thumbs = self._store(results, stats)
+        # written after the transaction: no file I/O while holding the write lock
+        for image_id, data in thumbs:
+            try:
+                save_thumbnail_bytes(
+                    self.settings.thumbs_dir, image_id, self.settings.web.thumb_size, data
+                )
+                stats.thumbnails += 1
+            except OSError as exc:  # a cache: the gallery makes it on demand instead
+                log.debug("cannot write thumbnail %s: %s", image_id, exc)
         stats.processed += len(results)
         self.progress(stats)
+
+    def _warm_thumbnails(self, pool: ThreadPoolExecutor, stats: IndexStats) -> None:
+        """Create the gallery thumbnails that are still missing (files indexed earlier)."""
+        size = self.settings.web.thumb_size
+        thumbs_dir = self.settings.thumbs_dir
+        with self.db.session() as s:
+            rows = s.execute(
+                select(Image.id, Image.path).where(Image.missing.is_(False)).order_by(Image.id)
+            ).all()
+        todo = [(i, p) for i, p in rows if not thumbnail_path(thumbs_dir, i, size).exists()]
+        stats.thumbnails_todo = len(todo)
+        if not todo:
+            return
+        log.info("creating %d missing thumbnails", len(todo))
+        self.progress(stats)
+
+        def make(item: tuple[int, str]) -> bool:
+            try:
+                ensure_thumbnail(thumbs_dir, item[0], item[1], size)
+                return True
+            except Exception as exc:  # unreadable file: the gallery shows a placeholder
+                log.debug("thumbnail for %s failed: %s", item[1], exc)
+                return False
+
+        step = 64
+        for start in range(0, len(todo), step):
+            if self.should_stop():
+                log.info("thumbnails stopped by request")
+                break
+            made = sum(pool.map(make, todo[start : start + step]))
+            stats.thumbnails += made
+            stats.thumbnails_warmed += made
+            self.progress(stats)
 
     def _known_files(self) -> dict[str, tuple[int, float]]:
         known: dict[str, tuple[int, float]] = {}
@@ -287,19 +341,35 @@ class Indexer:
                 known[key] = (size, round(mtime, 3))
         return known
 
-    @staticmethod
-    def _analyse(cand: _Candidate) -> _Result:
+    def _analyse(self, cand: _Candidate) -> _Result:
         try:
             info = read_image_info(cand.path, cand.mtime)
             assert info.image is not None
             ph = str(imagehash.phash(info.image))
             dh = str(imagehash.dhash(info.image))
+            thumb = self._thumbnail_from(info)
             info.image = None  # free memory early
-            return _Result(cand, phash=ph, dhash=dh, info=info)
+            return _Result(cand, phash=ph, dhash=dh, info=info, thumb=thumb)
         except Exception as exc:
             return _Result(cand, error=f"{type(exc).__name__}: {exc}")
 
-    def _store(self, results: list[_Result], stats: IndexStats) -> None:
+    def _thumbnail_from(self, info: Any) -> bytes | None:
+        """The gallery thumbnail, from the small image decoded for hashing (if big enough)."""
+        if not self.settings.index.thumbnails:
+            return None
+        size = self.settings.web.thumb_size
+        im = info.image
+        needed = min(size, max(info.width or 0, info.height or 0))
+        if max(im.size) < needed:
+            return None  # thumb_size larger than the hashing image: made on demand instead
+        try:
+            return encode_thumbnail(im, size)
+        except OSError:
+            return None
+
+    def _store(self, results: list[_Result], stats: IndexStats) -> list[tuple[int, bytes]]:
+        """Store a chunk; returns (image id, thumbnail) pairs to write after the commit."""
+        thumbs: list[tuple[int, bytes]] = []
         ok = [r for r in results if r.error is None]
         for r in results:
             if r.error is not None:
@@ -308,7 +378,7 @@ class Indexer:
                     stats.error_samples.append(f"{r.cand.path}: {r.error}")
                 log.warning("index error %s: %s", r.cand.path, r.error)
         if not ok:
-            return
+            return thumbs
 
         max_dist = self.settings.index.dhash_max_distance
         with self.db.write() as s:
@@ -339,6 +409,8 @@ class Indexer:
                     # Same file path, but content / timestamp changed.
                     self._update_existing(s, existing_at_path, r, by_hash)
                     stats.updated += 1
+                    if r.thumb:
+                        thumbs.append((existing_at_path.id, r.thumb))
                     continue
 
                 owner = find_duplicate(by_hash.get(r.phash, []), r.phash, r.dhash, max_dist)
@@ -352,6 +424,8 @@ class Indexer:
                         if stale is not None:
                             s.delete(stale)
                         stats.moved += 1
+                        if r.thumb:
+                            thumbs.append((owner.id, r.thumb))
                         continue
                     dup = dup_by_key.get(c.key)
                     if dup is None:
@@ -380,6 +454,9 @@ class Indexer:
                 by_hash.setdefault(r.phash, []).append(img)
                 by_key[c.key] = img
                 stats.new += 1
+                if r.thumb:
+                    thumbs.append((img.id, r.thumb))
+        return thumbs
 
     def _update_existing(
         self, s: Any, img: Image, r: _Result, by_hash: dict[str, list[Image]]

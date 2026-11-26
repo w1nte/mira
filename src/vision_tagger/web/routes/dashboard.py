@@ -145,6 +145,8 @@ def start_index(request: Request, roots: str = Form("")) -> Response:
                 f"{stats.processed}/{stats.candidates} new or changed files analysed "
                 f"({stats.found} found)"
             )
+            if stats.thumbnails_todo:
+                j.message += f" · thumbnails {stats.thumbnails_warmed}/{stats.thumbnails_todo}"
 
         stats = Indexer(
             c.db, c.settings, progress=progress, should_stop=lambda: j.stop_requested
