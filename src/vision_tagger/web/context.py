@@ -37,7 +37,8 @@ class Job:
 
 
 class JobManager:
-    """Runs one maintenance job (index scan, recluster, reference import, export) at a time."""
+    """Runs one maintenance job (index scan, recluster, reference import, export, database
+    import, location check) at a time."""
 
     def __init__(self) -> None:
         self.current: Job | None = None
@@ -62,7 +63,11 @@ class JobManager:
                 job.message = result or job.message or Lazy("done")
             except Exception as exc:
                 job.status = "failed"
-                job.message = f"{type(exc).__name__}: {exc}"
+                # an error meant for users carries a Lazy message (translated when shown)
+                message = getattr(exc, "message", None)
+                job.message = (
+                    message if isinstance(message, Lazy) else f"{type(exc).__name__}: {exc}"
+                )
                 log.error("job %s failed\n%s", name, traceback.format_exc())
             finally:
                 job.finished_at = datetime.now()
@@ -134,6 +139,20 @@ class AppContext:
         control.request_state(self.db, control.PAUSED)
         self.runner.runner.shutdown()
         self.runner.join(timeout)  # lets the current image finish
+
+    @property
+    def importing(self) -> bool:
+        """A database import is replacing the library (no pipeline may start meanwhile)."""
+        job = self.jobs.current
+        return job is not None and job.status == "running" and job.name == "import"
+
+    def forget_library(self) -> None:
+        """After a database import: drop every in-memory cache keyed by ids (they now mean
+        other photos). Disk caches are cleared by ``db.transfer.clear_cache_dirs``."""
+        self.cache.clear()
+        with self._search_lock:
+            self._search = None  # its embedding matrix and value counts
+        self._health = (0.0, {})
 
     @property
     def search(self) -> Any:

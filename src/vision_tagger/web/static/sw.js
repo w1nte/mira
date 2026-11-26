@@ -1,11 +1,13 @@
 // Mira service worker: makes the web UI an installable app.
 // - the app shell (styles, scripts, icons) is cached and refreshed in the background,
 // - pages come from the network; without a connection an offline page is shown,
-// - thumbnails that were already seen are cached (at most MAX_THUMBS),
+// - thumbnails that were already seen are cached (at most MAX_THUMBS), per library: a database
+//   import gives the library a new id, so a new worker starts with an empty thumbnail cache,
 // - API calls, uploads and anything that is not GET are never cached.
 const VERSION = "__VERSION__"; // replaced by the server: changes whenever the static files change
+const LIBRARY = "__LIBRARY__"; // replaced by the server: changes with every database import
 const SHELL = "vt-shell-" + VERSION;
-const THUMBS = "vt-thumbs";
+const THUMBS = "vt-thumbs-" + LIBRARY;
 const MAX_THUMBS = 3000;
 const SHELL_FILES = [
   "/static/app.css", "/static/app.js", "/static/htmx.min.js", "/static/alpine.min.js",
@@ -19,7 +21,7 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k.startsWith("vt-shell-") && k !== SHELL).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => (k.startsWith("vt-shell-") && k !== SHELL) || (k.startsWith("vt-thumbs") && k !== THUMBS)).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });

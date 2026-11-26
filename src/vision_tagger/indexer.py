@@ -555,16 +555,33 @@ class Indexer:
             img.lat, img.lon = lat, lon
             img.place_id = None  # placed again by geo.places (a user-named place takes it back)
 
-    def _mark_missing(self, roots: list[str]) -> int:
+    def check_locations(self, progress: Callable[[int, int], None] | None = None) -> int:
+        """Check the file of *every* image (not only those below the current roots).
+
+        After a database import from another computer the stored roots and paths belong to
+        that computer: their images are flagged as missing here, until a scan of the folder
+        where the photos are now finds them again (same perceptual hash: re-linked, see
+        ``_store``). Returns the number of missing images.
+        """
+        return self._mark_missing(None, progress=progress)
+
+    def _mark_missing(
+        self,
+        roots: list[str] | None,
+        *,
+        progress: Callable[[int, int], None] | None = None,
+    ) -> int:
         """Flag vanished files without holding the write lock while touching the disk.
 
+        ``roots=None`` checks all images, else only those indexed below one of ``roots``.
         If an image's file is gone but one of its duplicates still exists, the image is
         re-pointed to that copy. Duplicate records whose file vanished are removed.
         """
+        query = select(Image.id, Image.path, Image.missing, Image.root)
+        if roots is not None:
+            query = query.where(Image.root.in_(roots))
         with self.db.session() as s:
-            images = s.execute(
-                select(Image.id, Image.path, Image.missing).where(Image.root.in_(roots))
-            ).all()
+            images = s.execute(query).all()
             dups = s.execute(
                 select(
                     DuplicateFile.id,
@@ -576,30 +593,53 @@ class Indexer:
                 )
             ).all()
         # --- disk checks, no transaction open
-        image_exists = {i: os.path.exists(p) for i, p, _m in images}
-        dup_exists = {d[0]: os.path.exists(d[2]) for d in dups}
+        exists = _ExistsCache()
+        total = len(images) + len(dups)
+        image_exists: dict[int, bool] = {}
+        dup_exists: dict[int, bool] = {}
+        stopped = False
+        for n, (image_id, path, _missing, root) in enumerate(images):
+            if n % 500 == 0:
+                if progress is not None:
+                    progress(n, total)
+                if self.should_stop():
+                    stopped = True
+                    break
+            image_exists[image_id] = exists(path, root)
+        if not stopped:
+            for n, d in enumerate(dups, start=len(images)):
+                if n % 500 == 0 and progress is not None:
+                    progress(n, total)
+                dup_exists[d[0]] = exists(d[2])
+            if progress is not None:
+                progress(total, total)
+        else:  # only what was checked counts; duplicates are left alone
+            log.info("location check stopped by request")
+            images = [row for row in images if row[0] in image_exists]
+            dups = []
         dups_by_image: dict[int, list[Any]] = {}
         for d in dups:
             if dup_exists[d[0]]:
                 dups_by_image.setdefault(d[1], []).append(d)
         promote: dict[int, Any] = {}
-        for image_id, _path, _missing in images:
+        for image_id, _path, _missing, _root in images:
             if not image_exists[image_id] and dups_by_image.get(image_id):
                 promote[image_id] = dups_by_image[image_id][0]
         vanished_dups = [d_id for d_id, ok in dup_exists.items() if not ok]
         flag_changes = [
             (i, not image_exists[i])
-            for i, _p, was_missing in images
+            for i, _p, was_missing, _r in images
             if i not in promote and was_missing == image_exists[i]
         ]
         # --- apply in short write transactions
         for part in chunked(vanished_dups):
             with self.db.write() as s:
                 s.execute(delete(DuplicateFile).where(DuplicateFile.id.in_(part)))
-        for part in chunked(flag_changes, 500):
-            with self.db.write() as s:
-                for image_id, missing in part:
-                    s.execute(update(Image).where(Image.id == image_id).values(missing=missing))
+        for missing in (True, False):
+            for part in chunked([i for i, flag in flag_changes if flag is missing]):
+                with self.db.write() as s:
+                    s.execute(update(Image).where(Image.id.in_(part)).values(missing=missing))
+        root_choices = roots if roots is not None else stored_roots(self.db, self.settings)
         for part in chunked(list(promote.items()), 200):
             with self.db.write() as s:
                 for image_id, d in part:
@@ -607,13 +647,41 @@ class Indexer:
                     dup = s.get(DuplicateFile, d[0])
                     if img is None or dup is None:
                         continue
-                    root = _root_for(d[2], roots)
+                    root = _root_for(d[2], root_choices)
                     s.delete(dup)
                     s.flush()
                     self._apply_location(img, _Candidate(root, d[2], d[3], d[4], d[5]))
                     img.missing = False
                     log.info("image %s moved to its duplicate %s", image_id, d[2])
-        return sum(1 for i, _p, _m in images if not image_exists[i] and i not in promote)
+        return sum(1 for i, *_rest in images if not image_exists[i] and i not in promote)
+
+
+class _ExistsCache:
+    """``os.path.exists`` that checks every folder (and image root) only once.
+
+    When a whole library is gone (another computer's paths after a database import, an
+    unplugged drive, a NAS that is off) each file check would wait for the same missing folder
+    again - on Windows a network path can take many seconds per call.
+    """
+
+    def __init__(self) -> None:
+        self._dirs: dict[str, bool] = {}
+
+    def _isdir(self, folder: str) -> bool:
+        ok = self._dirs.get(folder)
+        if ok is None:
+            ok = self._dirs[folder] = os.path.isdir(folder)
+        return ok
+
+    def __call__(self, path: str, root: str | None = None) -> bool:
+        if root and not self._isdir(root) and _is_below(path, root):
+            return False
+        return self._isdir(os.path.dirname(path)) and os.path.exists(path)
+
+
+def _is_below(path: str, folder: str) -> bool:
+    key, base = os.path.normcase(path), os.path.normcase(folder).rstrip("\\/")
+    return key.startswith(base + os.sep) or key.startswith(base + "/")
 
 
 def _root_for(path: str, roots: list[str]) -> str:

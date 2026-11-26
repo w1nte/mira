@@ -8,7 +8,7 @@
     <nav class="crumbs" aria-label="{{ _('Breadcrumb') }}"><a href="/images{{ '?' ~ qs if qs }}">{{ _('Images') }}</a>{% if img.folder %}<a href="/images?folder={{ img.folder | urlencode }}">{{ img.folder }}</a>{% endif %}</nav>
     <h1 class="filename">{{ img.filename }}</h1>
     <small class="mono path">{{ img.path }}</small>
-    {% if img.missing %}<span class="badge err">{{ _('file missing') }}</span>{% endif %}
+    {% if img.missing %}<a class="badge err" href="/database/missing">{{ _('file missing') }}</a>{% endif %}
   </div>
   <div class="row">
     {% if prev_id %}<a class="btn" href="/images/{{ prev_id }}{{ '?' ~ qs if qs }}" data-hotkey="ArrowLeft" title="{{ _('Previous photo (←)') }}" aria-keyshortcuts="ArrowLeft">{{ icon('chevron-left', 'sm') }}{{ _('Previous') }}</a>
@@ -23,7 +23,7 @@
   <div class="viewer-wrap" x-data="{ boxes: true }">
     <div class="stage-photo">
       <div class="viewer" :class="boxes ? '' : 'hide-boxes'">
-        <img src="/media/image/{{ img.id }}" alt="{{ vlm.caption if vlm else img.filename }}">
+        <img src="/media/{{ 'thumb/' if img.missing else 'image/' }}{{ img.id }}" alt="{{ vlm.caption if vlm else img.filename }}">
         {% if img.width and img.height %}
         {% for face in img.faces if not face.ignored %}
           {% set named = face.cluster and face.cluster.person %}

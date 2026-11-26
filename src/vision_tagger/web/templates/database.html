@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Database') }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ _('Database') }}</h1>
+    <small>{{ _('Everything Mira knows about your photos is kept in one database file: the photo index, faces, names, properties and collections. Export it as a backup or to move your library to another computer.') }}</small>
+  </div>
+  {% if counts.missing %}<a class="btn" href="/database/missing">{{ icon('alert', 'sm') }}{{ ngettext('%(num)d missing file', '%(num)d missing files', counts.missing) }}</a>{% endif %}
+</div>
+
+<div class="stats db-stats">
+  <div class="stat"><div class="v">{{ counts.images }}</div><div class="l">{{ _('Photos') }}</div></div>
+  <div class="stat"><div class="v">{{ counts.faces }}</div><div class="l">{{ _('Faces') }}</div></div>
+  <div class="stat"><div class="v">{{ counts.persons }}</div><div class="l">{{ _('Persons') }}</div></div>
+  <div class="stat"><div class="v">{{ db_size | bytes }}</div><div class="l">{{ _('Database size') }}</div></div>
+</div>
+
+<div class="grid-2">
+  <section class="card db-card">
+    <h2>{{ icon('download') }}{{ _('Export') }}</h2>
+    <p class="muted">{{ _('Downloads a copy of the whole database. It is made while Mira keeps running, also while the pipeline works. The photos themselves are not part of it – copy them separately.') }}</p>
+    <div class="row">
+      <a class="btn primary" href="/database/export" download>{{ icon('download', 'sm') }}{{ _('Download database') }}</a>
+      <small class="muted mono">vision-tagger-{{ now().strftime('%Y-%m-%d') }}.sqlite3</small>
+    </div>
+  </section>
+
+  <section class="card db-card">
+    <h2>{{ icon('upload') }}{{ _('Import') }}</h2>
+    <div class="db-warning" role="note">
+      {{ icon('alert', 'sm') }}
+      <p><b>{{ _('Importing replaces the current library.') }}</b> {{ _('A backup of the current database is kept in the data folder (%(name)s).', name='vision_tagger.sqlite3.bak-import-…') }}</p>
+    </div>
+    <p class="muted">{% if remote %}{{ _('Afterwards Mira checks where every photo is. Photos that are not found are listed as missing; uploading them again links them to their faces, names and properties.') }}{% else %}{{ _('Afterwards Mira checks where every photo is. Photos that are not found are listed as missing; scanning the folder where they are now links them again, with all faces, names and properties.') }}{% endif %}</p>
+    {% if busy %}<div class="note warn">{{ icon('alert', 'sm') }}<small>{{ busy }}</small></div>{% endif %}
+    <form method="post" action="/database/import" enctype="multipart/form-data" class="db-import"
+          data-confirm="{{ _('Replace the current library with this database? A backup of the current one is kept.') }}">
+      <label class="field"><span>{{ _('Database file') }}</span>
+        <input type="file" name="file" accept=".sqlite3,.sqlite,.db" required {{ 'disabled' if busy }}></label>
+      <div><button class="primary" {{ 'disabled' if busy }}>{{ icon('upload', 'sm') }}{{ _('Import database') }}</button></div>
+    </form>
+  </section>
+</div>
+
+<section class="card db-locations">
+  <div class="row spread">
+    <h2 class="flush">{{ icon('folder') }}{{ _('Photo locations') }}</h2>
+    <div class="row">
+      <a class="btn small" href="/database/missing">{{ _('Missing files') }}</a>
+      <form method="post" action="/database/check"><button class="small" {{ 'disabled' if running }}>{{ icon('refresh', 'sm') }}{{ _('Check again') }}</button></form>
+    </div>
+  </div>
+  <div id="db-status">{% include "partials/database_status.html" %}</div>
+  {% if counts.missing %}
+  <p>{{ ngettext('%(num)d photo was not found where Mira last saw it.', '%(num)d photos were not found where Mira last saw them.', counts.missing) }} <a href="/database/missing">{{ _('Show the list') }}{{ icon('arrow-right', 'sm') }}</a></p>
+  {% elif counts.images %}
+  <p class="muted">{{ _('Every photo is where Mira expects it.') }}</p>
+  {% endif %}
+  <p class="muted"><small>{% if remote %}{{ _('Mira recognises a photo by its content (perceptual hash): an upload of a missing photo links it again instead of adding it twice.') }}{% else %}{{ _('Mira recognises a photo by its content (perceptual hash): when a scan finds a missing photo in another folder, it links it again instead of adding it twice.') }} {% if roots %}{{ _('Library folders:') }} {% for r in roots %}<span class="mono">{{ r }}</span>{{ ', ' if not loop.last }}{% endfor %}. {% endif %}<a href="/import">{{ _('Add or scan folders') }}</a>{% endif %}</small></p>
+</section>
+{% endblock %}

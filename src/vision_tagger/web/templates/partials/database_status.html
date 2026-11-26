@@ -1,0 +1,17 @@
+{# Progress of a database import or location check. Expects job (or none), running. While the
+   job runs it polls itself; when it ends the server redirects to the page (fresh data). #}
+{% if job and running %}
+<div class="db-job" hx-get="/partials/database-status?watch=1" hx-trigger="every 2s" hx-swap="outerHTML" role="status">
+  <p class="import-line">{{ icon('refresh', 'sm') }} <b>{{ job_title(job.name) }}</b> · {{ job.message }}</p>
+  {% set p = job.progress or {} %}
+  {% if p.get('candidates') %}<div class="progress"><div class="p-running" style="width: {{ pct(p.get('processed', 0), p.get('candidates')) }}%"></div></div>{% endif %}
+</div>
+{% elif job %}
+<div class="db-job">
+  {% if job.status == 'failed' %}
+  <div class="note err">{{ icon('alert', 'sm') }}<span><b>{{ job_title(job.name) }}</b> · {{ status_title(job.status) }}: {{ job.message }}</span></div>
+  {% else %}
+  <p class="import-line">{{ icon('check', 'sm') }} <b>{{ job_title(job.name) }}</b> · {{ job.message }} <small class="muted">{{ job.finished_at | dt }}</small></p>
+  {% endif %}
+</div>
+{% endif %}

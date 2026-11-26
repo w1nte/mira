@@ -155,6 +155,104 @@ def migrate(
         typer.echo("already up to date")
 
 
+db_app = typer.Typer(
+    help="Export or import the whole library database (backup, another computer).",
+    no_args_is_help=True,
+)
+app.add_typer(db_app, name="db")
+
+
+@db_app.command("export")
+def db_export(
+    target: Annotated[
+        Path,
+        typer.Argument(help="Target file or folder (default: vision-tagger-<date>.sqlite3 here)."),
+    ] = Path(),
+    force: Annotated[bool, typer.Option("--force", help="Overwrite an existing file.")] = False,
+) -> None:
+    """Write a consistent copy of the database (works while Mira and the pipeline run)."""
+    from .db import transfer
+
+    if target.is_dir():
+        target = target / transfer.export_name()
+    if target.exists() and not force:
+        typer.echo(f"error: {target} exists (use --force to overwrite)", err=True)
+        raise typer.Exit(1)
+    db = _db()
+    tmp = target.with_name(f".{target.name}.tmp")
+    transfer.remove_file(tmp)
+    try:
+        transfer.export_database(db, tmp)
+        tmp.replace(target)
+    except transfer.TransferError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1) from None
+    finally:
+        transfer.remove_file(tmp)
+        db.dispose()
+    typer.echo(f"exported {target} ({target.stat().st_size / 1024**2:.1f} MB)")
+
+
+@db_app.command("import")
+def db_import(
+    source: Annotated[Path, typer.Argument(help="Database file exported by Mira.")],
+) -> None:
+    """Replace the library with an exported database (a backup of the current one is kept).
+
+    Close the web UI first. Afterwards the location of every photo is checked; photos that are
+    not found are flagged as missing until a scan of their new folder links them again.
+    """
+    from .db import transfer
+    from .indexer import Indexer
+
+    if not source.is_file():
+        typer.echo(f"error: not a file: {source}", err=True)
+        raise typer.Exit(1)
+    settings = _settings()
+    db = _db()
+    try:
+        reason = transfer.busy_reason(db)
+        if reason is not None:
+            typer.echo(f"error: {reason}", err=True)
+            raise typer.Exit(1)
+        tmp = transfer.temp_file(settings, "import")
+        shutil.copyfile(source, tmp)  # the given file is never changed
+
+        def before_replace() -> None:
+            busy = transfer.busy_reason(db)
+            if busy is not None:
+                raise transfer.TransferError(busy)
+
+        try:
+            result = transfer.import_database(
+                db,
+                settings,
+                tmp,
+                before_replace=before_replace,
+                progress=lambda message: typer.echo(f"  {message}"),
+            )
+        except transfer.TransferError as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(1) from None
+        finally:
+            transfer.remove_file(tmp)
+        typer.echo(f"imported {result.images} photos (schema {result.revision})")
+        if result.backup:
+            typer.echo(f"backup:  {result.backup}")
+        typer.echo("checking where the photos are…")
+        missing = Indexer(db, settings).check_locations()
+        typer.echo(f"missing: {missing} of {result.images} photos not found on this computer")
+        if result.roots:
+            typer.echo(f"library folders: {', '.join(result.roots)}")
+        if missing:
+            typer.echo(
+                "scan the folders where the photos are now (`vision-tagger index FOLDER`): "
+                "they are linked again by perceptual hash, with their faces and properties"
+            )
+    finally:
+        db.dispose()
+
+
 @app.command()
 def init() -> None:
     """Create the data directory, the database and a config.toml (if missing)."""

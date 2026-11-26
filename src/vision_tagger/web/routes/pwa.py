@@ -5,12 +5,13 @@ from __future__ import annotations
 import hashlib
 from functools import cache
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 
 from ... import APP_NAME, __version__
+from ...db.transfer import library_id
 from ...i18n import _
-from ..common import STATIC_DIR
+from ..common import STATIC_DIR, ctx
 
 router = APIRouter()
 
@@ -63,9 +64,13 @@ def manifest() -> JSONResponse:
 
 
 @router.get("/sw.js")
-def service_worker() -> Response:
+def service_worker(request: Request) -> Response:
+    # the library id changes with a database import: a new worker drops the cached thumbnails
     code = (
-        (STATIC_DIR / "sw.js").read_text(encoding="utf-8").replace("__VERSION__", _static_version())
+        (STATIC_DIR / "sw.js")
+        .read_text(encoding="utf-8")
+        .replace("__VERSION__", _static_version())
+        .replace("__LIBRARY__", library_id(ctx(request).db))
     )
     return Response(
         code,
