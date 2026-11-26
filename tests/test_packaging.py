@@ -188,6 +188,11 @@ def test_desktop_workflow():
     assert "--no-editable" in steps[sync]
     assert jobs["publish"]["permissions"] == {"contents": "write"}
     assert "--clobber" in jobs["publish"]["steps"][-1]["run"]
+    # compiled wheels (insightface) must come from the same runner image: the uv cache key
+    # doesn't name the OS version, and ci.yml runs on a newer Ubuntu with a newer libstdc++
+    setup_uv = next(s for s in jobs["build"]["steps"] if "setup-uv" in s.get("uses", ""))
+    assert "matrix.runner" in setup_uv["with"]["cache-suffix"]
+    assert "release" in str(setup_uv["with"]["enable-cache"])  # releases build from scratch
 
 
 def test_inno_setup_messages_exist_in_every_language():
@@ -207,6 +212,25 @@ def test_inno_setup_messages_exist_in_every_language():
     for key, langs in messages.items():
         assert langs == set(languages), f"{key} is missing in {set(languages) - langs}"
     assert "quit-app" in text and "migrate --desktop" in text
+
+
+def test_inno_setup_code_has_no_lines_the_compiler_misreads():
+    """Inno Setup reads every line that starts with "[" as a section header, also indented
+    inside [Code] ("Invalid section tag" broke the 1.2 release build), and every line that
+    starts with "#" as a preprocessor directive."""
+    text = (PACKAGING / "windows/installer.iss").read_bytes().decode("utf-8-sig")
+    sections = re.findall(r"^\[(\w+)\]\s*$", text, re.MULTILINE)
+    assert sections[-1] == "Code" and len(sections) == len(set(sections))
+    code = text.split("\n[Code]", 1)[1].splitlines()
+    for number, line in enumerate(code, start=1):
+        stripped = line.strip()
+        assert not stripped.startswith("["), f"[Code] line {number}: {line!r}"
+        assert not stripped.startswith("#"), f"[Code] line {number}: {line!r}"
+    # Pascal: begin/end and parentheses balance (outside strings and comments)
+    body = re.sub(r"'[^']*'|\{[^}]*\}|//[^\n]*", "", "\n".join(code))
+    assert body.count("(") == body.count(")")
+    opened = re.findall(r"\b(begin|try)\b", body, re.IGNORECASE)
+    assert len(opened) == len(re.findall(r"\bend\b", body, re.IGNORECASE))
 
 
 def test_macos_package_files():
