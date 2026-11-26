@@ -1,3 +1,98 @@
+// True while the user types into a text field (keyboard shortcuts must not fire then).
+// Checkboxes, radios and buttons don't count: focus often lands there after a click.
+window.vtIsTyping = function (el) {
+  if (!el || !el.tagName) return false;
+  if (el.isContentEditable) return true;
+  const tag = el.tagName;
+  if (tag === "TEXTAREA" || tag === "SELECT") return true;
+  if (tag !== "INPUT") return false;
+  return !["checkbox", "radio", "button", "submit", "reset", "file", "color", "image"].includes(
+    (el.type || "").toLowerCase()
+  );
+};
+
+// Theme switch (System / Light / Dark). The server renders <html data-theme> from the
+// vt_theme cookie, so pages never flash; a click only stores the new choice.
+(function () {
+  const THEMES = ["system", "light", "dark"];
+  function select(btn) {
+    const theme = btn.dataset.themeSet;
+    if (!THEMES.includes(theme)) return;
+    document.documentElement.dataset.theme = theme;
+    document.cookie = "vt_theme=" + theme + "; path=/; max-age=31536000; SameSite=Lax";
+    document.querySelectorAll("[data-theme-set]").forEach(function (b) {
+      const on = b.dataset.themeSet === theme;
+      b.setAttribute("aria-checked", on ? "true" : "false");
+      b.tabIndex = on ? 0 : -1;
+    });
+  }
+  document.addEventListener("click", function (ev) {
+    const btn = ev.target.closest && ev.target.closest("[data-theme-set]");
+    if (btn) select(btn);
+  });
+  // radio group keyboard behaviour: arrow keys move the choice
+  document.addEventListener("keydown", function (ev) {
+    const btn = ev.target.closest && ev.target.closest("[data-theme-set]");
+    if (!btn) return;
+    const step = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[ev.key];
+    if (!step) return;
+    ev.preventDefault();
+    const all = Array.from(btn.parentElement.querySelectorAll("[data-theme-set]"));
+    const next = all[(all.indexOf(btn) + step + all.length) % all.length];
+    select(next);
+    next.focus();
+  });
+})();
+
+// "/" focuses the search field in the top bar, Escape leaves it.
+document.addEventListener("keydown", function (ev) {
+  if (ev.defaultPrevented) return;
+  if (ev.key === "/" && !ev.ctrlKey && !ev.metaKey && !ev.altKey && !vtIsTyping(ev.target)) {
+    const input = document.querySelector(".navsearch input");
+    if (input) {
+      ev.preventDefault();
+      input.focus();
+      input.select();
+    }
+  } else if (ev.key === "Escape" && ev.target.matches && ev.target.matches(".navsearch input")) {
+    ev.target.blur();
+  }
+});
+
+// <select data-autosubmit> / <input data-autosubmit>: submit the form when the value changes.
+document.addEventListener("change", function (ev) {
+  const el = ev.target;
+  if (el.matches && el.matches("select[data-autosubmit], input[data-autosubmit]") && el.form) {
+    el.form.requestSubmit();
+  }
+});
+
+// <a data-hotkey="ArrowLeft|ArrowRight">: previous / next photo with the arrow keys.
+document.addEventListener("keydown", function (ev) {
+  if (ev.key !== "ArrowLeft" && ev.key !== "ArrowRight") return;
+  if (ev.defaultPrevented || ev.altKey || ev.ctrlKey || ev.metaKey || ev.shiftKey) return;
+  if (vtIsTyping(ev.target)) return;
+  const link = document.querySelector('a[data-hotkey="' + ev.key + '"]');
+  if (link) {
+    ev.preventDefault();
+    link.click();
+  }
+});
+
+// Dropdowns (<details class="dropdown">): close on a click outside and on Escape.
+document.addEventListener("click", function (ev) {
+  document.querySelectorAll("details.dropdown[open]").forEach(function (d) {
+    if (!d.contains(ev.target)) d.removeAttribute("open");
+  });
+});
+document.addEventListener("keydown", function (ev) {
+  if (ev.key !== "Escape") return;
+  document.querySelectorAll("details.dropdown[open]").forEach(function (d) {
+    d.removeAttribute("open");
+    if (d.contains(document.activeElement)) d.querySelector("summary").focus();
+  });
+});
+
 // Shift-click range selection for checkbox grids (faces, clusters, property values).
 (function () {
   let last = null;

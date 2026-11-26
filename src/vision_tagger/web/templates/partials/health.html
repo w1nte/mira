@@ -1,12 +1,12 @@
-<div class="row spread"><h2 style="margin:0">Environment</h2>
-  <button class="small" hx-get="/partials/health" hx-target="#health" hx-swap="innerHTML">↻ Check</button></div>
-<dl class="kv" style="margin-top:.6rem">
+<div class="row spread"><h2 class="flush">Environment</h2>
+  <button class="small" hx-get="/partials/health" hx-target="#health" hx-swap="innerHTML">{{ icon('refresh', 'sm') }}Check again</button></div>
+<dl class="kv" style="margin-top:14px">
   <dt>Face model</dt><dd>{{ settings.faces.model }} · det {{ settings.faces.det_size }}px</dd>
   <dt>ONNX providers</dt>
   <dd>
-    {% for p in providers %}<span class="badge {{ 'ok' if p == 'CUDAExecutionProvider' else '' }}">{{ p }}</span> {% endfor %}
+    <span class="chips">{% for p in providers %}<span class="badge {{ 'ok' if p == 'CUDAExecutionProvider' else '' }}">{{ p }}</span>{% endfor %}</span>
     {% if 'CUDAExecutionProvider' in settings.faces.providers and 'CUDAExecutionProvider' not in providers %}
-      <div><small style="color:var(--warn)">CUDA not available – InsightFace will run on the CPU. Run <code>uv sync --extra gpu</code> and make sure a recent NVIDIA driver is installed.</small></div>
+      <div class="note warn">{{ icon('alert', 'sm') }}<small>CUDA not available – InsightFace will run on the CPU. Run <code>uv sync --extra gpu</code> and make sure a recent NVIDIA driver is installed.</small></div>
     {% endif %}
   </dd>
   <dt>VLM</dt>
@@ -14,7 +14,7 @@
     {{ vlm_health.get('backend', settings.vlm.backend) }} · <code>{{ vlm_health.get('model', settings.vlm.model) }}</code>
     {% if vlm_health.get('ok') %}<span class="badge ok">ready</span>{% else %}<span class="badge err">not ready</span>{% endif %}
     {% if vlm_health.get('version') %}<small>Ollama {{ vlm_health.version }}</small>{% endif %}
-    {% if vlm_health.get('error') %}<div><small style="color:var(--err)">{{ vlm_health.error }}</small></div>{% endif %}
+    {% if vlm_health.get('error') %}<div class="note err">{{ icon('alert', 'sm') }}<small>{{ vlm_health.error }}</small></div>{% endif %}
   </dd>
   <dt>Search</dt><dd>embeddings <code>{{ settings.search.embed_model }}</code>{% if vlm_health.get('installed') is not none %}{% set em = settings.search.embed_model if ':' in settings.search.embed_model else settings.search.embed_model ~ ':latest' %}{% if em in vlm_health.installed %} <span class="badge ok">ready</span>{% else %} <span class="badge warn">not pulled</span> <small>ollama pull {{ settings.search.embed_model }}</small>{% endif %}{% endif %} · LLM <code>{{ settings.search.model or settings.vlm.model }}</code></dd>
   <dt>Data directory</dt><dd><code>{{ settings.data_dir }}</code></dd>

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import time
 
 import pytest
@@ -303,3 +304,165 @@ def test_age_ui(client):
     assert "manual" in ok(client.get(f"/images/{image_id}")).text
     r = client.post(f"/persons/{pid}/birth-year", data={"birth_year": "abc"})
     assert "Enter a year" in r.text or r.status_code == 200
+
+
+# --------------------------------------------------------------------------- layout and theme
+def _checked_theme(page: str) -> list[str]:
+    return re.findall(r'aria-checked="true"[^>]*data-theme-set="([a-z]+)"', page)
+
+
+def test_theme_cookie_renders_data_theme(client):
+    page = ok(client.get("/")).text
+    assert '<html lang="en" data-theme="system">' in page
+    assert _checked_theme(page) == ["system"]
+    for theme in ("dark", "light"):
+        client.cookies.set("vt_theme", theme)
+        page = ok(client.get("/faces")).text
+        assert f'<html lang="en" data-theme="{theme}">' in page
+        assert _checked_theme(page) == [theme]
+    for invalid in ("purple", "Dark", "system", ""):
+        client.cookies.set("vt_theme", invalid)
+        page = ok(client.get("/persons")).text
+        assert '<html lang="en" data-theme="system">' in page
+        assert _checked_theme(page) == ["system"]
+    client.cookies.clear()
+    assert 'data-theme="system"' in ok(client.get("/images")).text
+
+
+def test_sidebar_navigation_and_theme_switch(client):
+    page = ok(client.get("/")).text
+    assert '<aside class="sidebar" id="sidebar">' in page
+    for href in ("/", "/search", "/images", "/overview", "/faces", "/persons", "/generations",
+                 "/quiz", "/properties"):  # fmt: skip
+        assert f'href="{href}"' in page, href
+    assert re.search(r'class="navlink active" href="/" aria-current="page"', page)
+    assert page.count('aria-current="page"') == 1
+    assert 'role="radiogroup" aria-label="Theme"' in page
+    assert all(f'data-theme-set="{t}"' in page for t in ("system", "light", "dark"))
+    assert 'hx-get="/partials/activity"' in page
+    assert '<meta name="color-scheme" content="light dark">' in page
+    assert 'href="/static/favicon.svg"' in page
+    # app.js defines helpers Alpine components use, so it must load before Alpine
+    scripts = re.findall(r'<script src="/static/([a-z.]+)" defer>', page)
+    assert scripts == ["htmx.min.js", "app.js", "alpine.min.js"]
+    assert ok(client.get("/static/favicon.svg")).headers["content-type"].startswith("image/svg")
+    # cluster pages belong to "Faces"
+    with client.ctx.db.session() as s:
+        cid = s.scalar(select(Cluster.id))
+    page = ok(client.get(f"/clusters/{cid}")).text
+    assert re.search(r'class="navlink active" href="/faces" aria-current="page"', page)
+    assert '<nav class="crumbs" aria-label="Breadcrumb"><a href="/faces">Faces</a>' in page
+
+
+def test_activity_partial(client):
+    from vision_tagger.db.models import Control, Run, utcnow
+    from vision_tagger.web.context import Job
+
+    html = ok(client.get("/partials/activity")).text
+    assert "Pipeline idle" in html and 'class="activity"' in html
+    db = client.ctx.db
+    with db.write() as s:
+        ctrl = s.get(Control, 1)
+        ctrl.active_run_id = s.scalar(select(Run.id))
+        ctrl.heartbeat_at = utcnow()
+        ctrl.active_stage = "vlm"
+        ctrl.desired_state = "running"
+    html = ok(client.get("/partials/activity")).text
+    assert "Running · Properties" in html and 'class="dot run"' in html
+    assert 'aria-valuenow="100"' in html  # all images of the fixture are done
+    with db.write() as s:
+        s.get(Control, 1).desired_state = "paused"
+    html = ok(client.get("/partials/activity")).text
+    assert "Paused" in html and 'class="dot pause"' in html
+    with db.write() as s:
+        s.get(Control, 1).active_run_id = None
+    client.ctx.jobs.current = Job(name="index", message="3/10 files analysed")
+    html = ok(client.get("/partials/activity")).text
+    assert "Index" in html and "3/10 files analysed" in html
+    client.ctx.jobs.current = None
+    assert "Pipeline idle" in ok(client.get("/partials/activity")).text
+
+
+def test_ages_stage_is_labelled(client):
+    from vision_tagger.db.models import Control, Run, utcnow
+
+    status = ok(client.get("/partials/status")).text
+    assert "Face ages" in status and "Stage 1b · AgeNet + InsightFace" in status
+    with client.ctx.db.write() as s:
+        ctrl = s.get(Control, 1)
+        ctrl.active_run_id = s.scalar(select(Run.id))
+        ctrl.heartbeat_at = utcnow()
+        ctrl.active_stage = "ages"
+        ctrl.desired_state = "running"
+    assert "Running · Face ages" in ok(client.get("/partials/activity")).text
+
+
+def test_icon_helper():
+    from vision_tagger.web.common import icon
+
+    assert str(icon("check")) == '<svg class="i" aria-hidden="true"><use href="#i-check"/></svg>'
+    assert 'class="i sm"' in str(icon("chevron-left", "sm"))
+    for bad in ('x"><script>', "", "Check", "x\n"):
+        with pytest.raises(ValueError):
+            icon(bad)
+    with pytest.raises(ValueError):
+        icon("check", 'sm" onclick="x')
+
+
+def test_no_inline_event_handlers_and_icons_exist(client):
+    from vision_tagger.faces import clustering as C
+    from vision_tagger.web.common import TEMPLATES_DIR
+
+    db = client.ctx.db
+    with db.write() as s:
+        cids = list(s.scalars(select(Cluster.id).order_by(Cluster.id)))
+        C.name_cluster(s, cids[0], "Anna")
+        C.name_cluster(s, cids[1], "Ben")
+        pid = s.scalar(select(Person.id).where(Person.name == "Anna"))
+        face = s.scalar(select(Face).where(Face.cluster_id == cids[0]))
+        face_id, image_id = face.id, face.image_id
+    pages = [
+        "/",
+        "/partials/status",
+        "/partials/health",
+        "/partials/activity",
+        "/faces",
+        "/faces/unclustered",
+        "/faces/ignored",
+        f"/clusters/{cids[0]}",
+        "/persons",
+        f"/persons/{pid}",
+        "/images",
+        f"/images/{image_id}",
+        "/properties",
+        "/properties/objects",
+        "/overview",
+        "/overview/table",
+        "/search",
+        "/search?q=trees",
+        "/search/results?q=trees",
+        "/quiz",
+        "/quiz?mode=name",
+        "/generations",
+        f"/generations/{pid}",
+        f"/generations/{pid}/compare/{pid + 1}",
+    ]
+    sprite = (TEMPLATES_DIR / "partials" / "icons.html").read_text()
+    symbols = set(re.findall(r'<symbol id="i-([a-z0-9-]+)"', sprite))
+    inline_handler = re.compile(r"<[^>]*\son[a-z]+\s*=", re.IGNORECASE)
+    for url in pages:
+        page = ok(client.get(url)).text
+        assert not inline_handler.search(page), (url, inline_handler.search(page).group())
+        assert "javascript:" not in page, url
+        for name in re.findall(r'<use href="#i-([a-z0-9-]+)"', page):
+            assert name in symbols, (url, name)
+    answer = ok(
+        client.post(
+            "/quiz/answer",
+            data={"mode": "quiz", "face_id": face_id, "choice": pid, "image_id": image_id},
+        )
+    ).text
+    assert not inline_handler.search(answer)
+    # the "open photo" link inside a selectable face is a plain link (no JS needed)
+    page = ok(client.get(f"/clusters/{cids[0]}")).text
+    assert 'class="open" href="/images/' in page and 'aria-label="Open photo"' in page

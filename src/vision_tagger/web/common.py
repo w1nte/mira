@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,7 @@ from urllib.parse import urlencode, urlsplit
 from fastapi import Request
 from fastapi.responses import RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
+from markupsafe import Markup
 
 from .context import AppContext
 
@@ -109,7 +111,21 @@ def pct(part: int | float, total: int | float) -> float:
     return round(100.0 * part / total, 1) if total else 0.0
 
 
+_ICON_TOKEN = re.compile(r"^[a-z0-9 -]*$")
+
+
+def icon(name: str, cls: str = "") -> Markup:
+    """An inline SVG icon from the sprite in ``partials/icons.html`` (``<symbol id="i-NAME">``).
+
+    Only literal names and classes are expected; anything else is a programming error.
+    """
+    if not name or not _ICON_TOKEN.fullmatch(name) or not _ICON_TOKEN.fullmatch(cls):
+        raise ValueError(f"invalid icon {name!r} / class {cls!r}")
+    classes = f"i {cls}".strip()
+    return Markup(f'<svg class="{classes}" aria-hidden="true"><use href="#i-{name}"/></svg>')
+
+
 templates.env.filters.update(
     dt=fmt_dt, bytes=fmt_bytes, duration=fmt_duration, label=label, pretty=pretty
 )
-templates.env.globals.update(pct=pct, urlencode=urlencode, now=datetime.now)
+templates.env.globals.update(pct=pct, urlencode=urlencode, now=datetime.now, icon=icon)

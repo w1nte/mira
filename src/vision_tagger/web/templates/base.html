@@ -1,38 +1,76 @@
+{%- set theme = request.cookies.get('vt_theme') -%}
+{%- if theme not in ('light', 'dark') %}{% set theme = 'system' %}{% endif -%}
+{%- set path = request.url.path -%}
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="{{ theme }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
   <title>{% block title %}vision-tagger{% endblock %} · vision-tagger</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/app.css">
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/app.js" defer></script>
   <script src="/static/alpine.min.js" defer></script>
 </head>
-<body>
-  {% set path = request.url.path %}
-  <header class="topbar">
-    <a class="brand" href="/">vision<span>tagger</span></a>
-    <nav>
-      <a href="/" class="{{ 'active' if path == '/' }}">Dashboard</a>
-      <a href="/faces" class="{{ 'active' if path.startswith('/faces') or path.startswith('/clusters') }}">Faces</a>
-      <a href="/persons" class="{{ 'active' if path.startswith('/persons') }}">Persons</a>
-      <a href="/properties" class="{{ 'active' if path.startswith('/properties') }}">Properties</a>
-      <a href="/images" class="{{ 'active' if path.startswith('/images') }}">Images</a>
-      <a href="/overview" class="{{ 'active' if path.startswith('/overview') }}">Overview</a>
-      <a href="/search" class="{{ 'active' if path.startswith('/search') }}">Search</a>
-      <a href="/quiz" class="{{ 'active' if path.startswith('/quiz') }}" title="Who's that? – face quiz">🎲 Quiz</a>
-      <a href="/generations" class="{{ 'active' if path.startswith('/generations') }}" title="Watch people grow up, compare family members at the same age">✨ Generations</a>
+<body x-data="{ navOpen: false }" :class="navOpen && 'nav-open'" @keydown.escape.window="navOpen = false">
+  {% include "partials/icons.html" %}
+  <a class="skip" href="#main">Skip to content</a>
+
+  {% macro navlink(href, icon_name, text, active, hint=None) -%}
+    <a class="navlink{{ ' active' if active }}" href="{{ href }}"{% if active %} aria-current="page"{% endif %}{% if hint %} title="{{ hint }}"{% endif %}>{{ icon(icon_name) }}<span>{{ text }}</span></a>
+  {%- endmacro %}
+  <aside class="sidebar" id="sidebar">
+    <a class="brand" href="/"><span class="mark" aria-hidden="true"></span>vision-tagger</a>
+    <nav aria-label="Main">
+      {{ navlink('/', 'gauge', 'Dashboard', path == '/') }}
+      <div class="navgroup">Library</div>
+      {{ navlink('/search', 'search', 'Search', path.startswith('/search')) }}
+      {{ navlink('/images', 'image', 'Images', path.startswith('/images')) }}
+      {{ navlink('/overview', 'chart', 'Overview', path.startswith('/overview')) }}
+      <div class="navgroup">People</div>
+      {{ navlink('/faces', 'scan-face', 'Faces', path.startswith('/faces') or path.startswith('/clusters')) }}
+      {{ navlink('/persons', 'users', 'Persons', path.startswith('/persons')) }}
+      {{ navlink('/generations', 'growth', 'Generations', path.startswith('/generations'), 'Watch people grow up, compare family members at the same age') }}
+      {{ navlink('/quiz', 'dice', 'Quiz', path.startswith('/quiz'), "Who's that? – face quiz") }}
+      <div class="navgroup">Organize</div>
+      {{ navlink('/properties', 'tag', 'Properties', path.startswith('/properties')) }}
     </nav>
-    <form class="navsearch" method="get" action="/search" role="search">
-      <input type="search" name="q" aria-label="Search images" value="{{ request.query_params.get('q', '') if path.startswith('/search') else '' }}"
-             placeholder="Search: “Anna at the beach, summer 2021, no work photos”">
-    </form>
-  </header>
-  <main class="{% block main_class %}container{% endblock %}">
-    {% if msg %}<div class="flash ok" x-data="{show: true}" x-show="show" x-init="setTimeout(() => show = false, 6000)">{{ msg }}</div>{% endif %}
-    {% if err %}<div class="flash err">{{ err }}</div>{% endif %}
-    {% block content %}{% endblock %}
-  </main>
+    <div class="sidebar-foot">
+      <div id="activity" hx-get="/partials/activity" hx-trigger="load, every 5s [document.visibilityState === 'visible']"></div>
+      <div class="theme-switch" role="radiogroup" aria-label="Theme">
+        {% for value, text, ic in [('system', 'System theme', 'monitor'), ('light', 'Light theme', 'sun'), ('dark', 'Dark theme', 'moon')] %}
+        <button type="button" role="radio" aria-checked="{{ 'true' if theme == value else 'false' }}" tabindex="{{ '0' if theme == value else '-1' }}"
+                data-theme-set="{{ value }}" title="{{ text }}" aria-label="{{ text }}">{{ icon(ic, 'sm') }}</button>
+        {% endfor %}
+      </div>
+    </div>
+  </aside>
+  <div class="scrim" @click="navOpen = false"></div>
+
+  <div class="shell">
+    <header class="topbar">
+      <button type="button" class="icon-btn menu-btn" @click="navOpen = !navOpen" aria-label="Menu" aria-controls="sidebar" :aria-expanded="navOpen">{{ icon('menu') }}</button>
+      <form class="navsearch" role="search" method="get" action="/search">
+        {{ icon('search') }}
+        <input type="search" name="q" aria-label="Search photos" aria-keyshortcuts="/" autocomplete="off"
+               value="{{ request.query_params.get('q', '') if path.startswith('/search') else '' }}"
+               placeholder="Search photos – e.g. “Anna at the beach, summer 2021”">
+        <kbd title="Press / to search">/</kbd>
+      </form>
+    </header>
+    <main id="main" class="{% block main_class %}container{% endblock %}">
+      {% if err %}<div class="flash err" role="alert">{{ icon('alert') }}<span>{{ err }}</span></div>{% endif %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+  {% if msg %}
+  <div class="toast" role="status" x-data="{ show: true }" x-show="show" x-init="setTimeout(() => show = false, 6000)" x-transition.opacity.duration.200ms>
+    <span>{{ msg }}</span>
+    <button type="button" class="icon-btn" @click="show = false" aria-label="Dismiss">{{ icon('x') }}</button>
+  </div>
+  {% endif %}
 </body>
 </html>

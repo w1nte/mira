@@ -1,0 +1,23 @@
+{# Sidebar activity indicator, polled every few seconds. Expects state, stage, percent, job. #}
+{% set labels = {'faces': 'Faces', 'ages': 'Face ages', 'vlm': 'Properties', 'embed': 'Search index'} %}
+<a class="activity" href="/" title="Open the dashboard">
+  {% if state == 'running' %}
+    <span class="dot run"></span>
+    <div class="what">
+      <b>Running{% if stage %} · {{ labels.get(stage, stage) }}{% endif %}</b>
+      {% if percent is not none %}<div class="bar" role="progressbar" aria-label="Progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ percent }}" title="{{ percent }} % done"><span style="width: {{ percent }}%"></span></div>{% endif %}
+    </div>
+  {% elif state == 'paused' %}
+    <span class="dot pause"></span>
+    <div class="what"><b>Paused</b>{% if stage %}<small>{{ labels.get(stage, stage) }}{% if percent is not none %} · {{ percent }} %{% endif %}</small>{% endif %}</div>
+  {% elif state == 'stopping' %}
+    <span class="dot pause"></span>
+    <div class="what"><b>Stopping…</b></div>
+  {% elif job %}
+    <span class="dot run"></span>
+    <div class="what"><b>{{ job.name | capitalize }}</b>{% if job.message %}<small title="{{ job.message }}">{{ job.message }}</small>{% endif %}</div>
+  {% else %}
+    <span class="dot"></span>
+    <div class="what">Pipeline idle</div>
+  {% endif %}
+</a>

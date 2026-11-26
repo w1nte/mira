@@ -3,7 +3,7 @@
   <div class="scoreboard">
     {% if state.mode == 'quiz' %}
       <span>Score <b>{{ state.score }}</b> / {{ state.rounds }}</span>
-      <span>Streak <b>{{ state.streak }}</b>{% if state.streak >= 3 %} 🔥{% endif %}</span>
+      <span>Streak <b>{{ state.streak }}</b></span>
       <span>Best <b>{{ state.best }}</b></span>
       {% if title %}<span class="badge accent">{{ title }}</span>{% endif %}
     {% else %}
@@ -11,35 +11,37 @@
       {% if question %}<span>{{ question.remaining }} unnamed clusters left</span>{% endif %}
     {% endif %}
   </div>
-  {% if flash %}<div class="flash ok" style="margin:.6rem 0">{{ flash }}</div>{% endif %}
+  {% if flash %}<div class="flash ok">{{ icon('check') }}<span>{{ flash }}</span></div>{% endif %}
 
   {% if verdict %}
   {# ------------------------------------------------------------ feedback #}
   <div class="card quiz-feedback {{ 'good' if verdict.correct else 'bad' }}">
     <div class="burst" aria-hidden="true">{{ '🎉' if verdict.correct else '🙈' }}</div>
-    <div class="row" style="gap:1.25rem;align-items:flex-start">
+    <div class="quiz-body">
       <img class="quiz-face small" src="/media/face/{{ face_id }}" alt="">
-      <div style="flex:1">
-        <h2 style="margin:0 0 .3rem">{{ 'Correct!' if verdict.correct else 'Nope – that was ' ~ verdict.answer.name }}</h2>
-        {% if age_line %}<p style="margin:.1rem 0">{{ age_line }}</p>{% endif %}
-        <p class="muted" style="margin:.2rem 0 .8rem">🤖 {{ comment }}</p>
-        <form hx-get="/quiz/card" hx-target="#quiz-card" class="row" style="display:inline-flex">
-          {{ state_fields(state) }}<button class="primary" data-next autofocus>Next ⏎</button>
-        </form>
-        {% if not verdict.correct %}
-        <form hx-post="/quiz/fix" hx-target="#quiz-card" style="display:inline-flex">
-          {{ state_fields(state) }}<input type="hidden" name="face_id" value="{{ face_id }}">
-          <button name="action" value="unassign" title="Take this face out of {{ verdict.answer.name }}'s cluster">That's not {{ verdict.answer.name }}!</button>
-        </form>
-        {% if verdict.ai_agrees_with_player %}
-        <form hx-post="/quiz/fix" hx-target="#quiz-card" style="display:inline-flex">
-          {{ state_fields(state) }}<input type="hidden" name="face_id" value="{{ face_id }}"><input type="hidden" name="person" value="{{ verdict.chosen.name }}">
-          <button name="action" value="move">Move it to {{ verdict.chosen.name }}</button>
-        </form>
-        {% endif %}
-        {% endif %}
+      <div class="quiz-main">
+        <h2>{{ icon('check' if verdict.correct else 'x') }} {{ 'Correct!' if verdict.correct else 'Nope – that was ' ~ verdict.answer.name }}</h2>
+        {% if age_line %}<p>{{ age_line }}</p>{% endif %}
+        <p class="muted">{{ comment }}</p>
+        <div class="row">
+          <form hx-get="/quiz/card" hx-target="#quiz-card">
+            {{ state_fields(state) }}<button class="primary" data-next autofocus>Next <kbd>Enter</kbd></button>
+          </form>
+          {% if not verdict.correct %}
+          <form hx-post="/quiz/fix" hx-target="#quiz-card">
+            {{ state_fields(state) }}<input type="hidden" name="face_id" value="{{ face_id }}">
+            <button name="action" value="unassign" title="Take this face out of {{ verdict.answer.name }}'s cluster">That's not {{ verdict.answer.name }}!</button>
+          </form>
+          {% if verdict.ai_agrees_with_player %}
+          <form hx-post="/quiz/fix" hx-target="#quiz-card">
+            {{ state_fields(state) }}<input type="hidden" name="face_id" value="{{ face_id }}"><input type="hidden" name="person" value="{{ verdict.chosen.name }}">
+            <button name="action" value="move">Move it to {{ verdict.chosen.name }}</button>
+          </form>
+          {% endif %}
+          {% endif %}
+        </div>
       </div>
-      {% if image_id %}<a class="thumb" href="/images/{{ image_id }}" style="width:220px;flex:none" title="Open the photo"><img src="/media/thumb/{{ image_id }}" alt=""></a>{% endif %}
+      {% if image_id %}<a class="thumb quiz-photo" href="/images/{{ image_id }}" title="Open the photo"><img src="/media/thumb/{{ image_id }}" alt=""></a>{% endif %}
     </div>
   </div>
 
@@ -49,10 +51,10 @@
     <div class="card empty">Name at least two people first – try <a href="/quiz?mode=name">Name the strangers</a>.</div>
   {% elif question %}
   <div class="card quiz-question" x-data="{hint: false}">
-    <div class="row" style="gap:1.5rem;align-items:flex-start">
+    <div class="quiz-body">
       <img class="quiz-face" src="/media/face/{{ question.face_id }}" alt="Who is this?">
-      <div style="flex:1;min-width:260px">
-        <h2 style="margin-top:0">Who's that?</h2>
+      <div class="quiz-main">
+        <h2>Who's that?</h2>
         <form hx-post="/quiz/answer" hx-target="#quiz-card" class="options">
           {{ state_fields(state) }}
           <input type="hidden" name="face_id" value="{{ question.face_id }}">
@@ -61,8 +63,8 @@
             <button name="choice" value="{{ opt.person_id }}" data-key="{{ loop.index }}"><kbd>{{ loop.index }}</kbd> {{ opt.name }}</button>
           {% endfor %}
         </form>
-        <button class="link" style="margin-top:.8rem" @click="hint = !hint">💡 <span x-text="hint ? 'Hide the photo' : 'Show the whole photo (hint)'"></span></button>
-        <div x-show="hint" x-cloak style="margin-top:.5rem"><img src="/media/thumb/{{ question.image_id }}" alt="" style="max-width:320px;border-radius:6px"></div>
+        <button type="button" class="link hint-toggle" @click="hint = !hint" :aria-expanded="hint">{{ icon('image', 'sm') }} <span x-text="hint ? 'Hide the photo' : 'Show the whole photo (hint)'">Show the whole photo (hint)</span></button>
+        <div x-show="hint" x-cloak class="hint-photo"><img src="/media/thumb/{{ question.image_id }}" alt=""></div>
       </div>
     </div>
   </div>
@@ -71,16 +73,16 @@
   {% else %}
   {# ------------------------------------------------------------ name the strangers #}
   {% if not question %}
-    <div class="card empty">🎉 Every cluster has a name. Time for <a href="/quiz?mode=quiz">Quiz me</a>!</div>
+    <div class="card empty">Every cluster has a name. Time for <a href="/quiz?mode=quiz">Quiz me</a>!</div>
   {% else %}
   <div class="card quiz-question">
-    <div class="row" style="gap:1.5rem;align-items:flex-start">
+    <div class="quiz-body">
       <div class="quiz-strip">
         {% for fid in question.face_ids %}<img src="/media/face/{{ fid }}" alt="" class="{{ 'first' if loop.first }}">{% endfor %}
       </div>
-      <div style="flex:1;min-width:260px">
-        <h2 style="margin-top:0">Who is this?</h2>
-        <p class="muted" style="margin-top:0">Seen {{ question.face_count }} time{{ 's' if question.face_count != 1 }} · <a href="/clusters/{{ question.cluster_id }}">open cluster</a></p>
+      <div class="quiz-main">
+        <h2>Who is this?</h2>
+        <p class="muted">Seen {{ question.face_count }} time{{ 's' if question.face_count != 1 }} · <a href="/clusters/{{ question.cluster_id }}">open cluster</a></p>
         <form hx-post="/quiz/name" hx-target="#quiz-card" class="options">
           {{ state_fields(state) }}
           <input type="hidden" name="cluster_id" value="{{ question.cluster_id }}">
@@ -88,16 +90,16 @@
             <button name="name" value="{{ opt.name }}" data-key="{{ loop.index }}"><kbd>{{ loop.index }}</kbd> {{ opt.name }}{% if opt.score %} <small class="muted">{{ '%.0f' | format(opt.score * 100) }}%</small>{% endif %}</button>
           {% endfor %}
         </form>
-        <form hx-post="/quiz/name" hx-target="#quiz-card" class="row" style="margin-top:.6rem">
+        <form hx-post="/quiz/name" hx-target="#quiz-card" class="row" style="margin-top:12px">
           {{ state_fields(state) }}
           <input type="hidden" name="cluster_id" value="{{ question.cluster_id }}">
-          <input type="text" name="name" list="quiz-persons" placeholder="Someone else…" style="flex:1">
+          <input type="text" name="name" list="quiz-persons" placeholder="Someone else…" aria-label="Someone else" style="flex:1;min-width:160px">
           <button class="primary">That's them</button>
-          <button name="action" value="skip" type="submit" data-next formnovalidate>Skip ⏎</button>
+          <button name="action" value="skip" type="submit" data-next formnovalidate>Skip <kbd>Enter</kbd></button>
         </form>
         <datalist id="quiz-persons">{% for n in persons %}<option value="{{ n }}">{% endfor %}</datalist>
       </div>
-      {% if question.image_id %}<a class="thumb" href="/images/{{ question.image_id }}" style="width:220px;flex:none" title="Open the photo"><img src="/media/thumb/{{ question.image_id }}" alt=""></a>{% endif %}
+      {% if question.image_id %}<a class="thumb quiz-photo" href="/images/{{ question.image_id }}" title="Open the photo"><img src="/media/thumb/{{ question.image_id }}" alt=""></a>{% endif %}
     </div>
   </div>
   {% endif %}

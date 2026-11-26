@@ -6,6 +6,9 @@
     <h1>Properties</h1>
     <small>Everything the pipeline extracted. Tick values (and persons in the gallery) to combine them into a filter; open a property to merge or clean up its values.</small>
   </div>
+  <div class="row">
+    <a class="btn" href="/images?{{ f.query_string() }}">{{ icon('image', 'sm') }}Gallery</a>
+  </div>
 </div>
 {% set base = '/properties' %}
 {% include "partials/filter_summary.html" %}
@@ -17,13 +20,13 @@
   {% for name, value in f.to_params() %}{% if name not in ('t', 'tm') %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endif %}{% endfor %}
   {% for k, v in f.props %}<input type="hidden" name="t" value="{{ k }}:{{ v }}">{% endfor %}
   {% for title, keys in groups %}
-  <h2 style="margin:1.25rem 0 .6rem">{{ title }}</h2>
-  <div class="grid-3">
+  <div class="section-title{{ ' first' if loop.first }}"><h2>{{ title }}</h2></div>
+  <div class="facet-grid">
     {% for key in keys %}
     {% set vals = counts[key] %}
-    <section class="card tight">
-      <div class="row spread" style="margin-bottom:.5rem">
-        <h3 style="margin:0"><a href="/properties/{{ key }}?{{ f.query_string() }}">{{ key | label }}</a></h3>
+    <section class="facet">
+      <div class="facet-head">
+        <h3><a href="/properties/{{ key }}?{{ f.query_string() }}">{{ key | label }}</a></h3>
         <small class="muted">{{ vals | length }} value{{ 's' if vals | length != 1 }}</small>
       </div>
       <div class="chips">
@@ -32,7 +35,7 @@
           <input class="pick" type="checkbox" name="t" value="{{ key }}:{{ v }}">{{ v | pretty }} <span class="n">{{ n }}</span>
         </label>
         {% endfor %}
-        {% if vals | length > limit %}<a class="chip" href="/properties/{{ key }}?{{ f.query_string() }}">+{{ vals | length - limit }} more…</a>{% endif %}
+        {% if vals | length > limit %}<a class="chip ghost" href="/properties/{{ key }}?{{ f.query_string() }}">+{{ vals | length - limit }} more</a>{% endif %}
       </div>
     </section>
     {% endfor %}
@@ -42,7 +45,7 @@
     <b x-text="n + ' selected'"></b>
     <button class="primary" name="tm" value="all">Images with all selected</button>
     <button name="tm" value="any">Images with any selected</button>
-    <button type="button" @click="vt.toggleAll($root, false); n = 0">Clear</button>
+    <button type="button" class="icon-btn" @click="vt.toggleAll($root, false); n = 0" aria-label="Clear selection" title="Clear selection">{{ icon('x') }}</button>
   </div>
 </form>
 {% endif %}
