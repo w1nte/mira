@@ -5,6 +5,8 @@ Mira shows them on its "What's new" page, and each GitHub release uses its secti
 
 ## Unreleased
 
+## 1.4 - 2026-11-26
+
 ### New
 - The installed app tells you when a new Mira is out (Home, sidebar and Pipeline page), with a link to the download; `updates.check = "off"` turns this off.
 - A "What's new" page lists the changes of every version; it is linked in the sidebar and next to the version on the Pipeline page.
@@ -14,6 +16,9 @@ Mira shows them on its "What's new" page, and each GitHub release uses its secti
 ### Changed
 - Properties page: "Images with any selected" keeps the other filters, e.g. summer and (beach or mountains).
 - The Windows gpu setup is a single `.exe` again; it no longer needs a `.bin` file next to it.
+
+### Fixed
+- Cancelling a model download on Windows stops it at once instead of waiting until Ollama reports again.
 
 ## 1.3 - 2026-11-26
 
