@@ -298,3 +298,18 @@ def test_age_ui(client):
     assert "manual" in ok(client.get(f"/images/{image_id}")).text
     r = client.post(f"/persons/{pid}/birth-year", data={"birth_year": "abc"})
     assert "Enter a year" in r.text or r.status_code == 200
+
+
+def test_cached_pages_follow_database_changes(client):
+    """Whole-library aggregates are cached, but never shown after the data changed."""
+    from vision_tagger.db.models import Image, ImageProperty
+
+    assert "zzfresh" not in ok(client.get("/partials/value-options?key=tags")).text
+    assert "6 images" in ok(client.get("/overview")).text
+    ok(client.get("/properties"))
+    with client.ctx.db.write() as s:
+        s.add(ImageProperty(image_id=1, key="tags", value="zzfresh"))
+        s.get(Image, 2).missing = True
+    assert "zzfresh (1)" in ok(client.get("/partials/value-options?key=tags")).text
+    assert "zzfresh" in ok(client.get("/properties?limit=500")).text
+    assert "5 images" in ok(client.get("/overview")).text

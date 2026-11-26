@@ -69,7 +69,9 @@ def person_view(request: Request, person_id: int, compare: int | None = None) ->
             return redirect(request, "/generations", err="Person not found.")
         frames_of = _frames_of(request)
         frames = frames_of(person_id)
-        looks_like = resemblance(s, person_id, frames_of)[:5]
+        looks_like = c.cache.get(
+            ("resemblance", person_id), lambda s2: resemblance(s2, person_id, frames_of)
+        )[:5]
         others = [p for p in s.scalars(select(Person).order_by(Person.name)) if p.id != person_id]
     payload = [
         {"src": f"/media/aligned/{f.face_id}", "label": f.label, "image": f.image_id}
