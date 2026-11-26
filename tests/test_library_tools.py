@@ -86,6 +86,8 @@ def _library(settings, photos, launched=None, **client_kw):
         ctx = app.state.ctx
         if launched is not None:
             ctx.file_manager.launcher = launched.append
+            # one platform's commands on every CI runner (plan() is tested per platform)
+            ctx.file_manager.platform = "linux"
         Indexer(ctx.db, settings).run()
         analyse(ctx, settings)
         with ctx.db.write() as s:

@@ -33,6 +33,7 @@ from vision_tagger.faces import clustering as C
 from vision_tagger.indexer import ROOTS_KEY, Indexer, stored_roots
 from vision_tagger.pipeline.runner import PipelineRunner
 from vision_tagger.pipeline.stages.ages import AgesStage
+from vision_tagger.pipeline.stages.animals import AnimalsStage
 from vision_tagger.pipeline.stages.embed import EmbedStage
 from vision_tagger.pipeline.stages.faces import FacesStage
 from vision_tagger.pipeline.stages.nsfw import NsfwStage
@@ -44,7 +45,12 @@ from vision_tagger.web.app import create_app
 from vision_tagger.web.context import Job
 
 from .conftest import make_image
-from .helpers import FakeAgeEstimator, FakeNsfwClassifier, FakeVisualEncoder
+from .helpers import (
+    FakeAgeEstimator,
+    FakeAnimalAnalyzer,
+    FakeNsfwClassifier,
+    FakeVisualEncoder,
+)
 from .test_faces_stage import FakeAnalyzer
 from .test_migrations import build_at, fill_first_version
 
@@ -64,10 +70,12 @@ def analyse(ctx, settings) -> None:
             ctx.db, settings, analyzer=FakeAnalyzer(), age_estimator=FakeAgeEstimator()
         ),
         "ages": AgesStage(ctx.db, settings, estimator=FakeAgeEstimator()),
+        "animals": AnimalsStage(ctx.db, settings, analyzer=FakeAnimalAnalyzer()),
         "vlm": VlmStage(ctx.db, settings, backend=FakeBackend(Vocabulary.load())),
         "embed": EmbedStage(ctx.db, settings, backend=FakeBackend(Vocabulary.load())),
     }
-    PipelineRunner(ctx.db, settings, stages.__getitem__).run()
+    # every default stage: a missing one stopped the run early (KeyError) without failing tests
+    assert PipelineRunner(ctx.db, settings, stages.__getitem__).run().status == "completed"
 
 
 def wait_jobs(ctx, timeout: float = 30) -> None:
