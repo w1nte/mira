@@ -92,7 +92,13 @@ class SearchContext:
         return sorted(set(self.allowed) | set(self.examples))
 
 
-def build_context(s: Session, vocab: Vocabulary, synonyms_path) -> SearchContext:
+def build_context(
+    s: Session,
+    vocab: Vocabulary,
+    synonyms_path,
+    counts: dict[str, list[tuple[str, int]]] | None = None,
+) -> SearchContext:
+    """``counts``: ``property_counts(s)`` if the caller has it already (it is expensive)."""
     allowed: dict[str, list[str]] = {}
     free_keys: list[str] = []
     for f in vocab.fields.values():
@@ -106,7 +112,8 @@ def build_context(s: Session, vocab: Vocabulary, synonyms_path) -> SearchContext
         elif base in ("list", "short_text"):
             free_keys.append(f.name)
     allowed.update(DERIVED_KEYS)
-    counts = property_counts(s)
+    if counts is None:
+        counts = property_counts(s)
     existing = {k: {v for v, _ in vals} for k, vals in counts.items()}
     examples = {
         k: [v for v, _ in counts.get(k, [])[:FREE_TEXT_EXAMPLES]] for k in [*free_keys, "year"]

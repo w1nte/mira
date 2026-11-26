@@ -12,6 +12,8 @@ from sqlalchemy import func, select
 from ..db.models import ImageEmbedding
 from ..db.session import Database
 
+SIMILARITY_CHUNK = 16384
+
 
 class EmbeddingMatrix:
     """Loads ``image_embeddings`` once and then only the rows added since the last load.
@@ -98,5 +100,9 @@ class EmbeddingMatrix:
         q = np.asarray(query, dtype=np.float32)
         if q.shape[0] != self._mat.shape[1]:
             return {}
-        sims = self._mat[rows].astype(np.float32) @ q
+        # in chunks: a float32 copy of all candidate rows would need ~300 MB for 100k images
+        sims = np.empty(len(rows), dtype=np.float32)
+        for start in range(0, len(rows), SIMILARITY_CHUNK):
+            part = rows[start : start + SIMILARITY_CHUNK]
+            sims[start : start + len(part)] = self._mat[part].astype(np.float32) @ q
         return dict(zip(ids, sims.tolist(), strict=True))

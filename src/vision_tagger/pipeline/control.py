@@ -246,14 +246,26 @@ def outdated_counts(db: Database, versions: dict[str, str]) -> dict[str, int]:
     return out
 
 
+def _stages(s: Session) -> list[str]:
+    """Distinct stage names in ``stage_status`` (one index seek per stage)."""
+    stages: list[str] = []
+    stage = s.scalar(select(func.min(StageStatus.stage)))
+    while stage is not None:
+        stages.append(stage)
+        stage = s.scalar(select(func.min(StageStatus.stage)).where(StageStatus.stage > stage))
+    return stages
+
+
 def recent_errors(db: Database, limit: int = 50) -> list[dict[str, Any]]:
     from ..db.models import Image
 
     with db.session() as s:
+        # "stage IN (...)" lets the (stage, status, ...) index find the errors without a
+        # scan of the whole table (the dashboard polls this)
         rows = s.execute(
             select(StageStatus, Image.path)
             .join(Image, Image.id == StageStatus.image_id)
-            .where(StageStatus.status == Status.ERROR)
+            .where(StageStatus.stage.in_(_stages(s)), StageStatus.status == Status.ERROR)
             .order_by(StageStatus.finished_at.desc())
             .limit(limit)
         ).all()

@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import Any
 
 from ..config import Settings
+from ..db.cache import VersionedCache
 from ..db.session import Database
 from ..indexer import ensure_stage_rows
 from ..pipeline import control
@@ -79,6 +80,8 @@ class AppContext:
         settings.ensure_dirs()
         self.db = Database(settings.db_path)
         self.db.create_all()
+        #: expensive read-only results, valid until the next commit (see ``db.cache``)
+        self.cache = VersionedCache(self.db)
         ensure_stage_rows(self.db, settings.pipeline.stages or list(STAGE_NAMES))
         stale_after = max(30.0, settings.pipeline.heartbeat_seconds * 6)
         # atomic: does nothing while another process (e.g. a CLI run) sends heartbeats

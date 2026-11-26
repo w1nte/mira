@@ -11,7 +11,7 @@ import logging
 import os
 import posixpath
 from collections.abc import Callable, Iterable, Iterator
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -236,15 +236,28 @@ class Indexer:
 
         chunk = max(1, self.settings.index.commit_every)
         with ThreadPoolExecutor(max_workers=max(1, self.settings.index.workers)) as pool:
+            # The workers analyse the next chunk while the previous one is stored, so they do
+            # not wait for the database. Chunks are stored in order, as before.
+            analysing: list[Future[_Result]] = []
+            stopped = False
             for start in range(0, len(candidates), chunk):
                 if self.should_stop():
-                    log.info("indexing stopped by request")
+                    stopped = True
                     break
-                results = list(pool.map(self._analyse, candidates[start : start + chunk]))
-                self._store(results, stats)
-                stats.processed += len(results)
-                self.progress(stats)
+                submitted = [
+                    pool.submit(self._analyse, c) for c in candidates[start : start + chunk]
+                ]
+                self._store_chunk(analysing, stats)
+                analysing = submitted
+                if self.should_stop():
+                    stopped = True
+                    break
+            if stopped:  # like before: nothing after the stop request is stored
+                log.info("indexing stopped by request")
+                for future in analysing:
+                    future.cancel()
             else:
+                self._store_chunk(analysing, stats)
                 if mark_missing:
                     stats.missing = self._mark_missing(stats.roots)
 
@@ -253,6 +266,14 @@ class Indexer:
         return stats
 
     # ------------------------------------------------------------------ internals
+    def _store_chunk(self, futures: list[Future[_Result]], stats: IndexStats) -> None:
+        if not futures:
+            return
+        results = [f.result() for f in futures]
+        self._store(results, stats)
+        stats.processed += len(results)
+        self.progress(stats)
+
     def _known_files(self) -> dict[str, tuple[int, float]]:
         known: dict[str, tuple[int, float]] = {}
         with self.db.session() as s:

@@ -78,7 +78,10 @@ class Image(Base):
         back_populates="image", cascade="all, delete-orphan", passive_deletes=True
     )
     faces: Mapped[list[Face]] = relationship(
-        back_populates="image", cascade="all, delete-orphan", passive_deletes=True
+        back_populates="image",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="Face.id",
     )
     properties: Mapped[list[ImageProperty]] = relationship(
         back_populates="image", cascade="all, delete-orphan", passive_deletes=True
@@ -105,7 +108,11 @@ class DuplicateFile(Base):
 # --------------------------------------------------------------------------- job state
 class StageStatus(Base):
     __tablename__ = "stage_status"
-    __table_args__ = (Index("ix_stage_status_stage_status", "stage", "status"),)
+    __table_args__ = (
+        # Serves the runner's claim (one stage and status, by image id) and covers the
+        # dashboard's status and outdated-version counts.
+        Index("ix_stage_status_stage_status_image", "stage", "status", "image_id", "stage_version"),
+    )
 
     image_id: Mapped[int] = mapped_column(
         ForeignKey("images.id", ondelete="CASCADE"), primary_key=True
@@ -203,9 +210,15 @@ class Cluster(Base):
 
 class Face(Base):
     __tablename__ = "faces"
+    # Covering indexes: face rows are large (embedding), so the frequent "faces of an image /
+    # of a cluster that are not ignored" lookups and counts should never read them.
+    __table_args__ = (
+        Index("ix_faces_image_ignored_cluster", "image_id", "ignored", "cluster_id"),
+        Index("ix_faces_cluster_ignored_image_age", "cluster_id", "ignored", "image_id", "age"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    image_id: Mapped[int] = mapped_column(ForeignKey("images.id", ondelete="CASCADE"), index=True)
+    image_id: Mapped[int] = mapped_column(ForeignKey("images.id", ondelete="CASCADE"))
     x1: Mapped[float] = mapped_column(Float)
     y1: Mapped[float] = mapped_column(Float)
     x2: Mapped[float] = mapped_column(Float)
@@ -216,9 +229,7 @@ class Face(Base):
     age: Mapped[int | None] = mapped_column(Integer)
     gender: Mapped[str | None] = mapped_column(String(1))
     face_px: Mapped[int] = mapped_column(Integer, default=0)
-    cluster_id: Mapped[int | None] = mapped_column(
-        ForeignKey("clusters.id", ondelete="SET NULL"), index=True
-    )
+    cluster_id: Mapped[int | None] = mapped_column(ForeignKey("clusters.id", ondelete="SET NULL"))
     assignment: Mapped[str] = mapped_column(String(16), default=Assignment.AUTO)
     ignored: Mapped[bool] = mapped_column(Boolean, default=False)
     clusterable: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -244,7 +255,9 @@ class PersonReference(Base):
 class ImageProperty(Base):
     __tablename__ = "image_properties"
     __table_args__ = (
-        Index("ix_image_properties_key_value", "key", "value"),
+        # Covers "image has key=value" checks (gallery filters) with a single seek, the value
+        # counts (property pages, facets) and the "best examples" of a value.
+        Index("ix_image_properties_key_value_image", "key", "value", "image_id", "confidence"),
         Index("ix_image_properties_image_key", "image_id", "key"),
     )
 

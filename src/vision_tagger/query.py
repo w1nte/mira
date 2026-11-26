@@ -208,29 +208,27 @@ class ImageFilter:
 
 
 # --------------------------------------------------------------------------- SQL building
-def _person_exists(person_id: int):
-    return exists(
-        select(Face.id)
+# Person / cluster / property conditions are "image id IN (ids from an index)" rather than
+# correlated EXISTS: SQLite builds each id set once from a covering index and can drive the
+# query from the smallest one, instead of probing every image of the library.
+# (``image_id`` is never NULL, so NOT IN is the exact negation.)
+def _person_images(person_id: int):
+    return Image.id.in_(
+        select(Face.image_id)
         .join(Cluster, Cluster.id == Face.cluster_id)
-        .where(Face.image_id == Image.id, Face.ignored.is_(False), Cluster.person_id == person_id)
+        .where(Face.ignored.is_(False), Cluster.person_id == person_id)
     )
 
 
-def _cluster_exists(cluster_id: int):
-    return exists(
-        select(Face.id).where(
-            Face.image_id == Image.id, Face.ignored.is_(False), Face.cluster_id == cluster_id
-        )
+def _cluster_images(cluster_id: int):
+    return Image.id.in_(
+        select(Face.image_id).where(Face.ignored.is_(False), Face.cluster_id == cluster_id)
     )
 
 
-def _prop_exists(key: str, value: str):
-    return exists(
-        select(ImageProperty.id).where(
-            ImageProperty.image_id == Image.id,
-            ImageProperty.key == key,
-            ImageProperty.value == value,
-        )
+def _prop_images(key: str, value: str):
+    return Image.id.in_(
+        select(ImageProperty.image_id).where(ImageProperty.key == key, ImageProperty.value == value)
     )
 
 
@@ -238,14 +236,14 @@ def conditions(f: ImageFilter) -> list[Any]:
     conds: list[Any] = []
     if not f.include_missing:
         conds.append(Image.missing.is_(False))
-    people = [_person_exists(p) for p in f.persons] + [_cluster_exists(c) for c in f.clusters]
+    people = [_person_images(p) for p in f.persons] + [_cluster_images(c) for c in f.clusters]
     if people:
         conds.append(or_(*people) if f.persons_mode == "any" else and_(*people))
-    props = [_prop_exists(k, v) for k, v in f.props]
+    props = [_prop_images(k, v) for k, v in f.props]
     if props:
         conds.append(or_(*props) if f.props_mode == "any" else and_(*props))
-    conds += [not_(_person_exists(p)) for p in f.exclude_persons]
-    conds += [not_(_prop_exists(k, v)) for k, v in f.exclude_props]
+    conds += [not_(_person_images(p)) for p in f.exclude_persons]
+    conds += [not_(_prop_images(k, v)) for k, v in f.exclude_props]
     start, end = _parse_date(f.date_from), _parse_date(f.date_to, end=True)
     if start:
         conds.append(Image.recorded_at >= start)
@@ -311,20 +309,49 @@ def _ordered(stmt: Select, f: ImageFilter) -> Select:
     return stmt.order_by(Image.recorded_at.desc(), Image.id.desc())
 
 
-_MIN_DATE = datetime(1, 1, 1)
-
 # sort mode -> (sort expression, column descending?, id descending?)  (must match _ordered)
 _KEYSET: dict[str, tuple[Callable[[], Any], bool, bool]] = {
-    "date_desc": (lambda: func.coalesce(Image.recorded_at, _MIN_DATE), True, True),
-    "date_asc": (lambda: func.coalesce(Image.recorded_at, _MIN_DATE), False, False),
     "name": (lambda: Image.filename, False, False),
     "path": (lambda: Image.rel_path, False, False),
     "size": (lambda: Image.size_bytes, True, False),
 }
 
 
+def _date_neighbours(
+    s: Session, f: ImageFilter, image_id: int, value: datetime | None
+) -> tuple[int | None, int | None]:
+    """Keyset neighbours for the date sorts, as index range scans on ``recorded_at``.
+
+    The gallery order puts undated images last (``date_desc``) or first (``date_asc``), like
+    SQLite's NULL ordering, so they are handled as a separate segment instead of comparing a
+    ``coalesce()`` expression, which no index can serve.
+    """
+    conds = conditions(f)
+    col = Image.recorded_at
+
+    def first(*where: Any, ascending: bool) -> int | None:
+        order = (col.asc(), Image.id.asc()) if ascending else (col.desc(), Image.id.desc())
+        return s.scalar(select(Image.id).where(*conds, *where).order_by(*order).limit(1))
+
+    # "up": the next item in ascending (date, id) order, undated before dated; "down": reverse
+    if value is None:
+        up = first(col.is_(None), Image.id > image_id, ascending=True)
+        if up is None:
+            up = first(col.is_not(None), ascending=True)
+        down = first(col.is_(None), Image.id < image_id, ascending=False)
+    else:
+        up = first(col >= value, or_(col > value, Image.id > image_id), ascending=True)
+        down = first(col <= value, or_(col < value, Image.id < image_id), ascending=False)
+        if down is None:
+            down = first(col.is_(None), ascending=False)
+    return (up, down) if f.sort == "date_desc" else (down, up)
+
+
 def neighbours(s: Session, f: ImageFilter, image_id: int) -> tuple[int | None, int | None]:
     """Previous / next image in the gallery order of ``f`` (keyset queries, no full id list)."""
+    if f.sort in ("date_desc", "date_asc"):
+        row = s.execute(select(Image.recorded_at).where(Image.id == image_id)).first()
+        return (None, None) if row is None else _date_neighbours(s, f, image_id, row[0])
     if f.sort not in _KEYSET:
         ids = all_image_ids(s, f)
         if image_id not in ids:
@@ -393,6 +420,19 @@ def all_image_ids(s: Session, f: ImageFilter) -> list[int]:
 
 
 # --------------------------------------------------------------------------- facets
+def property_keys(s: Session) -> list[str]:
+    """All distinct property keys, sorted.
+
+    A loose index scan: one index seek per key instead of reading every property row.
+    """
+    keys: list[str] = []
+    key = s.scalar(select(func.min(ImageProperty.key)))
+    while key is not None:
+        keys.append(key)
+        key = s.scalar(select(func.min(ImageProperty.key)).where(ImageProperty.key > key))
+    return sorted(keys)
+
+
 def property_counts(
     s: Session,
     f: ImageFilter | None = None,
@@ -406,9 +446,12 @@ def property_counts(
     stmt = select(ImageProperty.key, ImageProperty.value, func.count(ImageProperty.image_id))
     if f is not None and not f.is_empty:
         stmt = stmt.where(ImageProperty.image_id.in_(image_ids_subquery(f)))
-    elif f is None or not f.include_missing:
+    elif s.scalar(select(Image.id).where(Image.missing.is_(True)).limit(1)) is not None:
+        # Every property row belongs to an image (foreign key), so "not one of the few
+        # missing images" equals "a present image" - and is much cheaper to check for
+        # millions of rows. Without missing images no check is needed at all.
         stmt = stmt.where(
-            ImageProperty.image_id.in_(select(Image.id).where(Image.missing.is_(False)))
+            ImageProperty.image_id.not_in(select(Image.id).where(Image.missing.is_(True)))
         )
     if key:
         stmt = stmt.where(ImageProperty.key == key)
@@ -432,7 +475,9 @@ def person_counts(s: Session, f: ImageFilter | None = None) -> list[tuple[Person
     )
     if f is not None and not f.is_empty:
         stmt = stmt.where(Face.image_id.in_(image_ids_subquery(f)))
-    stmt = stmt.group_by(Person.id).order_by(func.count(func.distinct(Face.image_id)).desc())
+    stmt = stmt.group_by(Person.id).order_by(
+        func.count(func.distinct(Face.image_id)).desc(), Person.id
+    )
     return [(p, n) for p, n in s.execute(stmt)]
 
 

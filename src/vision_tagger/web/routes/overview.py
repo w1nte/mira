@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Request
 from fastapi.responses import Response
 from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
 from ...db.models import Face, Image, StageStatus
 from ...query import (
@@ -18,6 +21,9 @@ from ...query import (
 from ..common import ctx, render
 
 router = APIRouter()
+
+# property breakdowns shown on the overview (only these are aggregated)
+BREAKDOWN_KEYS = ("work_image", "capture_device", "orientation", "image_type", "setting")
 
 TABLE_SORTS = {
     "date": Image.recorded_at,
@@ -39,59 +45,47 @@ def _level(f: ImageFilter, requested: str | None) -> str:
     return "year"
 
 
+def _overview_data(s: Session, f: ImageFilter, lvl: str) -> dict[str, Any]:
+    """Everything the overview shows (plain data, so it can be cached)."""
+    hist = date_histogram(s, f, lvl)
+    props = property_counts(s, f, keys=BREAKDOWN_KEYS)
+    return {
+        "hist": hist,
+        "hist_max": max((n for _, n in hist), default=0),
+        "undated": s.scalar(
+            select(func.count())
+            .select_from(Image)
+            .where(*conditions(f), Image.recorded_at.is_(None))
+        )
+        or 0,
+        "total": s.scalar(select(func.count()).select_from(Image).where(*conditions(f))) or 0,
+        "folders": folder_children(s, f),
+        "cameras": column_counts(s, f, Image.camera, limit=20),
+        "exts": column_counts(s, f, Image.ext, limit=20),
+        "date_sources": column_counts(s, f, Image.date_source, limit=10),
+        "size_total": s.scalar(select(func.sum(Image.size_bytes)).where(*conditions(f))) or 0,
+        "breakdowns": {k: props.get(k, []) for k in BREAKDOWN_KEYS if props.get(k)},
+        "with_faces": s.scalar(
+            select(func.count(func.distinct(Face.image_id))).where(
+                Face.image_id.in_(select(Image.id).where(*conditions(f))),
+                Face.ignored.is_(False),
+            )
+        )
+        or 0,
+    }
+
+
 @router.get("/overview")
 def overview(request: Request, level: str | None = None) -> Response:
     c = ctx(request)
     f = ImageFilter.from_params(request.query_params)
     lvl = _level(f, level)
-    with c.db.session() as s:
-        hist = date_histogram(s, f, lvl)
-        undated = (
-            s.scalar(
-                select(func.count())
-                .select_from(Image)
-                .where(*conditions(f), Image.recorded_at.is_(None))
-            )
-            or 0
-        )
-        total = s.scalar(select(func.count()).select_from(Image).where(*conditions(f))) or 0
-        folders = folder_children(s, f)
-        cameras = column_counts(s, f, Image.camera, limit=20)
-        exts = column_counts(s, f, Image.ext, limit=20)
-        date_sources = column_counts(s, f, Image.date_source, limit=10)
-        size_total = s.scalar(select(func.sum(Image.size_bytes)).where(*conditions(f))) or 0
-        props = property_counts(s, f)
-        with_faces = (
-            s.scalar(
-                select(func.count(func.distinct(Face.image_id))).where(
-                    Face.image_id.in_(select(Image.id).where(*conditions(f))),
-                    Face.ignored.is_(False),
-                )
-            )
-            or 0
-        )
-    breakdowns = {
-        k: props.get(k, [])
-        for k in ("work_image", "capture_device", "orientation", "image_type", "setting")
-        if props.get(k)
-    }
-    return render(
-        request,
-        "overview.html",
-        f=f,
-        level=lvl,
-        hist=hist,
-        hist_max=max((n for _, n in hist), default=0),
-        undated=undated,
-        total=total,
-        folders=folders,
-        cameras=cameras,
-        exts=exts,
-        date_sources=date_sources,
-        size_total=size_total,
-        breakdowns=breakdowns,
-        with_faces=with_faces,
-    )
+    if f.is_empty:  # the whole library: cached until the database changes
+        data = c.cache.get(("overview", lvl), lambda s: _overview_data(s, f, lvl))
+    else:
+        with c.db.session() as s:
+            data = _overview_data(s, f, lvl)
+    return render(request, "overview.html", f=f, level=lvl, **data)
 
 
 @router.get("/overview/table")

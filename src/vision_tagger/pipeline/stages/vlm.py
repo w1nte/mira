@@ -6,6 +6,7 @@ import logging
 import time
 from typing import Any, ClassVar
 
+from PIL.Image import Image as PILImage
 from sqlalchemy import delete, select
 
 from ...db.models import Image, ImageProperty, PropertyAlias, VlmResult, utcnow
@@ -77,6 +78,7 @@ class VlmStage(Stage):
         self.system = system_prompt(self.vocab)
         self.prompt_version = prompt_version(self.vocab)
         self.concurrency = max(1, cfg.concurrency)
+        self.prefetch = 1  # decode the next image while the server answers
         self._normalizer: Normalizer | None = None
         self._normalizer_at = 0.0
 
@@ -103,13 +105,19 @@ class VlmStage(Stage):
             self._normalizer_at = time.monotonic()
         return self._normalizer
 
-    def analyze(self, image_id: int) -> tuple[Image, dict[str, Any], float]:
+    def prepare(self, image_id: int) -> tuple[Image, PILImage]:
+        """Load the image row and decode the image (runs ahead in a worker thread)."""
         with self.db.session() as s:
             img = s.get(Image, image_id)
             if img is None:
                 raise LookupError(f"image {image_id} not found")
             s.expunge(img)
-        pil = load_image(img.path, max_px=self.settings.vlm.max_image_px)
+        return img, load_image(img.path, max_px=self.settings.vlm.max_image_px)
+
+    def analyze(
+        self, image_id: int, prepared: tuple[Image, PILImage] | None = None
+    ) -> tuple[Image, dict[str, Any], float]:
+        img, pil = prepared if prepared is not None else self.prepare(image_id)
         last_exc: Exception | None = None
         started = time.monotonic()
         for attempt in range(self.settings.vlm.retries + 1):
@@ -127,8 +135,14 @@ class VlmStage(Stage):
         raise last_exc
 
     def process(self, image_id: int) -> None:
+        self.process_prepared(image_id, None)
+
+    def process_prepared(self, image_id: int, prepared: tuple[Image, PILImage] | None) -> None:
         try:
-            img, data, duration = self.analyze(image_id)
+            if prepared is None:
+                img, data, duration = self.analyze(image_id)
+            else:
+                img, data, duration = self.analyze(image_id, prepared)
         except VlmConnectionError as exc:
             # Server down? Stop the run instead of burning every image's retry budget.
             health = self.backend.health()

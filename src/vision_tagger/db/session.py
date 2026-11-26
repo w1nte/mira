@@ -8,15 +8,23 @@ when a deferred read transaction tries to upgrade to a write.
 
 from __future__ import annotations
 
+import sqlite3
+import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 from sqlalchemy import Engine, create_engine, event
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 from .models import Control
+
+#: page cache per connection (KiB)
+CACHE_KIB = 32 * 1024
+#: upper limit for memory-mapped reads (address space only, pages stay in the OS cache)
+MMAP_BYTES = 1024 * 1024 * 1024
 
 
 class Database:
@@ -38,6 +46,8 @@ class Database:
         self._immediate_engine = self.engine.execution_options(sqlite_immediate=True)
         self._read = sessionmaker(bind=self.engine, expire_on_commit=False)
         self._write = sessionmaker(bind=self._immediate_engine, expire_on_commit=False)
+        self._watch: sqlite3.Connection | None = None
+        self._watch_lock = threading.Lock()
 
     def create_all(self) -> None:
         """Create a new database or verify the schema of an existing one.
@@ -78,7 +88,28 @@ class Database:
         finally:
             s.close()
 
+    def data_version(self) -> int | None:
+        """A number that changes whenever any connection or process commits a change.
+
+        Uses ``PRAGMA data_version`` on a dedicated connection that never writes itself (the
+        pragma ignores the connection's own commits). ``None`` if unavailable (in-memory or
+        non-SQLite databases): callers must then not cache.
+        """
+        database = make_url(self.url).database
+        if self.engine.dialect.name != "sqlite" or not database or database == ":memory:":
+            return None
+        with self._watch_lock:
+            if self._watch is None:
+                self._watch = sqlite3.connect(
+                    database, timeout=60, isolation_level=None, check_same_thread=False
+                )
+            return int(self._watch.execute("PRAGMA data_version").fetchone()[0])
+
     def dispose(self) -> None:
+        with self._watch_lock:
+            if self._watch is not None:
+                self._watch.close()
+                self._watch = None
         self.engine.dispose()
 
 
@@ -92,6 +123,12 @@ def _install_sqlite_hooks(engine: Engine) -> None:
         cur.execute("PRAGMA synchronous=NORMAL")
         cur.execute("PRAGMA foreign_keys=ON")
         cur.execute("PRAGMA busy_timeout=60000")
+        # Read performance for large libraries (a 100k-image database is > 1 GB): a 32 MiB
+        # page cache per connection instead of 2 MiB, reads straight from the OS file cache
+        # through a memory map, and sorting / grouping in memory instead of temp files.
+        cur.execute(f"PRAGMA cache_size=-{CACHE_KIB}")
+        cur.execute(f"PRAGMA mmap_size={MMAP_BYTES}")
+        cur.execute("PRAGMA temp_store=MEMORY")
         cur.close()
 
     @event.listens_for(engine, "begin")
