@@ -24,7 +24,9 @@ import contextlib
 import functools
 import json
 import logging
+import queue
 import socket
+import sys
 import threading
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
@@ -280,53 +282,63 @@ def _error_of(resp: httpx.Response) -> str:
 
 
 def _abort(resp: httpx.Response) -> None:
-    """Wake up a read that waits for the next line: shut the connection's socket down."""
+    """Wake up a read that waits for the next line by ending the connection's socket.
+
+    ``shutdown`` wakes a blocked read on Linux and macOS; on Windows it doesn't, there only
+    closing the socket aborts it.
+    """
     stream = resp.extensions.get("network_stream")
     sock = stream.get_extra_info("socket") if stream is not None else None
     if isinstance(sock, socket.socket):
         with contextlib.suppress(OSError):
             sock.shutdown(socket.SHUT_RDWR)
+        if sys.platform == "win32":
+            with contextlib.suppress(OSError):
+                sock.close()
 
 
-class _Watch:
-    """Asks ``cancel`` every ``interval`` seconds while a download runs.
+_END = object()  # the reader's last item: the response ended normally
 
-    Ollama can be silent for minutes (it verifies a big layer without a line); when ``cancel``
-    says so, the connection is shut down, which ends the wait at once.
-    """
 
-    def __init__(self, cancel: Callable[[], bool] | None, interval: float = 0.25) -> None:
-        self.cancel = cancel
-        self.interval = interval
-        self.cancelled = False
-        self._done = threading.Event()
-        self._thread: threading.Thread | None = None
+def _read_lines(resp: httpx.Response, lines: queue.Queue[object]) -> None:
+    """Reader thread: hands every line, then ``_END`` or the exception, to the download loop."""
+    try:
+        for raw in resp.iter_lines():
+            lines.put(raw)
+    except BaseException as exc:  # handed over, raised in the download loop
+        lines.put(exc)
+    else:
+        lines.put(_END)
 
-    def check(self) -> bool:
-        if not self.cancelled and self.cancel is not None:
-            try:
-                self.cancelled = bool(self.cancel())
-            except Exception as exc:  # a failing check must not end the download
-                log.debug("cancel check failed: %s", exc)
-        return self.cancelled
 
-    def start(self, resp: httpx.Response) -> None:
-        if self.cancel is None:
-            return
+def _close(resp: httpx.Response, reader: threading.Thread | None, own: httpx.Client | None) -> None:
+    """End the response without ever blocking the caller on a read that can't be woken."""
+    if reader is not None and reader.is_alive():
+        _abort(resp)
+        reader.join(timeout=2)
+    if reader is not None and reader.is_alive():
+        # the read is stuck somewhere no abort reaches: let it end in the background
+        def later() -> None:
+            reader.join()
+            _close(resp, None, own)
 
-        def run() -> None:
-            while not self._done.wait(self.interval):
-                if self.check():
-                    _abort(resp)
-                    return
+        threading.Thread(target=later, name="vision-tagger-pull-close", daemon=True).start()
+        return
+    with contextlib.suppress(Exception):
+        resp.close()
+    if own is not None:
+        with contextlib.suppress(Exception):
+            own.close()
 
-        self._thread = threading.Thread(target=run, name="vision-tagger-pull-watch", daemon=True)
-        self._thread.start()
 
-    def stop(self) -> None:
-        self._done.set()
-        if self._thread is not None:
-            self._thread.join(timeout=2)
+def _is_cancelled(cancel: Callable[[], bool] | None) -> bool:
+    if cancel is None:
+        return False
+    try:
+        return bool(cancel())
+    except Exception as exc:  # a failing check must not end the download
+        log.debug("cancel check failed: %s", exc)
+        return False
 
 
 def pull(
@@ -337,66 +349,86 @@ def pull(
     on_progress: Callable[[PullProgress], None] | None = None,
     cancel: Callable[[], bool] | None = None,
     connect_timeout: float = CONNECT_TIMEOUT,
+    poll: float = 0.25,
 ) -> PullProgress:
     """Let Ollama download ``name``; returns the final progress.
 
-    ``on_progress`` gets the progress after every line, ``cancel`` is asked meanwhile (also from
-    another thread). Raises :class:`OllamaUnreachable`, :class:`PullError` or
+    ``on_progress`` gets the progress after every line, ``cancel`` is asked at least every
+    ``poll`` seconds (also while Ollama is silent: it verifies a big layer for minutes without a
+    line). The lines are read in a thread of their own, so a cancel never waits for the next one,
+    on every system. Raises :class:`OllamaUnreachable`, :class:`PullError` or
     :class:`PullCancelled`.
     """
     progress = PullProgress(model=name)
-    watch = _Watch(cancel)
-    if watch.check():
+    if _is_cancelled(cancel):
         raise PullCancelled(name)
     url = str(client.base_url).rstrip("/") if client is not None else base_url
     # no read timeout: verifying a layer of several GB can take minutes without a line
     timeout = httpx.Timeout(None, connect=connect_timeout)
-    own = client is None
-    http = client or _client(base_url, timeout)
+    own = None if client is not None else _client(base_url, timeout)
+    http = client or own
+    assert http is not None
     try:
-        with http.stream(
+        request = http.build_request(
             "POST", "/api/pull", json={"model": name, "stream": True}, timeout=timeout
-        ) as resp:
-            if resp.status_code != 200:
-                resp.read()
-                raise PullError(error_text(name, _error_of(resp)))
-            watch.start(resp)
-            for raw in resp.iter_lines():
-                if watch.check():
-                    raise PullCancelled(name)
-                if not raw.strip():
-                    continue
-                try:
-                    line = json.loads(raw)
-                except ValueError:
-                    log.debug("ignoring a line of the download of %s: %r", name, raw[:200])
-                    continue
-                if not isinstance(line, dict):
-                    continue
-                if line.get("error"):
-                    raise PullError(error_text(name, str(line["error"])))
-                progress.update(line)
-                if on_progress is not None:
-                    on_progress(progress)
+        )
+        resp = http.send(request, stream=True)
     except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+        if own is not None:
+            own.close()
         raise OllamaUnreachable(unreachable_text(url)) from exc
     except httpx.HTTPError as exc:
-        if watch.cancelled:
+        if own is not None:
+            own.close()
+        raise _interrupted(name, exc) from exc
+    reader: threading.Thread | None = None
+    cancelled = False
+    try:
+        if resp.status_code != 200:
+            resp.read()
+            raise PullError(error_text(name, _error_of(resp)))
+        lines: queue.Queue[object] = queue.Queue()
+        reader = threading.Thread(
+            target=_read_lines, args=(resp, lines), name="vision-tagger-pull-read", daemon=True
+        )
+        reader.start()
+        while True:
+            try:
+                item = lines.get(timeout=poll)
+            except queue.Empty:
+                item = None
+            if _is_cancelled(cancel):
+                cancelled = True
+                raise PullCancelled(name)
+            if item is None:
+                continue
+            if item is _END:
+                break
+            if isinstance(item, BaseException):
+                raise item
+            raw = str(item)
+            if not raw.strip():
+                continue
+            try:
+                line = json.loads(raw)
+            except ValueError:
+                log.debug("ignoring a line of the download of %s: %r", name, raw[:200])
+                continue
+            if not isinstance(line, dict):
+                continue
+            if line.get("error"):
+                raise PullError(error_text(name, str(line["error"])))
+            progress.update(line)
+            if on_progress is not None:
+                on_progress(progress)
+    except httpx.HTTPError as exc:
+        if cancelled or _is_cancelled(cancel):
             raise PullCancelled(name) from exc
-        raise PullError(
-            Lazy(
-                "The download of %(model)s was interrupted (%(error)s). Try again; it continues "
-                "where it stopped.",
-                model=name,
-                error=f"{type(exc).__name__}: {exc}",
-            )
-        ) from exc
+        raise _interrupted(name, exc) from exc
     finally:
-        watch.stop()
-        if own:
-            http.close()
+        _close(resp, reader, own)
     if progress.phase != "done":
-        if watch.cancelled:
+        if _is_cancelled(cancel):
             raise PullCancelled(name)
         raise PullError(
             Lazy(
@@ -405,6 +437,17 @@ def pull(
             )
         )
     return progress
+
+
+def _interrupted(name: str, exc: Exception) -> PullError:
+    return PullError(
+        Lazy(
+            "The download of %(model)s was interrupted (%(error)s). Try again; it continues "
+            "where it stopped.",
+            model=name,
+            error=f"{type(exc).__name__}: {exc}",
+        )
+    )
 
 
 def pull_missing(

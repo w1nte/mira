@@ -249,6 +249,26 @@ def test_pull_is_cancelled_while_ollama_is_silent():
         assert EMBED not in ollama.installed
 
 
+def test_cancel_returns_even_when_the_read_cannot_be_woken(monkeypatch):
+    """Windows: shutting the socket down doesn't wake a blocked read (CI waited the full 20 s).
+
+    Cancelling must not depend on waking it: the lines are read in their own thread, the
+    download loop asks ``cancel`` every ``poll`` seconds and returns; a read nothing can wake is
+    closed in the background.
+    """
+    from vision_tagger.vlm import models as models_mod
+
+    monkeypatch.setattr(models_mod, "_abort", lambda resp: None)  # as if on Windows
+    with FakeOllama(silence=20) as ollama:
+        cancel = threading.Event()
+        threading.Timer(0.5, cancel.set).start()
+        started = time.monotonic()
+        with pytest.raises(PullCancelled):
+            pull(EMBED, base_url=ollama.url, cancel=cancel.is_set)
+        assert time.monotonic() - started < 5
+        assert EMBED not in ollama.installed
+
+
 def test_pull_missing_downloads_only_what_is_missing_one_after_another(settings):
     settings.search.model = "qwen2.5:7b"
     with FakeOllama(installed=[VLM], delay=0.01) as ollama:
