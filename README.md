@@ -161,9 +161,9 @@ cd Mira-<version>-linux-x86_64-cpu
 
 It adds `mira` and `vision-tagger-cli` to `~/.local/bin` and Mira to the applications menu.
 `./install.sh --uninstall` removes the app again (the library is kept). The gpu archive is
-bigger than GitHub allows for one file, so it comes in parts: download all
-`….tar.gz.partNN` files and unpack them with `cat Mira-<version>-linux-x86_64-gpu.tar.gz.part* |
-tar -xz`. On Linux, Mira's window is Chrome, Chromium or Edge in app mode (the app does not
+unpacked the same way. (Should an archive ever exceed GitHub's limit of 2 GB per file, the release
+splits it into `….tar.gz.partNN` files; unpack those with
+`cat Mira-<version>-linux-x86_64-gpu.tar.gz.part* | tar -xz`.) On Linux, Mira's window is Chrome, Chromium or Edge in app mode (the app does not
 bundle GTK or Qt for a native window); without one of them it opens in your default browser.
 
 **Updating.** Mira tells you when a new version is out (see [Updates](#updates)). Run the new
