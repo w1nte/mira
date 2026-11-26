@@ -424,3 +424,21 @@ def test_connections_use_read_pragmas(db):
         assert conn.exec_driver_sql("PRAGMA cache_size").scalar() == -CACHE_KIB
         assert conn.exec_driver_sql("PRAGMA temp_store").scalar() == 2  # memory
         assert conn.exec_driver_sql("PRAGMA mmap_size").scalar() > 0
+
+
+def test_prefetched_guess_of_the_next_batch_is_dropped_when_it_changed(images, settings):
+    """Images skipped between the guess and the next claim are not processed."""
+    stage = PrefetchStage(images, settings)
+
+    def skip_next_batch(image_id, prepared):
+        stage.processed.append((image_id, prepared))
+        if image_id == 2:  # the next batch (4, 5) was already guessed and is being decoded
+            with images.write() as s:
+                for i in (4, 5):
+                    s.get(StageStatus, (i, "faces")).status = Status.SKIPPED
+
+    stage.process_prepared = skip_next_batch
+    PipelineRunner(images, settings, lambda _n: stage).run(["faces"], batch_size=3)
+    assert [i for i, _ in stage.processed] == [1, 2, 3, 6, 7, 8, 9, 10]
+    assert 4 in stage.prepared  # it was guessed and decoded, but never processed
+    assert statuses(images)[4] == Status.SKIPPED

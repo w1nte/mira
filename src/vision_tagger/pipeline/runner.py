@@ -376,6 +376,8 @@ class PipelineRunner:
                     stage.setup()
                     set_up = True
                 remaining = list(ids)
+                if prefetch is not None:
+                    prefetch.retain(ids)  # the guessed next batch may have changed meanwhile
                 if stage.concurrency > 1:
                     if self._wait_if_paused(run_id, name) == STOPPED:
                         stopped = True
@@ -456,6 +458,12 @@ class _Prefetcher:
         for image_id in image_ids:
             if image_id not in self.futures:
                 self.futures[image_id] = self.pool.submit(self.stage.prepare, image_id)
+
+    def retain(self, image_ids: Iterable[int]) -> None:
+        """Drop prepared images that are not in ``image_ids``."""
+        keep = set(image_ids)
+        for image_id in [i for i in self.futures if i not in keep]:
+            self.futures.pop(image_id).cancel()
 
     def take(self, image_id: int) -> Any:
         """The prepared inputs of an image (raises what ``prepare`` raised)."""
