@@ -4,7 +4,8 @@ Settings are read (highest priority first) from:
 
 1. keyword arguments passed to :class:`Settings`
 2. environment variables prefixed with ``VT_`` (nested with ``__``, e.g. ``VT_VLM__MODEL``)
-3. a TOML file (``config.toml`` in the working directory, or the path in ``VT_CONFIG``)
+3. a TOML file (``config.toml`` in the working directory, or the path in ``VT_CONFIG``),
+   brought up to date by :mod:`vision_tagger.config_migrate` when it is older than the app
 4. the defaults below
 """
 
@@ -12,15 +13,18 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import (
     BaseSettings,
+    InitSettingsSource,
     PydanticBaseSettingsSource,
     SettingsConfigDict,
-    TomlConfigSettingsSource,
 )
+
+from .config_migrate import KEY as CONFIG_KEY
+from .config_migrate import ConfigMigration, load_config
 
 DEFAULT_EXTENSIONS = [
     ".jpg",
@@ -60,10 +64,14 @@ class IndexConfig(BaseModel):
     thumbnails: bool = True
 
 
+#: every stage, in pipeline order (``pipeline.stages`` defaults to all of them)
+DEFAULT_STAGES = ("faces", "ages", "animals", "vlm", "embed")
+
+
 class PipelineConfig(BaseModel):
     batch_size: int = 16
     max_attempts: int = 3
-    stages: list[str] = Field(default_factory=lambda: ["faces", "ages", "animals", "vlm", "embed"])
+    stages: list[str] = Field(default_factory=lambda: list(DEFAULT_STAGES))
     heartbeat_seconds: float = 5.0
     # closing the app pauses a running pipeline; the next start continues paused pipelines
     resume_on_start: bool = True
@@ -251,6 +259,17 @@ class WebConfig(BaseModel):
 
 
 _config_file: Path | None = None
+#: what loading the config file last did (shown by `vision-tagger migrate`)
+last_config_migration: ConfigMigration | None = None
+
+
+def _load_toml(path: Path) -> dict[str, Any]:
+    global last_config_migration
+    data, result = load_config(path)
+    if result.changed:
+        last_config_migration = result
+    data.pop(CONFIG_KEY, None)
+    return data
 
 
 def _resolve_config_file() -> Path | None:
@@ -298,7 +317,8 @@ class Settings(BaseSettings):
         sources: list[PydanticBaseSettingsSource] = [init_settings, env_settings]
         toml_file = _resolve_config_file()
         if toml_file is not None:
-            sources.append(TomlConfigSettingsSource(settings_cls, toml_file=toml_file))
+            # older config files are brought up to date first (config_migrate)
+            sources.append(InitSettingsSource(settings_cls, init_kwargs=_load_toml(toml_file)))
         return tuple(sources)
 
     # ---- derived paths -------------------------------------------------

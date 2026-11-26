@@ -819,6 +819,7 @@
   "Nothing to export or no target folder.": "エクスポートするものがないか、保存先フォルダーが指定されていません。",
   "Nothing to show yet. Name some people (Faces or Quiz) – the more photos from different years, the better.": "まだ表示するものがありません。何人かに名前を付けてください（「顔」または「クイズ」）。いろいろな年の写真が多いほど効果的です。",
   "Objects": "オブジェクト",
+  "off in config.toml": "config.toml でオフ",
   "office": "オフィス",
   "office equipment": "事務機器",
   "ok": "適正",

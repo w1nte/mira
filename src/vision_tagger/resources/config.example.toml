@@ -2,6 +2,8 @@
 # Every value can also be overridden with environment variables, e.g. VT_VLM__MODEL=qwen3-vl:8b
 # Windows paths: use single quotes ('D:\Photos') or forward slashes ("D:/Photos").
 
+config_version = 2                  # format version of this file; Mira updates older files itself
+
 # "local": the app runs on your computer and scans your photo folders (default).
 # "remote": the app runs on a server; photos are uploaded through the web UI (see [remote]).
 mode = "local"
@@ -20,7 +22,9 @@ dhash_max_distance = 5              # duplicate = same pHash AND dHash differing
 [pipeline]
 batch_size = 16                     # images claimed per batch
 max_attempts = 3                    # automatic retries per image and stage
-stages = ["faces", "ages", "animals", "vlm", "embed"]   # "ages" is added automatically with "faces"
+# Default: every stage, including ones added by later versions. List them only to turn some
+# off ("ages" is added automatically with "faces").
+# stages = ["faces", "ages", "animals", "vlm", "embed"]
 resume_on_start = true              # closing the app pauses a run; the next start continues it
 
 [faces]

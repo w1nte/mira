@@ -929,6 +929,7 @@
   "Nothing to export or no target folder.": "Нечего экспортировать или не указана целевая папка.",
   "Nothing to show yet. Name some people (Faces or Quiz) – the more photos from different years, the better.": "Пока нечего показать. Дайте имена нескольким людям (в разделах «Лица» или «Викторина») — чем больше фото из разных лет, тем лучше.",
   "Objects": "Объекты",
+  "off in config.toml": "отключено в config.toml",
   "office": "офис",
   "office equipment": "оргтехника",
   "ok": "норма",

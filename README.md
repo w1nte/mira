@@ -457,7 +457,9 @@ Bello".
   the file. Everything else runs locally on onnxruntime (CUDA or CPU, `faces.providers`), about
   0.25 s per photo on a 4-core CPU. No photo leaves the computer.
 
-If your `config.toml` lists `pipeline.stages`, add `"animals"` to it.
+The animals stage runs by default. A `config.toml` written by an earlier version is updated
+on the next start (see [Configuration](#configuration)); only a stage list you changed
+yourself stays as it is, so add `"animals"` there if you want it.
 
 ## Using the results in other applications
 
@@ -555,6 +557,19 @@ Important knobs:
 - `derived.work_path_keywords`: folder or file-name hints for work images.
 - `geo.cluster_km`, `geo.nominatim`, `geo.tile_url`: places and the map (see
   [Places and map](#places-and-map)).
+- `pipeline.stages`: leave it out to run every stage, including stages that later versions
+  add. List stages only to turn some off. The Pipeline page shows the stages your config turns
+  off, so you can still run them once.
+
+**Updates.** `config.toml` carries a `config_version`. When a new version of Mira changes what
+a setting means or where it lives, it updates older files itself when it loads them, keeping
+your values and comments. It writes a backup copy next to the file first
+(`config.toml.bak-v1-<time>`). `vision-tagger migrate` shows what was changed. If the file can't
+be written (read-only), Mira uses the updated settings anyway and logs a warning.
+
+Version 2 removes the `pipeline.stages` list that `vision-tagger init` and the desktop app
+copied from the example config. That copy kept every stage added later switched off: ages, the
+search index and animals. A list you changed yourself is kept.
 
 ## Data
 

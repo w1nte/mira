@@ -24,6 +24,7 @@ dependencies = [
     "insightface==0.7.3",
     "opencv-python-headless>=4.9",
     "alembic>=1.13",
+    "tomlkit>=0.13",
 ]
 
 [project.optional-dependencies]

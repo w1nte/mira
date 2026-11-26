@@ -55,7 +55,9 @@ def status_context(request: Request) -> dict[str, Any]:
     alive = c.runner.running or control.is_runner_alive(c.db)
     return {
         "counts": counts,
-        "stages": [st for st in STAGE_NAMES if st in c.settings.pipeline.stages]
+        # every stage; the ones config.toml turns off are shown unticked and can still be run
+        "stages": list(STAGE_NAMES),
+        "enabled_stages": [st for st in STAGE_NAMES if st in c.settings.pipeline.stages]
         or list(STAGE_NAMES),
         "outdated": outdated,
         "ctrl": ctrl,
