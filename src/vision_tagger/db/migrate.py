@@ -175,6 +175,23 @@ def upgrade(url: str, *, backup: bool = True, revision: str = "head") -> Upgrade
         engine.dispose()
 
 
+def upgrade_if_needed(db_path: Path) -> UpgradeResult | None:
+    """Upgrade an existing, outdated database (with a backup); a new one is left alone.
+
+    For unattended starts (Docker, the desktop app), where nobody runs ``vision-tagger migrate``.
+    """
+    url = f"sqlite:///{db_path.as_posix()}"
+    engine = migration_engine(url)
+    try:
+        status = schema_status(engine)
+    finally:
+        engine.dispose()
+    if not status.needs_upgrade:
+        return None
+    log.info("upgrading the database from %s to %s", status.current or "version 1", status.head)
+    return upgrade(url, backup=True)
+
+
 def downgrade(url: str, revision: str, *, backup: bool = True) -> UpgradeResult:
     from alembic import command
 

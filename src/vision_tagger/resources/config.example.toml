@@ -2,6 +2,10 @@
 # Every value can also be overridden with environment variables, e.g. VT_VLM__MODEL=qwen3-vl:8b
 # Windows paths: use single quotes ('D:\Photos') or forward slashes ("D:/Photos").
 
+# "local": the app runs on your computer and scans your photo folders (default).
+# "remote": the app runs on a server; photos are uploaded through the web UI (see [remote]).
+mode = "local"
+
 [paths]
 image_roots = ['D:\Photos']        # folders scanned recursively (can also be set in the web UI)
 data_dir = "data"                   # database, thumbnails and face crops
@@ -17,6 +21,7 @@ dhash_max_distance = 5              # duplicate = same pHash AND dHash differing
 batch_size = 16                     # images claimed per batch
 max_attempts = 3                    # automatic retries per image and stage
 stages = ["faces", "ages", "vlm", "embed"]   # "ages" is added automatically with "faces"
+resume_on_start = true              # closing the app pauses a run; the next start continues it
 
 [faces]
 model = "buffalo_l"                 # InsightFace model pack (non-commercial license)
@@ -66,9 +71,16 @@ work_maybe_threshold = 0.35
 [export]
 mode = "copy"                       # copy | hardlink | symlink (symlinks need Developer Mode on Windows)
 
+[remote]
+# upload_dir = "/photos"            # remote mode: where uploaded photos are stored (required)
+auto_process = true                 # index uploads and run the pipeline automatically
+max_file_gb = 50                    # largest single upload (photo or ZIP)
+max_zip_gb = 200                    # largest total size unpacked from one ZIP
+
 [web]
 host = "127.0.0.1"
 port = 8765
 # allowed_hosts = ["my-pc"]         # extra Host names if you expose the UI (host = "0.0.0.0")
+# password: set VT_WEB__PASSWORD instead of writing it here (strongly recommended in remote mode)
 page_size = 120
 thumb_size = 320

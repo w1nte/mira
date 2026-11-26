@@ -9,6 +9,11 @@
   <meta name="color-scheme" content="light dark">
   <title>{% block title %}vision-tagger{% endblock %} · vision-tagger</title>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#151515" media="(prefers-color-scheme: dark)">
+  <meta name="mobile-web-app-capable" content="yes">
   <link rel="stylesheet" href="/static/app.css">
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/app.js" defer></script>
@@ -31,7 +36,7 @@
       {{ navlink('/images', 'image', _('Images'), path.startswith('/images')) }}
       {{ navlink('/collections', 'layers', _('Collections'), path.startswith('/collections')) }}
       {{ navlink('/overview', 'chart', _('Overview'), path.startswith('/overview')) }}
-      <div class="navgroup">{{ _('People') }}</div>
+      <div class="navgroup">{{ pgettext('sidebar', 'People') }}</div>
       {{ navlink('/faces', 'scan-face', _('Faces'), path.startswith('/faces') or path.startswith('/clusters')) }}
       {{ navlink('/persons', 'users', _('Persons'), path.startswith('/persons')) }}
       {{ navlink('/generations', 'growth', _('Generations'), path.startswith('/generations'), _('Watch people grow up, compare family members at the same age')) }}

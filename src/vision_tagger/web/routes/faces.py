@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from ...db.models import Cluster, Face, Image, Person
 from ...db.util import like_escape
 from ...faces import clustering as C
+from ...i18n import _, _n
 from ..common import back, ctx, ints, redirect, render
 
 router = APIRouter()
@@ -102,7 +103,7 @@ def name_cluster(
         )
     if card and request.headers.get("HX-Request"):
         return _render_card(request, cluster_id)
-    return redirect(request, back(request, f"/clusters/{cluster_id}"), msg="Name saved.")
+    return redirect(request, back(request, f"/clusters/{cluster_id}"), msg=_("Name saved."))
 
 
 @router.post("/clusters/{cluster_id}/accept")
@@ -112,7 +113,9 @@ def accept(request: Request, cluster_id: int, card: str = Form("")) -> Response:
         C.accept_suggestion(s, cluster_id, references=c.settings.faces.references_per_named_cluster)
     if card and request.headers.get("HX-Request"):
         return _render_card(request, cluster_id)
-    return redirect(request, back(request, f"/clusters/{cluster_id}"), msg="Suggestion accepted.")
+    return redirect(
+        request, back(request, f"/clusters/{cluster_id}"), msg=_("Suggestion accepted.")
+    )
 
 
 @router.post("/clusters/merge")
@@ -122,7 +125,7 @@ def merge(
     c = ctx(request)
     ids = ints(cluster_ids)
     if len(ids) < 2:
-        return redirect(request, back(request, "/faces"), err="Select at least two clusters.")
+        return redirect(request, back(request, "/faces"), err=_("Select at least two clusters."))
     with c.db.write() as s:
         clusters = list(s.scalars(select(Cluster).where(Cluster.id.in_(ids))))
         if target.isdigit() and int(target) in ids:
@@ -130,7 +133,7 @@ def merge(
         else:  # prefer a named cluster, then the largest
             target_id = max(clusters, key=lambda x: (x.person_id is not None, x.face_count)).id
         C.merge_clusters(s, target_id, ids)
-    return redirect(request, back(request, "/faces"), msg=f"Merged {len(ids)} clusters.")
+    return redirect(request, back(request, "/faces"), msg=_("Merged %(n)s clusters.", n=len(ids)))
 
 
 @router.get("/clusters/{cluster_id}")
@@ -144,7 +147,9 @@ def cluster_detail(request: Request, cluster_id: int, page: int = 1) -> Response
             .where(Cluster.id == cluster_id)
         )
         if cluster is None:
-            return redirect(request, "/faces", err=f"Cluster {cluster_id} no longer exists.")
+            return redirect(
+                request, "/faces", err=_("Cluster %(id)s no longer exists.", id=cluster_id)
+            )
         faces = list(
             s.scalars(
                 select(Face)
@@ -205,8 +210,12 @@ def auto_split(request: Request, cluster_id: int) -> Response:
     with c.db.write() as s:
         new = C.auto_split(s, cluster_id, c.settings.faces.split_eps)
     if not new:
-        return redirect(request, f"/clusters/{cluster_id}", msg="No clear sub-groups found.")
-    return redirect(request, f"/clusters/{cluster_id}", msg=f"Split off {len(new)} new clusters.")
+        return redirect(request, f"/clusters/{cluster_id}", msg=_("No clear sub-groups found."))
+    return redirect(
+        request,
+        f"/clusters/{cluster_id}",
+        msg=_n("Split off %(num)d new cluster.", "Split off %(num)d new clusters.", len(new)),
+    )
 
 
 # --------------------------------------------------------------------------- face selections
@@ -222,30 +231,43 @@ def faces_action(
     ids = ints(face_ids)
     url = back(request, "/faces")
     if not ids:
-        return redirect(request, url, err="No faces selected.")
+        return redirect(request, url, err=_("No faces selected."))
+    n = len(ids)
     with c.db.write() as s:
         if action == "split":
             new_id = C.split_faces(s, ids)
             if name.strip() and new_id:
                 C.name_cluster(s, new_id, name)
-            return redirect(request, url, msg=f"{len(ids)} faces moved to a new cluster.")
+            msg = _n(
+                "%(num)d face moved to a new cluster.", "%(num)d faces moved to a new cluster.", n
+            )
+            return redirect(request, url, msg=msg)
         if action == "person":
             if not name.strip():
-                return redirect(request, url, err="Enter a person name.")
+                return redirect(request, url, err=_("Enter a person name."))
             C.move_faces_to_person(s, ids, name)
-            return redirect(request, url, msg=f"{len(ids)} faces assigned to {name.strip()}.")
+            msg = _n(
+                "%(num)d face assigned to %(name)s.",
+                "%(num)d faces assigned to %(name)s.",
+                n,
+                name=name.strip(),
+            )
+            return redirect(request, url, msg=msg)
         if action == "cluster":
             if not target_cluster.isdigit() or s.get(Cluster, int(target_cluster)) is None:
-                return redirect(request, url, err="Unknown target cluster.")
+                return redirect(request, url, err=_("Unknown target cluster."))
             C.move_faces(s, ids, int(target_cluster))
-            return redirect(request, url, msg=f"{len(ids)} faces moved.")
+            return redirect(request, url, msg=_n("%(num)d face moved.", "%(num)d faces moved.", n))
         if action == "ignore":
             C.ignore_faces(s, ids, True)
-            return redirect(request, url, msg=f"{len(ids)} faces removed (ignored).")
+            msg = _n("%(num)d face removed (ignored).", "%(num)d faces removed (ignored).", n)
+            return redirect(request, url, msg=msg)
         if action == "unignore":
             C.ignore_faces(s, ids, False)
-            return redirect(request, url, msg=f"{len(ids)} faces restored.")
-    return redirect(request, url, err=f"Unknown action {action}.")
+            return redirect(
+                request, url, msg=_n("%(num)d face restored.", "%(num)d faces restored.", n)
+            )
+    return redirect(request, url, err=_("Unknown action %(action)s.", action=action))
 
 
 def _face_list(request: Request, title: str, where, page: int, mode: str) -> Response:
@@ -281,12 +303,12 @@ def unclustered(request: Request, page: int = 1, quality: str = "good") -> Respo
     where = (Face.cluster_id.is_(None)) & (Face.ignored.is_(False))
     if quality == "good":
         where = where & Face.clusterable.is_(True)
-    return _face_list(request, "Unclustered faces", where, page, "unclustered")
+    return _face_list(request, _("Unclustered faces"), where, page, "unclustered")
 
 
 @router.get("/faces/ignored")
 def ignored(request: Request, page: int = 1) -> Response:
-    return _face_list(request, "Ignored faces", Face.ignored.is_(True), page, "ignored")
+    return _face_list(request, _("Ignored faces"), Face.ignored.is_(True), page, "ignored")
 
 
 @router.get("/api/clusters/search")

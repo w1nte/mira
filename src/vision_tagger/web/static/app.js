@@ -541,7 +541,7 @@ window.vtFolderPicker = function () {
         item.state = "uploading";
         try {
           const file = await idb.file(item.id);
-          if (!file) throw Object.assign(new Error("file no longer available"), { status: 400 });
+          if (!file) throw Object.assign(new Error(vtT("File no longer available")), { status: 400 });
           let state = null;
           if (item.serverId) {
             try { state = await this.api("/api/uploads/" + item.serverId); } catch (e) { if (e.status !== 404) throw e; }
@@ -580,4 +580,30 @@ window.vtFolderPicker = function () {
       },
     };
   };
+})();
+
+// Installable app: register the service worker and offer an "Install app" button where the
+// browser supports it (Chrome, Edge; Safari: "Add to Home Screen" in the share menu).
+if ("serviceWorker" in navigator && (location.protocol === "https:" || ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname))) {
+  navigator.serviceWorker.register("/sw.js").catch(() => {});
+}
+(function () {
+  let deferred = null;
+  window.addEventListener("beforeinstallprompt", (ev) => {
+    ev.preventDefault();
+    deferred = ev;
+    document.querySelectorAll("[data-install]").forEach((b) => (b.hidden = false));
+  });
+  window.addEventListener("appinstalled", () => {
+    deferred = null;
+    document.querySelectorAll("[data-install]").forEach((b) => (b.hidden = true));
+  });
+  document.addEventListener("click", async (ev) => {
+    const btn = ev.target.closest("[data-install]");
+    if (!btn || !deferred) return;
+    deferred.prompt();
+    await deferred.userChoice;
+    deferred = null;
+    btn.hidden = true;
+  });
 })();

@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 from ..db.models import Face, Person
 from ..db.models import Image as ImageRow
 from ..db.util import chunked
+from ..i18n import _n
 from ..imaging import load_image
 from .ages import FaceAge, analyse_person
 from .align import align_face, frontalness
@@ -50,11 +51,10 @@ class Frame:
 
     @property
     def label(self) -> str:
+        """``7 years · 2015`` (``~7 years`` from the face); in the current language."""
         if self.age is None:
             return f"{self.recorded_at:%Y}" if self.recorded_at else ""
-        age = (
-            f"{'~' if self.age_estimated else ''}{self.age} {'year' if self.age == 1 else 'years'}"
-        )
+        age = ("~" if self.age_estimated else "") + _n("%(num)d year", "%(num)d years", self.age)
         year = f" · {self.recorded_at:%Y}" if self.recorded_at and not self.age_estimated else ""
         return f"{age}{year}"
 

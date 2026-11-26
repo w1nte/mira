@@ -65,6 +65,8 @@ class PipelineConfig(BaseModel):
     max_attempts: int = 3
     stages: list[str] = Field(default_factory=lambda: ["faces", "ages", "vlm", "embed"])
     heartbeat_seconds: float = 5.0
+    # closing the app pauses a running pipeline; the next start continues paused pipelines
+    resume_on_start: bool = True
 
     @field_validator("stages")
     @classmethod

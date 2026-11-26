@@ -22,6 +22,7 @@ from ...faces.quiz import (
     next_quiz_question,
     streak_title,
 )
+from ...i18n import _
 from ..common import ctx, ints, render
 
 router = APIRouter()
@@ -103,14 +104,14 @@ def _card(request: Request, state: QuizState, **extra: Any) -> Response:
 
 @router.get("/quiz")
 async def quiz_page(request: Request) -> Response:
-    state, _ = await _state(request)
+    state, _form = await _state(request)
     card = _card(request, state)
     return render(request, "quiz.html", state=state, card=card.body.decode())
 
 
 @router.get("/quiz/card")
 async def quiz_card(request: Request) -> Response:
-    state, _ = await _state(request)
+    state, _form = await _state(request)
     return _card(request, state)
 
 
@@ -130,7 +131,7 @@ async def quiz_name(request: Request) -> Response:
                     s, cluster_id[0], name, references=c.settings.faces.references_per_named_cluster
                 )
                 state.named += 1
-                flash = f"Named “{name}”."
+                flash = _("Named “%(name)s”.", name=name)
     return _card(request, state, flash=flash)
 
 
@@ -146,7 +147,7 @@ async def quiz_answer(request: Request) -> Response:
         with c.db.session() as s:
             verdict = judge(s, face_ids[0], choice[0], streak=state.streak)
     except LookupError:
-        return _card(request, state, flash="That face changed meanwhile – here is a new one.")
+        return _card(request, state, flash=_("That face changed meanwhile – here is a new one."))
     state.rounds += 1
     state.seen.append(face_ids[0])
     if verdict.correct:
@@ -175,9 +176,14 @@ def _age_line(c, image_id: int, face_id: int, name: str) -> str | None:
     if info is None:
         return None
     if info.calendar_age is not None and info.calendar_age >= 0 and not check.suspicious:
-        return f"{name} was {info.calendar_age} here ({check.recorded_year})."
+        return _(
+            "%(name)s was %(age)s here (%(year)s).",
+            name=name,
+            age=info.calendar_age,
+            year=check.recorded_year,
+        )
     if info.face_age is not None:
-        return f"{name} looks about {info.face_age} here."
+        return _("%(name)s looks about %(age)s here.", name=name, age=info.face_age)
     return None
 
 
@@ -192,8 +198,10 @@ async def quiz_fix(request: Request) -> Response:
         with c.db.write() as s:
             if form.get("action") == "move" and str(form.get("person") or "").strip():
                 C.move_faces_to_person(s, face_ids, str(form.get("person")))
-                flash = f"Moved the face to {form.get('person')}. Thanks for the fix!"
+                flash = _(
+                    "Moved the face to %(name)s. Thanks for the fix!", name=form.get("person")
+                )
             else:
                 C.unassign_faces(s, face_ids)
-                flash = "Removed from that person – find it under Faces → Unclustered."
+                flash = _("Removed from that person – find it under Faces → Unclustered.")
     return _card(request, state, flash=flash)

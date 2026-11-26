@@ -4,29 +4,29 @@
 {% set quality = request.query_params.get('quality', 'good') %}
 <div class="page-head">
   <div>
-    <nav class="crumbs" aria-label="Breadcrumb"><a href="/faces">Faces</a></nav>
+    <nav class="crumbs" aria-label="{{ _('Breadcrumb') }}"><a href="/faces">{{ _('Faces') }}</a></nav>
     <h1>{{ title }} <small>{{ total }}</small></h1>
     <small>
-      {% if mode == 'unclustered' %}These faces did not fit any cluster (seen too rarely, or low quality). Assign them to a person or create a cluster.
-      {% else %}Removed faces are excluded from clustering and filters.{% endif %}
+      {% if mode == 'unclustered' %}{{ _('These faces did not fit any cluster (seen too rarely, or low quality). Assign them to a person or create a cluster.') }}
+      {% else %}{{ _('Removed faces are excluded from clustering and filters.') }}{% endif %}
     </small>
   </div>
   {% if mode == 'unclustered' %}
   <div class="row">
-    <a class="btn" href="?quality={{ 'all' if quality == 'good' else 'good' }}">{{ 'Include low-quality faces' if quality == 'good' else 'Hide low-quality faces' }}</a>
+    <a class="btn" href="?quality={{ 'all' if quality == 'good' else 'good' }}">{{ _('Include low-quality faces') if quality == 'good' else _('Hide low-quality faces') }}</a>
   </div>
   {% endif %}
 </div>
 {% if faces %}
   {% include "partials/face_grid.html" %}
 {% else %}
-  <div class="card empty">Nothing here.</div>
+  <div class="card empty">{{ _('Nothing here.') }}</div>
 {% endif %}
 {% if pages > 1 %}
-<nav class="pager" aria-label="Pages">
-  {% if page > 1 %}<a class="btn" href="?{{ urlencode({'page': page-1, 'quality': quality}) }}">{{ icon('chevron-left', 'sm') }}Previous</a>{% endif %}
-  <span class="muted">Page {{ page }} of {{ pages }}</span>
-  {% if page < pages %}<a class="btn" href="?{{ urlencode({'page': page+1, 'quality': quality}) }}">Next{{ icon('chevron-right', 'sm') }}</a>{% endif %}
+<nav class="pager" aria-label="{{ _('Pages') }}">
+  {% if page > 1 %}<a class="btn" href="?{{ urlencode({'page': page-1, 'quality': quality}) }}">{{ icon('chevron-left', 'sm') }}{{ _('Previous') }}</a>{% endif %}
+  <span class="muted">{{ _('Page %(page)s of %(pages)s', page=page, pages=pages) }}</span>
+  {% if page < pages %}<a class="btn" href="?{{ urlencode({'page': page+1, 'quality': quality}) }}">{{ _('Next') }}{{ icon('chevron-right', 'sm') }}</a>{% endif %}
 </nav>
 {% endif %}
 {% endblock %}

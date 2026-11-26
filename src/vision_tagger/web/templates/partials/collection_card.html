@@ -4,7 +4,7 @@
     {% for image_id in c.covers[:4] %}<img loading="lazy" src="/media/thumb/{{ image_id }}" alt="">{% else %}<span class="coll-empty">{{ icon(c.icon or 'image', 'lg') }}</span>{% endfor %}
   </div>
   <div class="coll-meta">
-    <b>{{ c.name }}</b>
+    <b>{{ c.display_name }}</b>
     <small>{{ ngettext('%(num)d photo', '%(num)d photos', c.count) }}</small>
   </div>
 </a>

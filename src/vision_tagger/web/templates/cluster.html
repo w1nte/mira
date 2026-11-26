@@ -1,78 +1,78 @@
 {% extends "base.html" %}
-{% block title %}{{ cl.person.name if cl.person else 'Cluster #' ~ cl.id }}{% endblock %}
+{% block title %}{{ cl.person.name if cl.person else _('Cluster #%(id)s', id=cl.id) }}{% endblock %}
 {% block content %}
 <div class="page-head">
   <div>
-    <nav class="crumbs" aria-label="Breadcrumb"><a href="/faces">Faces</a>{% if cl.person %}<a href="/persons/{{ cl.person_id }}">{{ cl.person.name }}</a>{% endif %}</nav>
+    <nav class="crumbs" aria-label="{{ _('Breadcrumb') }}"><a href="/faces">{{ _('Faces') }}</a>{% if cl.person %}<a href="/persons/{{ cl.person_id }}">{{ cl.person.name }}</a>{% endif %}</nav>
     <div class="title-row">
       {% if cl.cover_face_id %}<img class="avatar lg" src="/media/face/{{ cl.cover_face_id }}" alt="">{% endif %}
       <div>
-        <h1>{{ cl.person.name if cl.person else 'Unnamed cluster' }} <small>#{{ cl.id }}</small></h1>
-        <small>{{ cl.face_count }} faces in {{ n_images }} images{% if cl.locked %} · <span class="nowrap">{{ icon('lock', 'sm') }} kept on re-cluster</span>{% endif %}</small>
+        <h1>{{ cl.person.name if cl.person else _('Unnamed cluster') }} <small>#{{ cl.id }}</small></h1>
+        <small>{{ _('%(faces)s in %(images)s', faces=ngettext('%(num)d face', '%(num)d faces', cl.face_count), images=ngettext('%(num)d image', '%(num)d images', n_images)) }}{% if cl.locked %} · <span class="nowrap">{{ icon('lock', 'sm') }} {{ _('kept on re-cluster') }}</span>{% endif %}</small>
       </div>
     </div>
   </div>
   <div class="row">
-    <form method="post" action="/clusters/{{ cl.id }}/auto-split"><button title="Re-cluster this cluster with a tighter threshold">Auto-split</button></form>
-    <a class="btn primary" href="/images?{{ ('p=' ~ cl.person_id) if cl.person_id else ('c=' ~ cl.id) }}">{{ icon('image', 'sm') }}Show images</a>
+    <form method="post" action="/clusters/{{ cl.id }}/auto-split"><button title="{{ _('Re-cluster this cluster with a tighter threshold') }}">{{ _('Auto-split') }}</button></form>
+    <a class="btn primary" href="/images?{{ ('p=' ~ cl.person_id) if cl.person_id else ('c=' ~ cl.id) }}">{{ icon('image', 'sm') }}{{ _('Show images') }}</a>
   </div>
 </div>
 
 <div class="grid-2">
   <section class="card">
-    <h2>Name</h2>
+    <h2>{{ _('Name') }}</h2>
     <form method="post" action="/clusters/{{ cl.id }}/name" class="row">
-      <input type="text" name="name" list="person-names" value="{{ cl.person.name if cl.person else '' }}" placeholder="Person name" aria-label="Person name" style="flex:1">
-      <button class="primary">Save</button>
+      <input type="text" name="name" list="person-names" value="{{ cl.person.name if cl.person else '' }}" placeholder="{{ _('Person name') }}" aria-label="{{ _('Person name') }}" style="flex:1">
+      <button class="primary">{{ _('Save') }}</button>
     </form>
     {% if not cl.person and cl.suggested_person %}
       <div class="row suggest-row">
-        <span>Reference match: <b>{{ cl.suggested_person.name }}</b> ({{ '%.0f' | format((cl.suggestion_score or 0) * 100) }}%)</span>
-        <form method="post" action="/clusters/{{ cl.id }}/accept"><button class="small">Accept</button></form>
+        <span>{{ _('Reference match: %(name)s (%(percent)s%%)', name='<b>' | safe ~ cl.suggested_person.name ~ '</b>' | safe, percent='%.0f' | format((cl.suggestion_score or 0) * 100)) }}</span>
+        <form method="post" action="/clusters/{{ cl.id }}/accept"><button class="small">{{ _('Accept') }}</button></form>
       </div>
     {% endif %}
-    <p class="muted hint">Typing an existing name links this cluster to that person. Naming adds the best faces as references for future matching.</p>
+    <p class="muted hint">{{ _('Typing an existing name links this cluster to that person. Naming adds the best faces as references for future matching.') }}</p>
     {% if other_clusters %}
-      <h3 style="margin-top:20px">Other clusters of {{ cl.person.name }}</h3>
+      <h3 style="margin-top:20px">{{ _('Other clusters of %(name)s', name=cl.person.name) }}</h3>
       <div class="row">
         {% for o in other_clusters %}
-          <a href="/clusters/{{ o.id }}" title="#{{ o.id }} · {{ o.face_count }} faces"><img class="avatar" src="/media/face/{{ o.cover_face_id }}" alt="Cluster #{{ o.id }}"></a>
+          <a href="/clusters/{{ o.id }}" title="#{{ o.id }} · {{ ngettext('%(num)d face', '%(num)d faces', o.face_count) }}"><img class="avatar" src="/media/face/{{ o.cover_face_id }}" alt="{{ _('Cluster #%(id)s', id=o.id) }}"></a>
         {% endfor %}
-        <form method="post" action="/persons/{{ cl.person_id }}/merge-clusters"><button class="small">Merge all</button></form>
+        <form method="post" action="/persons/{{ cl.person_id }}/merge-clusters"><button class="small">{{ _('Merge all') }}</button></form>
       </div>
     {% endif %}
   </section>
   <section class="card">
-    <h2>Similar clusters</h2>
+    <h2>{{ _('Similar clusters') }}</h2>
     {% if similar %}
     <div class="table-wrap"><table>
       {% for o, sim in similar %}
       <tr>
         <td style="width:60px"><a href="/clusters/{{ o.id }}">{% if o.cover_face_id %}<img class="avatar" src="/media/face/{{ o.cover_face_id }}" alt="">{% endif %}</a></td>
-        <td><a class="ink" href="/clusters/{{ o.id }}">{{ o.person.name if o.person else 'Cluster #' ~ o.id }}</a><br><small>{{ o.face_count }} faces</small></td>
+        <td><a class="ink" href="/clusters/{{ o.id }}">{{ o.person.name if o.person else _('Cluster #%(id)s', id=o.id) }}</a><br><small>{{ ngettext('%(num)d face', '%(num)d faces', o.face_count) }}</small></td>
         <td class="num"><span class="badge {{ 'ok' if sim > 0.5 else ('warn' if sim > 0.35 else '') }}">{{ '%.0f' | format(sim * 100) }}%</span></td>
         <td class="num">
           <form method="post" action="/clusters/merge">
             <input type="hidden" name="cluster_ids" value="{{ cl.id }}"><input type="hidden" name="cluster_ids" value="{{ o.id }}">
             <input type="hidden" name="target" value="{{ cl.id }}">
-            <button class="small">Merge here</button>
+            <button class="small">{{ _('Merge here') }}</button>
           </form>
         </td>
       </tr>
       {% endfor %}
     </table></div>
-    {% else %}<p class="muted">No other clusters.</p>{% endif %}
+    {% else %}<p class="muted">{{ _('No other clusters.') }}</p>{% endif %}
   </section>
 </div>
 
-<div class="section-title"><h2>Faces</h2><small class="muted">{{ cl.face_count }}</small></div>
+<div class="section-title"><h2>{{ _('Faces') }}</h2><small class="muted">{{ cl.face_count }}</small></div>
 {% set mode = 'cluster' %}
 {% include "partials/face_grid.html" %}
 {% if pages > 1 %}
-<nav class="pager" aria-label="Pages">
-  {% if page > 1 %}<a class="btn" href="?page={{ page-1 }}">{{ icon('chevron-left', 'sm') }}Previous</a>{% endif %}
-  <span class="muted">Page {{ page }} of {{ pages }}</span>
-  {% if page < pages %}<a class="btn" href="?page={{ page+1 }}">Next{{ icon('chevron-right', 'sm') }}</a>{% endif %}
+<nav class="pager" aria-label="{{ _('Pages') }}">
+  {% if page > 1 %}<a class="btn" href="?page={{ page-1 }}">{{ icon('chevron-left', 'sm') }}{{ _('Previous') }}</a>{% endif %}
+  <span class="muted">{{ _('Page %(page)s of %(pages)s', page=page, pages=pages) }}</span>
+  {% if page < pages %}<a class="btn" href="?page={{ page+1 }}">{{ _('Next') }}{{ icon('chevron-right', 'sm') }}</a>{% endif %}
 </nav>
 {% endif %}
 {% endblock %}

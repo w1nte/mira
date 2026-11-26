@@ -57,6 +57,18 @@ PHONE_MAKES = (
 )
 
 
+# The keys the rules below produce and their fixed values (counts and years are left out).
+# Kept here so the translation catalogs know them (see ``i18n_extract``).
+VALUES: dict[str, tuple[str, ...]] = {
+    "work_image": ("yes", "maybe", "no"),
+    "people": (),  # "0", "1", "2", "3-5", "6-10", "11+"
+    "orientation": ("landscape", "portrait", "square", "panorama"),
+    "year": (),
+    "capture_device": ("phone", "camera", "none"),
+    "has_gps": ("yes",),
+}
+
+
 @dataclass
 class Derived:
     key: str

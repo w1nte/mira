@@ -39,7 +39,7 @@
 
     <section class="card">
       <h2>{{ _('Faces & references') }}</h2>
-      <p class="muted">{{ _('Reference photos: put portraits into %(folder)s. Matching clusters get the name suggested or assigned automatically.', folder=settings.paths.references_dir ~ '/<Person Name>/*.jpg') }}</p>
+      <p class="muted">{{ _('Reference photos: put portraits into %(folder)s. Matching clusters get the name suggested or assigned automatically.', folder=settings.paths.references_dir ~ '/<' ~ _('Person Name') ~ '>/*.jpg') }}</p>
       <div class="row">
         <form method="post" action="/actions/import-references"><button>{{ _('Import references') }}</button></form>
         <form method="post" action="/actions/recluster"><button>{{ _('Cluster new faces') }}</button></form>

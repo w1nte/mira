@@ -80,7 +80,7 @@
         </form>
         <div class="picker-path">
           <button type="button" class="small ghost" :disabled="parent === null" @click="go(parent || '')">{{ icon('arrow-up', 'sm') }}{{ _('Up') }}</button>
-          <span class="mono" data-empty="{{ _('Start') }}" x-text="path || $el.dataset.empty"></span>
+          <span class="mono" data-empty="{{ pgettext('folder picker', 'Start') }}" x-text="path || $el.dataset.empty"></span>
         </div>
         <ul class="picker-list" aria-live="polite">
           <template x-for="f in folders" :key="f.path">

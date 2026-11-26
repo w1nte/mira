@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import logging
 import threading
-import time
 import traceback
 from collections.abc import Callable, Iterable
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -93,6 +92,12 @@ class PipelineRunner:
         self.poll_interval = 0.5
         self._lock = threading.Lock()
         self._hb: _Heartbeat
+        self._shutdown = threading.Event()
+
+    def shutdown(self) -> None:
+        """The application is closing: end the run after the current image, but leave the
+        pipeline *paused* (not stopped) so that the next start continues it."""
+        self._shutdown.set()
 
     # ------------------------------------------------------------------ public
     def run(
@@ -139,6 +144,9 @@ class PipelineRunner:
                     summary.status = "completed"
             finally:
                 self._hb.stop()
+            if self._shutdown.is_set() and summary.status == STOPPED:
+                summary.status = PAUSED
+                summary.messages.append("paused because the application was closed")
             self._finish_run(summary)
             return summary
         finally:
@@ -159,7 +167,8 @@ class PipelineRunner:
             if ctrl is not None and ctrl.active_run_id == summary.run_id:
                 ctrl.active_run_id = None
                 ctrl.active_stage = None
-                ctrl.desired_state = STOPPED
+                # closing the application pauses the pipeline; the next start resumes it
+                ctrl.desired_state = PAUSED if summary.status == PAUSED else STOPPED
                 ctrl.message = f"run {summary.run_id} {summary.status}"
             # Release anything still claimed by this run (stop / failure).
             s.execute(
@@ -182,12 +191,15 @@ class PipelineRunner:
     # ------------------------------------------------------------------ control
     def _wait_if_paused(self, run_id: int, stage: str) -> str:
         """Block while paused. Returns the effective state (``running`` or ``stopped``)."""
+        if self._shutdown.is_set():
+            return STOPPED
         state = control.desired_state(self.db)
         if state == PAUSED:
             self._set_run_status(run_id, PAUSED)
             log.info("pipeline paused")
             while state == PAUSED:
-                time.sleep(self.poll_interval)
+                if self._shutdown.wait(self.poll_interval):
+                    return STOPPED
                 state = control.desired_state(self.db)
             self._set_run_status(run_id, RUNNING if state == RUNNING else STOPPED)
             log.info("pipeline %s", "resumed" if state == RUNNING else "stopped")

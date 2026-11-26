@@ -1,22 +1,22 @@
 {% extends "base.html" %}
-{% block title %}{{ person.name }} growing up{% endblock %}
+{% block title %}{{ _('%(name)s growing up', name=person.name) }}{% endblock %}
 {% block content %}
 <div class="page-head">
   <div>
-    <nav class="crumbs" aria-label="Breadcrumb"><a href="/generations">Generations</a><a href="/persons/{{ person.id }}">{{ person.name }}</a></nav>
-    <h1>{{ person.name }}, growing up</h1>
-    <small>{{ frames | length }} ages{% if not person.birth_year %} · <a href="/persons/{{ person.id }}">set a birth year</a> for exact ages{% endif %}</small>
+    <nav class="crumbs" aria-label="{{ _('Breadcrumb') }}"><a href="/generations">{{ _('Generations') }}</a><a href="/persons/{{ person.id }}">{{ person.name }}</a></nav>
+    <h1>{{ _('%(name)s, growing up', name=person.name) }}</h1>
+    <small>{{ ngettext('%(num)d age', '%(num)d ages', frames | length) }}{% if not person.birth_year %} · {{ _('%(link)s for exact ages', link='<a href="/persons/' | safe ~ person.id ~ '">' | safe ~ _('set a birth year') ~ '</a>' | safe) }}{% endif %}</small>
   </div>
   {% if frames | length >= 2 %}
   <div class="row">
-    <a class="btn" href="/generations/{{ person.id }}/animation.webp" target="_blank" rel="noopener">{{ icon('external', 'sm') }}Open animation</a>
-    <a class="btn primary" href="/generations/{{ person.id }}/animation.webp?download=1">{{ icon('download', 'sm') }}Download animation</a>
+    <a class="btn" href="/generations/{{ person.id }}/animation.webp" target="_blank" rel="noopener">{{ icon('external', 'sm') }}{{ _('Open animation') }}</a>
+    <a class="btn primary" href="/generations/{{ person.id }}/animation.webp?download=1">{{ icon('download', 'sm') }}{{ _('Download animation') }}</a>
   </div>
   {% endif %}
 </div>
 
 {% if frames | length < 2 %}
-  <div class="card empty">Need photos of {{ person.name }} at two or more different ages.</div>
+  <div class="card empty">{{ _('Need photos of %(name)s at two or more different ages.', name=person.name) }}</div>
 {% else %}
 <script type="application/json" id="growup-frames">{{ payload | tojson }}</script>
 <div class="growup" x-data="vtGrowup('growup-frames')">
@@ -28,36 +28,36 @@
         <div class="stage-caption"><b>{{ person.name }}</b><span x-text="label"></span></div>
       </div>
       <div class="player">
-        <button type="button" class="primary play" @click="toggle()" :aria-label="playing ? 'Pause' : 'Play'">
+        <button type="button" class="primary play" @click="toggle()" data-play="{{ _('Play') }}" data-pause="{{ _('Pause') }}" :aria-label="playing ? $el.dataset.pause : $el.dataset.play">
           <span x-show="!playing">{{ icon('play', 'sm') }}</span><span x-show="playing" x-cloak>{{ icon('pause', 'sm') }}</span>
-          <span x-text="playing ? 'Pause' : 'Play'">Play</span>
+          <span x-show="!playing">{{ _('Play') }}</span><span x-show="playing" x-cloak>{{ _('Pause') }}</span>
         </button>
-        <input type="range" min="0" :max="frames.length - 1" step="0.01" x-model.number="pos" @input="stop()" aria-label="Age">
-        <select x-model.number="speed" aria-label="Speed"><option value="0.5">slow</option><option value="1" selected>normal</option><option value="2">fast</option></select>
+        <input type="range" min="0" :max="frames.length - 1" step="0.01" x-model.number="pos" @input="stop()" aria-label="{{ _('Age') }}">
+        <select x-model.number="speed" aria-label="{{ _('Speed') }}"><option value="0.5">{{ _('slow') }}</option><option value="1" selected>{{ _('normal') }}</option><option value="2">{{ _('fast') }}</option></select>
       </div>
     </div>
     <aside class="info">
       <section>
-        <h3>Looks most like…</h3>
+        <h3>{{ _('Looks most like…') }}</h3>
         {% if looks_like %}
         <table class="likeness">
           {% for r in looks_like %}
           <tr>
             <td><a class="ink" href="/generations/{{ person.id }}/compare/{{ r.person_id }}">{{ r.name }}</a><br>
-              <small class="muted">{{ ('compared at ' ~ r.same_age_pairs ~ ' matching age' ~ ('s' if r.same_age_pairs != 1 else '')) if r.same_age_pairs else 'overall' }}</small></td>
+              <small class="muted">{{ ngettext('compared at %(num)d matching age', 'compared at %(num)d matching ages', r.same_age_pairs) if r.same_age_pairs else _('overall') }}</small></td>
             <td style="width:42%"><div class="hbar" style="width: {{ [[r.similarity * 100 * 1.6, 3] | max, 100] | min }}%"></div></td>
             <td class="num">{{ '%.0f' | format([r.similarity, 0] | max * 100) }}%</td>
           </tr>
           {% endfor %}
         </table>
-        <p class="muted hint">Face similarity of the recognition model. Same person ≈ 50–90 %, strangers ≈ 0–15 %, relatives often in between.</p>
-        {% else %}<p class="muted">Name more people to compare.</p>{% endif %}
+        <p class="muted hint">{{ _('Face similarity of the recognition model. Same person ≈ 50–90 %%, strangers ≈ 0–15 %%, relatives often in between.') }}</p>
+        {% else %}<p class="muted">{{ _('Name more people to compare.') }}</p>{% endif %}
       </section>
       <section>
-        <h3>Compare at the same age</h3>
+        <h3>{{ _('Compare at the same age') }}</h3>
         <form class="row nowrap" method="get" action="/generations/{{ person.id }}/compare">
-          <select name="other" aria-label="Person to compare with" style="flex:1">{% for o in others %}<option value="{{ o.id }}">{{ o.name }}</option>{% endfor %}</select>
-          <button>Compare</button>
+          <select name="other" aria-label="{{ _('Person to compare with') }}" style="flex:1">{% for o in others %}<option value="{{ o.id }}">{{ o.name }}</option>{% endfor %}</select>
+          <button>{{ _('Compare') }}</button>
         </form>
       </section>
     </aside>

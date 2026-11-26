@@ -14,7 +14,7 @@ import threading
 import time
 from typing import TYPE_CHECKING
 
-from ..i18n import _
+from ..i18n import Lazy
 from ..indexer import Indexer
 from ..pipeline import control
 
@@ -62,10 +62,10 @@ class Ingest:
         c = self.c
         done = threading.Event()
 
-        def job(j: Job) -> str:
+        def job(j: Job) -> Lazy:
             try:
                 stats = Indexer(c.db, c.settings, should_stop=lambda: j.stop_requested).run()
-                return _(
+                return Lazy(  # made in the job thread: translated when shown
                     "Uploads: %(new)s new photos, %(dup)s duplicates",
                     new=stats.new,
                     dup=stats.duplicates,
