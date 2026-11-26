@@ -35,7 +35,7 @@ def release(tag, *, assets=(), prerelease=False, draft=False, body=NOTES, publis
     return {
         "tag_name": tag,
         "name": f"Mira {tag}",
-        "html_url": f"https://github.com/w1nte/vision-tagger/releases/tag/{tag}",
+        "html_url": f"https://github.com/w1nte/mira/releases/tag/{tag}",
         "published_at": published or "2026-11-20T10:00:00Z",
         "prerelease": prerelease,
         "draft": draft,
@@ -43,7 +43,7 @@ def release(tag, *, assets=(), prerelease=False, draft=False, body=NOTES, publis
         "assets": [
             {
                 "name": name,
-                "browser_download_url": f"https://github.com/w1nte/vision-tagger/releases/"
+                "browser_download_url": f"https://github.com/w1nte/mira/releases/"
                 f"download/{tag}/{name}",
             }
             for name in assets
@@ -83,11 +83,11 @@ class FakeGitHub:
         if isinstance(self.answer, httpx.Response):
             return self.answer
         path = request.url.path
-        if path == "/repos/w1nte/vision-tagger/releases/latest":
+        if path == "/repos/w1nte/mira/releases/latest":
             if self.latest is None:
                 return httpx.Response(404, json={"message": "Not Found"})
             return httpx.Response(200, json=self.latest)
-        if path == "/repos/w1nte/vision-tagger/releases":
+        if path == "/repos/w1nte/mira/releases":
             return httpx.Response(200, json=self.releases)
         return httpx.Response(404, json={"message": "Not Found"})
 
@@ -163,12 +163,12 @@ def test_latest_release_with_the_download_for_this_computer():
     result = run_check(fake)
     assert result.status == updates.AVAILABLE
     assert (result.current, result.latest_version) == ("1.2", "1.3")
-    assert result.release_url == "https://github.com/w1nte/vision-tagger/releases/tag/v1.3"
+    assert result.release_url == "https://github.com/w1nte/mira/releases/tag/v1.3"
     assert result.download_url.endswith("/Mira-setup-1.3-cpu.exe")
     assert result.published == "2026-11-20"
     (request,) = fake.requests
     assert request.method == "GET"
-    assert str(request.url) == "https://api.github.com/repos/w1nte/vision-tagger/releases/latest"
+    assert str(request.url) == "https://api.github.com/repos/w1nte/mira/releases/latest"
     assert request.headers["accept"] == "application/vnd.github+json"
     assert request.headers["user-agent"] == "Mira-update-check/1.2"
     assert "authorization" not in request.headers and "cookie" not in request.headers
@@ -181,7 +181,7 @@ def test_a_renamed_repository_is_followed():
 
     def handler(request):
         requests.append(str(request.url))
-        if request.url.path.startswith("/repos/w1nte/vision-tagger/"):
+        if request.url.path.startswith("/repos/w1nte/mira/"):
             return httpx.Response(301, headers={"Location": moved})
         return httpx.Response(200, json=release("1.3", assets=all_assets("1.3")))
 
@@ -217,7 +217,7 @@ def test_prereleases_come_from_the_list_and_drafts_are_skipped():
     result = run_check(fake, include_prereleases=True)
     assert result.latest_version == "1.4.0rc2" and result.latest.prerelease
     assert result.download_url.endswith("/Mira-setup-1.4.0rc2-cpu.exe")
-    assert fake.requests[-1].url.path == "/repos/w1nte/vision-tagger/releases"
+    assert fake.requests[-1].url.path == "/repos/w1nte/mira/releases"
     # without pre-releases: GitHub's latest release
     assert run_check(fake).latest_version == "1.3"
     assert fake.requests[-1].url.path.endswith("/releases/latest")
@@ -458,7 +458,7 @@ def test_a_broken_or_tampered_state_file_is_ignored(settings):
     tampered["release"] = {
         "version": "9.0",
         "tag": "9.0",
-        "url": "https://github.com/w1nte/vision-tagger/releases/tag/9.0",
+        "url": "https://github.com/w1nte/mira/releases/tag/9.0",
         "download_url": "file:///C:/Windows/evil.exe",
     }
     path.write_text(json.dumps(tampered), encoding="utf-8")
@@ -562,11 +562,11 @@ def test_a_newer_release_shows_in_the_sidebar_home_and_environment(web, github):
     page = web.get("/").text
     note = sidebar(page)
     assert "Update available: Mira 1.3" in note
-    download = "https://github.com/w1nte/vision-tagger/releases/download/1.3/"
+    download = "https://github.com/w1nte/mira/releases/download/1.3/"
     assert f'href="{download}' in note and 'target="_blank" rel="noopener"' in note
     card = page.split('id="update-nudge"', 1)[1].split('<div hx-get="/partials/models', 1)[0]
     assert "Mira 1.3 is available (you have 1.2)" in card
-    assert 'href="https://github.com/w1nte/vision-tagger/releases/tag/1.3"' in card
+    assert 'href="https://github.com/w1nte/mira/releases/tag/1.3"' in card
     assert "What\u2019s new" in card and "</svg>Download</a>" in card
     assert 'action="/updates/dismiss"' in card and 'name="version" value="1.3"' in card
     assert card.count('target="_blank" rel="noopener"') == 2
@@ -650,7 +650,7 @@ def test_no_direct_download_links_to_the_release_page(web, github, monkeypatch):
     check_now(web)
     page = web.get("/").text
     note = sidebar(page)
-    assert 'href="https://github.com/w1nte/vision-tagger/releases/tag/1.3"' in note
+    assert 'href="https://github.com/w1nte/mira/releases/tag/1.3"' in note
     assert "Open the release page of Mira 1.3" in note
     card = page.split('id="update-nudge"', 1)[1]
     assert "Get the setup for this computer from the release page" in card
@@ -711,9 +711,7 @@ def test_cli_reports_an_update_with_exit_code_1(cli, github):
     assert result.exit_code == 1, result.output
     assert "current:  Mira 1.2" in result.output
     assert "latest:   Mira 1.3 (released 2026-11-20)" in result.output
-    assert "download: https://github.com/w1nte/vision-tagger/releases/download/1.3/" in (
-        result.output
-    )
+    assert "download: https://github.com/w1nte/mira/releases/download/1.3/" in (result.output)
     assert "Mira-1.3-linux-x86_64-cpu.tar.gz" in result.output
 
 
