@@ -14,6 +14,7 @@ from ...pipeline import control
 from ...query import (
     ImageFilter,
     count_images,
+    date_histogram,
     neighbours,
     page_images,
     person_counts,
@@ -55,6 +56,52 @@ def _chips(s, f: ImageFilter) -> dict[str, object]:
     return {"person_names": names, "cluster_names": cluster_names}
 
 
+MAX_TIMELINE_MONTHS = 1200  # 100 years; older dates are almost always wrong camera clocks
+
+
+def _month(value: str | None, end: bool = False) -> str | None:
+    """``2019`` / ``2019-07`` / ``2019-07-14`` -> the month it starts (or ends) in."""
+    if not value or len(value) < 4 or not value[:4].isdigit():
+        return None
+    if len(value) >= 7 and value[5:7].isdigit():
+        return value[:7]
+    return f"{value[:4]}-{'12' if end else '01'}"
+
+
+def _month_range(first: str, last: str) -> list[str]:
+    y, m = int(first[:4]), int(first[5:7])
+    ly, lm = int(last[:4]), int(last[5:7])
+    out = []
+    while (y, m) <= (ly, lm):
+        out.append(f"{y:04d}-{m:02d}")
+        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+    return out[-MAX_TIMELINE_MONTHS:]
+
+
+def _timeline(c, s, f: ImageFilter) -> dict | None:
+    """Photos per month for the timeline slider: all other filters apply, the dates do not
+    (so the selection can be moved anywhere)."""
+    base = f.copy(date_from=None, date_to=None)
+    if base.is_empty:
+        hist = c.cache.get(
+            ("timeline", "month"), lambda s2: date_histogram(s2, ImageFilter(), "month")
+        )
+    else:
+        hist = date_histogram(s, base, "month")
+    hist = [(b, n) for b, n in hist if b]
+    if not hist:
+        return None
+    counts = dict(hist)
+    months = _month_range(hist[0][0], hist[-1][0])
+    return {
+        "months": months,
+        "counts": [counts.get(m, 0) for m in months],
+        "from": _month(f.date_from),
+        "to": _month(f.date_to, end=True),
+        "base": base.query_string(),
+    }
+
+
 @router.get("/images")
 def gallery(request: Request) -> Response:
     c = ctx(request)
@@ -79,11 +126,13 @@ def gallery(request: Request) -> Response:
             )
         ]
         chips = _chips(s, f)
+        timeline = _timeline(c, s, f)
     return render(
         request,
         "images.html",
         f=f,
         total=total,
+        timeline=timeline,
         images=images,
         next_page=2 if total > size else None,
         facets=facets,

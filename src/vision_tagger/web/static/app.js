@@ -197,3 +197,158 @@ window.vtGrowup = function (dataId) {
     stop() { this.playing = false; if (this._raf) cancelAnimationFrame(this._raf); },
   };
 };
+
+// Images: timeline slider. Click a month for the start, click again for the end (a preview
+// follows the pointer in between). Drag a handle to move start or end, drag inside the band to
+// move the whole range, or press and sweep across the bars. Handles also work with the
+// keyboard (arrows: one month, Shift: one year). The range becomes the from/to filter.
+window.vtTimeline = function (dataId) {
+  const data = JSON.parse(document.getElementById(dataId).textContent);
+  const NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const months = data.months;
+  const n = months.length;
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  const indexOf = (month, fallback) => {
+    if (!month) return null;
+    if (month < months[0]) return fallback === "end" ? null : 0;
+    if (month > months[n - 1]) return fallback === "start" ? null : n - 1;
+    const i = months.indexOf(month);
+    return i >= 0 ? i : null;
+  };
+  let start = indexOf(data.from, "start");
+  let end = indexOf(data.to, "end");
+  if (data.from && !data.to && start !== null) end = n - 1;
+  if (data.to && !data.from && end !== null) start = 0;
+  if (start === null || end === null) start = end = null;
+  return {
+    months,
+    counts: data.counts,
+    n,
+    start,
+    end,
+    pending: null, // first click of a click-click selection
+    hover: null,
+    drag: null,
+    _timer: null,
+    get max() { return Math.max(1, ...this.counts); },
+    get hasSel() { return this.start !== null && this.end !== null; },
+    get band() {
+      let a = this.start, b = this.end;
+      if (this.pending !== null) {
+        a = Math.min(this.pending, this.hover ?? this.pending);
+        b = Math.max(this.pending, this.hover ?? this.pending);
+      }
+      if (a === null || b === null) return null;
+      return { left: (a / n) * 100, width: ((b - a + 1) / n) * 100 };
+    },
+    get ticks() {
+      const years = [];
+      months.forEach((m, i) => { if (i === 0 || m.endsWith("-01")) years.push({ i, year: m.slice(0, 4) }); });
+      const width = this.$refs.track ? this.$refs.track.clientWidth : 800;
+      const step = Math.max(1, Math.ceil(years.length / Math.max(1, Math.floor(width / 56))));
+      return years.filter((_, k) => k % step === 0);
+    },
+    get summary() {
+      if (this.pending !== null) return this.label(this.pending) + " – …";
+      if (!this.hasSel) return "All time · " + this.total(0, n - 1).toLocaleString() + " photos";
+      const range = this.start === this.end ? this.label(this.start) : this.label(this.start) + " – " + this.label(this.end);
+      return range + " · " + this.total(this.start, this.end).toLocaleString() + " photos";
+    },
+    get hint() {
+      if (this.pending !== null) return "Click the last month (Esc cancels)";
+      return this.hasSel ? "Drag the band or its edges" : "Click the first month, then the last";
+    },
+    label(i) { const m = months[i]; return NAMES[+m.slice(5, 7) - 1] + " " + m.slice(0, 4); },
+    total(a, b) { let t = 0; for (let i = a; i <= b; i++) t += this.counts[i]; return t; },
+    pos(i, offset = 0.5) { return ((i + offset) / n) * 100; },
+    barHeight(c) { return c ? Math.max(4, (c / this.max) * 100) : 0; },
+    inSel(k) {
+      const band = this.band;
+      if (!band) return false;
+      const a = Math.round((band.left / 100) * n);
+      return k >= a && k < a + Math.round((band.width / 100) * n);
+    },
+    idx(ev) {
+      const r = this.$refs.track.getBoundingClientRect();
+      return clamp(Math.floor(((ev.clientX - r.left) / r.width) * n), 0, n - 1);
+    },
+    down(ev) {
+      if (ev.button !== 0) return;
+      const i = this.idx(ev);
+      const handle = ev.target.closest("[data-handle]");
+      this.$refs.track.setPointerCapture(ev.pointerId);
+      if (handle && this.pending === null) {
+        this.drag = { kind: handle.dataset.handle, moved: false };
+      } else if (this.hasSel && this.pending === null && i >= this.start && i <= this.end) {
+        this.drag = { kind: "move", origin: i, s0: this.start, e0: this.end, x0: ev.clientX, moved: false };
+      } else {
+        this.drag = { kind: "sweep", origin: i, x0: ev.clientX, moved: false };
+      }
+    },
+    move(ev) {
+      const i = this.idx(ev);
+      this.hover = i;
+      const d = this.drag;
+      if (!d) return;
+      if (!d.moved && d.x0 !== undefined && Math.abs(ev.clientX - d.x0) < 4) return; // still a click
+      d.moved = true;
+      if (d.kind === "sweep") {
+        this.pending = null;
+        this.start = Math.min(d.origin, i);
+        this.end = Math.max(d.origin, i);
+      } else if (d.kind === "start") {
+        this.start = Math.min(i, this.end);
+      } else if (d.kind === "end") {
+        this.end = Math.max(i, this.start);
+      } else if (d.kind === "move") {
+        const len = d.e0 - d.s0;
+        this.start = clamp(d.s0 + i - d.origin, 0, n - 1 - len);
+        this.end = this.start + len;
+      }
+    },
+    up(ev) {
+      const d = this.drag;
+      this.drag = null;
+      if (!d) return;
+      if (d.moved) return this.apply();
+      const i = this.idx(ev); // a click: first one sets the start, second one the end
+      if (this.pending === null) {
+        this.pending = i;
+        this.hover = i;
+      } else {
+        this.start = Math.min(this.pending, i);
+        this.end = Math.max(this.pending, i);
+        this.pending = null;
+        this.apply();
+      }
+    },
+    key(ev, which) {
+      const step = ev.shiftKey ? 12 : 1;
+      const delta = { ArrowLeft: -step, ArrowDown: -step, ArrowRight: step, ArrowUp: step }[ev.key];
+      if (ev.key === "Home" || ev.key === "End") {
+        this[which] = ev.key === "Home" ? (which === "start" ? 0 : this.start) : (which === "end" ? n - 1 : this.end);
+      } else if (delta !== undefined) {
+        if (which === "start") this.start = clamp(this.start + delta, 0, this.end);
+        else this.end = clamp(this.end + delta, this.start, n - 1);
+      } else {
+        return;
+      }
+      ev.preventDefault();
+      clearTimeout(this._timer);
+      this._timer = setTimeout(() => this.apply(), 700); // apply once the keys rest
+    },
+    cancel() { this.pending = null; },
+    clear() { this.start = this.end = null; this.apply(); },
+    apply() {
+      const params = new URLSearchParams(data.base);
+      params.delete("from");
+      params.delete("to");
+      if (this.hasSel && !(this.start === 0 && this.end === n - 1)) {
+        params.set("from", months[this.start]);
+        params.set("to", months[this.end]);
+      }
+      const qs = params.toString();
+      window.location.assign("/images" + (qs ? "?" + qs : ""));
+    },
+  };
+};
