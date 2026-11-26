@@ -1,0 +1,30 @@
+{#- The lightbox: a large preview over a photo grid (static/app.js, "Lightbox"). A plain click on
+    a tile link inside [data-lightbox] opens it; the tile's data-* attributes say what to show.
+    No picture URL is in this markup: the script sets them from the tiles. -#}
+<dialog class="lightbox" id="lightbox" aria-modal="true" aria-labelledby="lb-title" tabindex="-1" data-lightbox-dialog data-preview-size="{{ preview_size }}">
+  <div class="lb-info" aria-live="polite">
+    <h2 class="lb-title" id="lb-title" data-lb-title></h2>
+    <p class="lb-meta"><span data-lb-date></span><span data-lb-people></span></p>
+  </div>
+  <div class="lb-actions">
+    <a class="btn primary lb-details" href="/images" data-lb-details aria-keyshortcuts="Enter">{{ icon('arrow-right', 'sm') }}<span>{{ _('Open details') }}</span></a>
+    <a class="btn icon-btn" href="/images" target="_blank" rel="noopener" data-lb-original title="{{ _('Open original') }}" aria-label="{{ _('Open original') }}">{{ icon('external') }}</a>
+    <button type="button" class="icon-btn" data-lb-close title="{{ _('Close') }}" aria-label="{{ _('Close') }}" aria-keyshortcuts="Escape">{{ icon('x') }}</button>
+  </div>
+  <div class="lb-stage" data-lb-stage>
+    <div class="lb-frame" data-lb-frame>
+      <img class="lb-placeholder" alt="" data-lb-placeholder>
+      <img class="lb-photo" alt="" data-lb-photo>
+      <div class="lb-cover" data-lb-cover hidden>
+        {{ icon('eye-off') }}
+        <b>{{ _('NSFW') }}</b>
+        <p>{{ _('Not safe for work – open the photo to see it') }}</p>
+        <a class="btn primary" href="/images" data-lb-details>{{ icon('arrow-right', 'sm') }}{{ _('Open details') }}</a>
+      </div>
+    </div>
+    <span class="lb-spinner" data-lb-spinner role="status" aria-label="{{ _('Loading…') }}" hidden></span>
+    <p class="lb-note" data-lb-missing hidden>{{ icon('alert', 'sm') }}<span>{{ _('File not found – showing the saved thumbnail.') }}</span></p>
+  </div>
+  <button type="button" class="lb-nav lb-prev" data-lb-prev title="{{ _('Previous photo (←)') }}" aria-label="{{ _('Previous photo') }}" aria-keyshortcuts="ArrowLeft">{{ icon('chevron-left') }}</button>
+  <button type="button" class="lb-nav lb-next" data-lb-next title="{{ _('Next photo (→)') }}" aria-label="{{ _('Next photo') }}" aria-keyshortcuts="ArrowRight">{{ icon('chevron-right') }}</button>
+</dialog>

@@ -1,7 +1,17 @@
 {% set qs = f.query_string() %}
+{#- The data-* attributes feed the lightbox (static/app.js, partials/lightbox.html). A covered
+    NSFW photo carries no picture URL at all (web/nsfw.py): the lightbox shows the cover. -#}
 {% for img in images %}
+{% set covered = nsfw_covered(img.id) %}
+{% set names = (people_on or {}).get(img.id) %}
 <div class="tile">
-  <a class="thumb" href="/images/{{ img.id }}{{ '?' ~ qs if qs }}" title="{{ img.rel_path }}">
+  <a class="thumb" href="/images/{{ img.id }}{{ '?' ~ qs if qs }}" title="{{ img.rel_path }}" data-id="{{ img.id }}" data-title="{{ img.filename }}"
+     {%- if img.recorded_at %} data-date="{{ img.recorded_at.isoformat(timespec='minutes') }}"{% endif %}
+     {%- if covered %} data-covered
+     {%- else %} data-preview-url="/media/preview/{{ img.id }}"
+       {%- if img.missing %} data-missing{% elif img.width and img.height %} data-w="{{ img.width }}" data-h="{{ img.height }}"{% endif %}
+       {%- if names %} data-people='{{ names | tojson }}'{% endif %}
+     {%- endif %}>
     {{ thumb(img.id) }}
     <span class="cap">{{ img.recorded_at | dt('%Y-%m-%d') }} · {{ img.filename }}</span>
   </a>
@@ -9,5 +19,5 @@
 </div>
 {% endfor %}
 {% if next_page %}
-<div hx-get="/images/page?page={{ next_page }}{{ '&' ~ qs if qs }}" hx-trigger="revealed" hx-swap="outerHTML" class="muted" style="grid-column:1/-1;text-align:center;padding:1rem">{{ _('Loading…') }}</div>
+<div hx-get="/images/page?page={{ next_page }}{{ '&' ~ qs if qs }}" hx-trigger="revealed" hx-swap="outerHTML" data-lightbox-more class="muted" style="grid-column:1/-1;text-align:center;padding:1rem">{{ _('Loading…') }}</div>
 {% endif %}

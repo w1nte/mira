@@ -161,6 +161,11 @@ NOTES: dict[str, str] = {
         "toggle in a gallery filter section that adds values as alternatives."
     ),
     "one of them": "Tooltip of a search chip with alternatives: one of them is enough.",
+    "Open details": (
+        "Button in the large photo preview over the gallery (lightbox): opens the photo's own "
+        "page with all its details."
+    ),
+    "Close": "Button (an X icon) that closes the large photo preview over the gallery.",
 }
 
 PLACEHOLDER = re.compile(r"%\(\w+\)[sd]")

@@ -18,6 +18,7 @@ from .. import APP_NAME, i18n
 from ..config import Settings, load_settings
 from ..db.models import Animal, Face, Image, PersonReference
 from ..imaging import (
+    PREVIEW_SIZE,
     ensure_face_crop,
     ensure_thumbnail,
     face_crop_path,
@@ -151,6 +152,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     )
             except (OSError, ValueError):
                 return _unavailable()  # e.g. a missing file without a cached thumbnail
+        return FileResponse(target, media_type="image/webp", headers=_cache_headers())
+
+    @app.get("/media/preview/{image_id}")
+    def preview(request: Request, image_id: int) -> Response:
+        """A large preview (``PREVIEW_SIZE``, for the gallery's lightbox), cached like the
+        thumbnails: never the original, which can be huge or a HEIC file. A photo that cannot
+        be read (missing file, no cached preview) gets its cached thumbnail or the placeholder.
+        """
+        c = ctx(request)
+        with c.db.session() as s:
+            img = s.get(Image, image_id)
+            if img is None:
+                raise HTTPException(404)
+            path = img.path
+        target = thumbnail_path(c.settings.thumbs_dir, image_id, PREVIEW_SIZE)
+        if not thumbnail_is_fresh(target, path):
+            try:
+                with _GENERATE:
+                    ensure_thumbnail(c.settings.thumbs_dir, image_id, path, PREVIEW_SIZE)
+            except (OSError, ValueError):
+                return thumb(request, image_id)
         return FileResponse(target, media_type="image/webp", headers=_cache_headers())
 
     @app.get("/media/image/{image_id}")
