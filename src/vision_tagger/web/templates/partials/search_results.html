@@ -1,4 +1,4 @@
-<section class="card tight" style="margin-bottom:1rem">
+<section class="interpretation">
   <div class="row spread">
     <div class="row">
       {% if it.mode == 'llm' %}<span class="badge ok" title="Interpreted by the local LLM">LLM</span>
@@ -9,20 +9,43 @@
       {% if result.relaxed %}<span class="badge warn" title="Nothing matched all required properties; they were treated as preferences">relaxed</span>{% endif %}
       <small class="muted">{{ result.hits | length }} of {{ result.candidates }} candidates · {{ result.seconds }} s</small>
     </div>
-    <a class="btn small" href="/images?{{ filter_qs }}" title="The strict part (persons, required / excluded properties, dates) as a gallery filter">Open in filter builder</a>
+    <div class="row">
+      <a class="btn small" href="/images?{{ filter_qs }}" title="The strict part (persons, required / excluded properties, dates) as a gallery filter">Open in filter builder</a>
+      {% if result.hits %}
+      <details class="dropdown">
+        <summary class="btn small">{{ icon('download', 'sm') }}Export</summary>
+        <div class="dropdown-panel">
+          <h3>Export these {{ result.hits | length }} results</h3>
+          <form method="post" action="/search/export">
+            <input type="hidden" name="ids" value="{{ result.hits | map(attribute='image_id') | join(',') }}">
+            <input type="hidden" name="q" value="{{ q }}">
+            <label class="field"><span>Target folder</span><input type="text" name="target" placeholder="D:\Export\{{ q[:30] }}" required></label>
+            <div class="row" style="gap:12px">
+              <label class="field" style="flex:1"><span>Mode</span><select name="mode">{% for m in ['copy', 'hardlink', 'symlink'] %}<option {{ 'selected' if m == export_mode }}>{{ m }}</option>{% endfor %}</select></label>
+              <label class="field" style="flex:1"><span>Layout</span><select name="layout"><option value="flat">flat</option><option value="date">year/month</option><option value="folder">original folders</option></select></label>
+            </div>
+            <div class="form-foot">
+              <small class="muted">Originals are never moved.</small>
+              <button class="primary">Export</button>
+            </div>
+          </form>
+        </div>
+      </details>
+      {% endif %}
+    </div>
   </div>
-  <div class="chips" style="margin-top:.6rem">
-    {% for _id, name in it.persons %}<span class="chip active">👤 {{ name }}</span>{% endfor %}
+  <div class="chips" style="margin-top:12px">
+    {% for _id, name in it.persons %}<span class="chip active">{{ icon('user') }}{{ name }}</span>{% endfor %}
     {% if it.persons | length > 1 %}<span class="chip">{{ 'all together' if it.persons_mode == 'all' else 'any of them' }}</span>{% endif %}
-    {% for _id, name in it.exclude_persons %}<span class="chip neg">not 👤 {{ name }}</span>{% endfor %}
+    {% for _id, name in it.exclude_persons %}<span class="chip neg">{{ icon('user') }}not {{ name }}</span>{% endfor %}
     {% for t in it.must %}<span class="chip active" title="required">{{ t.key | label }}: {{ t.value | pretty }}</span>{% endfor %}
     {% for t in it.should %}<span class="chip soft" title="preferred, weight {{ '%.0f' | format(t.weight * 100) }}%">{{ t.key | label }}: {{ t.value | pretty }}{% if t.weight < 1 %} <span class="w">{{ '%.0f' | format(t.weight * 100) }}%</span>{% endif %}</span>{% endfor %}
     {% for t in it.exclude %}<span class="chip neg">not {{ t.key | label }}: {{ t.value | pretty }}</span>{% endfor %}
-    {% if it.date_from or it.date_to %}<span class="chip active">📅 {{ it.date_from or '…' }} – {{ it.date_to or '…' }}</span>{% endif %}
+    {% if it.date_from or it.date_to %}<span class="chip active">{{ icon('calendar') }}{{ it.date_from or '…' }} – {{ it.date_to or '…' }}</span>{% endif %}
     {% for k in it.keywords %}<span class="chip soft" title="free-text keyword">“{{ k }}”</span>{% endfor %}
   </div>
-  {% if it.semantic_query and it.semantic_query != q %}<p class="muted" style="margin:.5rem 0 0"><small>Looking for: <i>{{ it.semantic_query }}</i></small></p>{% endif %}
-  {% for note in result.notes %}<p class="muted" style="margin:.3rem 0 0"><small>ⓘ {{ note }}</small></p>{% endfor %}
+  {% if it.semantic_query and it.semantic_query != q %}<p class="muted hint">Looking for: <i>{{ it.semantic_query }}</i></p>{% endif %}
+  {% for note in result.notes %}<p class="note">{{ icon('info', 'sm') }}<small>{{ note }}</small></p>{% endfor %}
 </section>
 
 {% if result.hits %}
@@ -42,17 +65,6 @@
   {% endif %}
   {% endfor %}
 </div>
-<details class="card tight" style="margin-top:1rem">
-  <summary>Export these {{ result.hits | length }} results…</summary>
-  <form method="post" action="/search/export" class="row" style="margin-top:.6rem">
-    <input type="hidden" name="ids" value="{{ result.hits | map(attribute='image_id') | join(',') }}">
-    <input type="hidden" name="q" value="{{ q }}">
-    <input type="text" name="target" placeholder="D:\Export\{{ q[:30] }}" required style="flex:1;min-width:240px">
-    <select name="mode">{% for m in ['copy', 'hardlink', 'symlink'] %}<option {{ 'selected' if m == export_mode }}>{{ m }}</option>{% endfor %}</select>
-    <select name="layout"><option value="flat">flat</option><option value="date">year/month</option><option value="folder">original folders</option></select>
-    <button class="primary">Export</button>
-  </form>
-</details>
 {% else %}
   <div class="card empty">No images match. Try fewer conditions, or open the interpretation in the filter builder.</div>
 {% endif %}

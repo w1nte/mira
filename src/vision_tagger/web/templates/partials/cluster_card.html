@@ -1,17 +1,17 @@
 <div class="cluster-card" id="cluster-{{ cl.id }}">
-  <a class="cover" href="/clusters/{{ cl.id }}">
+  <a class="cover" href="/clusters/{{ cl.id }}" aria-label="{{ cl.person.name if cl.person else 'Cluster #' ~ cl.id }}: {{ cl.face_count }} faces">
     {% if cl.cover_face_id %}<img loading="lazy" src="/media/face/{{ cl.cover_face_id }}" alt="">{% endif %}
-    <span class="count">{{ cl.face_count }}</span>
-    {% if cl.locked %}<span class="lock" title="Edited by you – kept on re-cluster">🔒</span>{% endif %}
+    <span class="count" title="{{ cl.face_count }} faces">{{ cl.face_count }}</span>
+    {% if cl.locked %}<span class="lock" title="Edited by you – kept on re-cluster">{{ icon('lock') }}</span>{% endif %}
   </a>
   <label class="pickbox" title="Select for merge">
-    <input class="pick" type="checkbox" name="cluster_ids" value="{{ cl.id }}" form="{{ form_id | default('merge-form') }}">
+    <input class="pick" type="checkbox" name="cluster_ids" value="{{ cl.id }}" form="{{ form_id | default('merge-form') }}" aria-label="Select cluster #{{ cl.id }}">
   </label>
   <div class="body">
     <form class="name" hx-post="/clusters/{{ cl.id }}/name" hx-target="#cluster-{{ cl.id }}" hx-swap="outerHTML">
       <input type="hidden" name="card" value="1">
-      <input type="text" name="name" list="person-names" value="{{ cl.person.name if cl.person else '' }}" placeholder="Cluster #{{ cl.id }} – name…" aria-label="Name">
-      <button class="small" title="Save name">✓</button>
+      <input type="text" name="name" list="person-names" value="{{ cl.person.name if cl.person else '' }}" placeholder="Add a name" aria-label="Name for cluster #{{ cl.id }}">
+      <button class="small" title="Save name" aria-label="Save name">{{ icon('check', 'sm') }}</button>
     </form>
     {% if not cl.person and cl.suggested_person %}
     <div class="suggest">
@@ -20,6 +20,8 @@
     </div>
     {% elif cl.person and not cl.locked %}
     <small class="muted">auto-named from references{% if cl.suggestion_score %} ({{ '%.0f' | format(cl.suggestion_score * 100) }}%){% endif %}</small>
+    {% elif not cl.person %}
+    <small class="muted">#{{ cl.id }}</small>
     {% endif %}
   </div>
 </div>

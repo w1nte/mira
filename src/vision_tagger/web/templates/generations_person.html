@@ -3,14 +3,14 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <small><a href="/generations">← Generations</a> · <a href="/persons/{{ person.id }}">{{ person.name }}</a></small>
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="/generations">Generations</a><a href="/persons/{{ person.id }}">{{ person.name }}</a></nav>
     <h1>{{ person.name }}, growing up</h1>
     <small>{{ frames | length }} ages{% if not person.birth_year %} · <a href="/persons/{{ person.id }}">set a birth year</a> for exact ages{% endif %}</small>
   </div>
   {% if frames | length >= 2 %}
   <div class="row">
-    <a class="btn primary" href="/generations/{{ person.id }}/animation.webp?download=1">⬇ Download animation</a>
-    <a class="btn" href="/generations/{{ person.id }}/animation.webp" target="_blank">Open animation</a>
+    <a class="btn" href="/generations/{{ person.id }}/animation.webp" target="_blank" rel="noopener">{{ icon('external', 'sm') }}Open animation</a>
+    <a class="btn primary" href="/generations/{{ person.id }}/animation.webp?download=1">{{ icon('download', 'sm') }}Download animation</a>
   </div>
   {% endif %}
 </div>
@@ -27,33 +27,36 @@
         <img class="layer" :src="frames[j].src" :style="'opacity:' + fade" alt="">
         <div class="stage-caption"><b>{{ person.name }}</b><span x-text="label"></span></div>
       </div>
-      <div class="row" style="margin-top:.75rem">
-        <button class="primary" @click="toggle()" x-text="playing ? '❚❚ Pause' : '▶ Play'"></button>
-        <input type="range" min="0" :max="frames.length - 1" step="0.01" x-model.number="pos" @input="stop()" style="flex:1" aria-label="Age">
+      <div class="player">
+        <button type="button" class="primary play" @click="toggle()" :aria-label="playing ? 'Pause' : 'Play'">
+          <span x-show="!playing">{{ icon('play', 'sm') }}</span><span x-show="playing" x-cloak>{{ icon('pause', 'sm') }}</span>
+          <span x-text="playing ? 'Pause' : 'Play'">Play</span>
+        </button>
+        <input type="range" min="0" :max="frames.length - 1" step="0.01" x-model.number="pos" @input="stop()" aria-label="Age">
         <select x-model.number="speed" aria-label="Speed"><option value="0.5">slow</option><option value="1" selected>normal</option><option value="2">fast</option></select>
       </div>
     </div>
-    <aside class="stack">
-      <section class="card tight">
+    <aside class="info">
+      <section>
         <h3>Looks most like…</h3>
         {% if looks_like %}
-        <table>
+        <table class="likeness">
           {% for r in looks_like %}
           <tr>
-            <td><a href="/generations/{{ person.id }}/compare/{{ r.person_id }}">{{ r.name }}</a><br>
+            <td><a class="ink" href="/generations/{{ person.id }}/compare/{{ r.person_id }}">{{ r.name }}</a><br>
               <small class="muted">{{ ('compared at ' ~ r.same_age_pairs ~ ' matching age' ~ ('s' if r.same_age_pairs != 1 else '')) if r.same_age_pairs else 'overall' }}</small></td>
-            <td style="width:45%"><div class="hbar" style="width: {{ [[r.similarity * 100 * 1.6, 3] | max, 100] | min }}%"></div></td>
+            <td style="width:42%"><div class="hbar" style="width: {{ [[r.similarity * 100 * 1.6, 3] | max, 100] | min }}%"></div></td>
             <td class="num">{{ '%.0f' | format([r.similarity, 0] | max * 100) }}%</td>
           </tr>
           {% endfor %}
         </table>
-        <small class="muted">Face similarity of the recognition model. Same person ≈ 50–90 %, strangers ≈ 0–15 %, relatives often in between.</small>
+        <p class="muted hint">Face similarity of the recognition model. Same person ≈ 50–90 %, strangers ≈ 0–15 %, relatives often in between.</p>
         {% else %}<p class="muted">Name more people to compare.</p>{% endif %}
       </section>
-      <section class="card tight">
+      <section>
         <h3>Compare at the same age</h3>
-        <form class="row" method="get" action="/generations/{{ person.id }}/compare">
-          <select name="other" style="flex:1">{% for o in others %}<option value="{{ o.id }}">{{ o.name }}</option>{% endfor %}</select>
+        <form class="row nowrap" method="get" action="/generations/{{ person.id }}/compare">
+          <select name="other" aria-label="Person to compare with" style="flex:1">{% for o in others %}<option value="{{ o.id }}">{{ o.name }}</option>{% endfor %}</select>
           <button>Compare</button>
         </form>
       </section>
@@ -61,7 +64,7 @@
   </div>
   <div class="gen-strip">
     <template x-for="(f, k) in frames" :key="k">
-      <button class="gen-thumb" :class="Math.round(pos) === k ? 'active' : ''" @click="stop(); pos = k" :title="f.label">
+      <button type="button" class="gen-thumb" :class="Math.round(pos) === k ? 'active' : ''" @click="stop(); pos = k" :title="f.label">
         <img :src="f.src + '?size=256'" alt=""><span x-text="f.label.split(' · ')[0]"></span>
       </button>
     </template>

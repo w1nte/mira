@@ -6,6 +6,9 @@
     <h1>Persons</h1>
     <small>{{ rows | length }} named persons. Renaming to an existing name merges the two persons.</small>
   </div>
+  <div class="row">
+    <a class="btn" href="/faces?show=unnamed&amp;sort=size">{{ icon('scan-face', 'sm') }}Name more faces</a>
+  </div>
 </div>
 {% if not rows %}
   <div class="card empty">No persons yet. Name a face cluster or import a reference folder.</div>
@@ -15,30 +18,31 @@
     {% for r in rows %}
     {% set p = r.person %}
     <div class="cluster-card">
-      <a class="cover" href="/persons/{{ p.id }}">
+      <a class="cover" href="/persons/{{ p.id }}" aria-label="{{ p.name }}">
         {% if r.cover %}<img loading="lazy" src="/media/face/{{ r.cover }}" alt="">{% endif %}
-        <span class="count">{{ r.images }} img</span>
+        <span class="count" title="{{ r.images }} images">{{ r.images }}</span>
       </a>
-      <label class="pickbox" title="Select for merge"><input class="pick" type="checkbox" name="person_ids" value="{{ p.id }}" form="merge-persons"></label>
+      <label class="pickbox" title="Select"><input class="pick" type="checkbox" name="person_ids" value="{{ p.id }}" form="merge-persons" aria-label="Select {{ p.name }}"></label>
       <div class="body">
         <form class="name" method="post" action="/persons/{{ p.id }}/rename">
           <input type="text" name="name" value="{{ p.name }}" aria-label="Name">
-          <button class="small" title="Rename">✓</button>
+          <button class="small" title="Rename" aria-label="Save name">{{ icon('check', 'sm') }}</button>
         </form>
-        <small class="muted">{{ r.clusters | length }} cluster{{ 's' if r.clusters | length != 1 }} · {{ r.faces }} faces · {{ r.refs }} refs</small>
-        {% if r.age is not none %}<small>🎂 born {{ p.birth_year }} · {{ r.age }} years</small>
-        {% elif r.estimate %}<small class="muted" title="estimated from photo dates and face ages">🎂 born ~{{ r.estimate.year }} (est.)</small>{% endif %}
-        <div class="row"><a class="btn small" href="/images?p={{ p.id }}">Images</a><a class="btn small" href="/persons/{{ p.id }}">Details</a></div>
+        {% if r.age is not none %}<small>born {{ p.birth_year }} · {{ r.age }} years</small>
+        {% elif r.estimate %}<small class="muted" title="estimated from photo dates and face ages">born ~{{ r.estimate.year }} (est.)</small>{% endif %}
+        <small class="muted">{{ r.faces }} faces · {{ r.clusters | length }} cluster{{ 's' if r.clusters | length != 1 }} · {{ r.refs }} refs</small>
+        <div class="actions"><a class="btn small" href="/images?p={{ p.id }}">Images</a><a class="btn small" href="/persons/{{ p.id }}">Details</a></div>
       </div>
     </div>
     {% endfor %}
   </div>
   <form id="merge-persons" method="post" action="/persons/merge" class="actionbar" x-show="n > 0" x-cloak>
     <b x-text="n + ' selected'"></b>
+    <a class="btn" :href="'/images?pm=all&' + Array.from($root.querySelectorAll('input.pick:checked')).map(b => 'p=' + b.value).join('&')">Images with all</a>
+    <a class="btn" :href="'/images?pm=any&' + Array.from($root.querySelectorAll('input.pick:checked')).map(b => 'p=' + b.value).join('&')">… with any</a>
     <button class="primary" :disabled="n < 2">Merge persons</button>
     <small class="muted">The first selected person keeps its name.</small>
-    <a class="btn" :href="'/images?pm=all&' + Array.from($root.querySelectorAll('input.pick:checked')).map(b => 'p=' + b.value).join('&')">Images with all selected</a>
-    <a class="btn" :href="'/images?pm=any&' + Array.from($root.querySelectorAll('input.pick:checked')).map(b => 'p=' + b.value).join('&')">… with any</a>
+    <button type="button" class="icon-btn" @click="vt.toggleAll($root, false); n = 0" aria-label="Clear selection" title="Clear selection">{{ icon('x') }}</button>
   </form>
 </div>
 {% endif %}

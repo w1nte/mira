@@ -3,13 +3,13 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <h1>Who's that? 🎲</h1>
+    <h1>Who's that?</h1>
     <small>A little game that also cleans up your face clusters. Keys: <kbd>1</kbd>–<kbd>4</kbd> answer, <kbd>Enter</kbd> next.</small>
   </div>
-  <div class="row">
-    <a class="btn {{ 'primary' if state.mode == 'quiz' }}" href="/quiz?mode=quiz">🧠 Quiz me</a>
-    <a class="btn {{ 'primary' if state.mode == 'name' }}" href="/quiz?mode=name">🏷️ Name the strangers</a>
-  </div>
+  <nav class="segmented" aria-label="Quiz mode">
+    <a href="/quiz?mode=quiz"{% if state.mode == 'quiz' %} aria-current="page"{% endif %}>Quiz me</a>
+    <a href="/quiz?mode=name"{% if state.mode == 'name' %} aria-current="page"{% endif %}>Name the strangers</a>
+  </nav>
 </div>
 <div id="quiz-card">{{ card | safe }}</div>
 {% endblock %}
