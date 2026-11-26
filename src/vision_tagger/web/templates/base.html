@@ -50,6 +50,7 @@
           {% for code, name in languages.items() %}<option value="{{ code }}" {{ 'selected' if code == current_lang() }}>{{ name }}</option>{% endfor %}
         </select>
       </label>
+      {% if request.app.state.auth.enabled %}<form method="post" action="/logout"><button class="ghost small install-btn">{{ icon('key', 'sm') }}{{ _('Log out') }}</button></form>{% endif %}
       <div class="theme-switch" role="radiogroup" aria-label="{{ _('Theme') }}">
         {% for value, text, ic in [('system', _('System theme'), 'monitor'), ('light', _('Light theme'), 'sun'), ('dark', _('Dark theme'), 'moon')] %}
         <button type="button" role="radio" aria-checked="{{ 'true' if theme == value else 'false' }}" tabindex="{{ '0' if theme == value else '-1' }}"

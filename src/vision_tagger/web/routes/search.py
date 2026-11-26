@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import Response
 
 from ...db.models import Image
@@ -78,6 +78,8 @@ def export_results(
     metadata: list[str] = Form([]),
 ) -> Response:
     c = ctx(request)
+    if c.settings.remote_mode:  # remote users may not write to folders on the server
+        raise HTTPException(403, "use the ZIP download in remote mode")
     image_ids = ints(ids.split(","))
     back_url = "/search?" + urlencode({"q": q})
     if not image_ids or not target.strip():
@@ -103,3 +105,17 @@ def export_results(
     if not c.jobs.start("export", job):
         return redirect(request, back_url, err="Another job is running.")
     return redirect(request, back_url, msg=f"Exporting {len(image_ids)} images – see dashboard.")
+
+
+@router.get("/search/download.zip")
+def download_results(request: Request, ids: str = "") -> Response:
+    from fastapi.responses import StreamingResponse
+
+    from ...export import stream_zip
+
+    c = ctx(request)
+    return StreamingResponse(
+        stream_zip(c.db, ints(ids.split(","))),
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="vision-tagger-search.zip"'},
+    )

@@ -13,6 +13,7 @@ from ...faces.ages import age_label, check_image_date, correct_image_date
 from ...pipeline import control
 from ...query import (
     ImageFilter,
+    all_image_ids,
     count_images,
     date_histogram,
     neighbours,
@@ -183,6 +184,24 @@ def add_filter(request: Request) -> Response:
     return redirect(request, f"{target}?{f.query_string()}")
 
 
+@router.get("/images/download.zip")
+def download_zip(request: Request) -> Response:
+    """The photos of the current filter as a ZIP, with XMP sidecars (remote mode export)."""
+    from fastapi.responses import StreamingResponse
+
+    from ...export import stream_zip
+
+    c = ctx(request)
+    f = ImageFilter.from_params(request.query_params)
+    with c.db.session() as s:
+        ids = all_image_ids(s, f)
+    return StreamingResponse(
+        stream_zip(c.db, ids),
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="vision-tagger-photos.zip"'},
+    )
+
+
 @router.get("/images/{image_id}")
 def image_detail(request: Request, image_id: int) -> Response:
     c = ctx(request)
@@ -264,6 +283,8 @@ def export(
     from starlette.datastructures import QueryParams
 
     c = ctx(request)
+    if c.settings.remote_mode:  # remote users may not write to folders on the server
+        raise HTTPException(403, "use the ZIP download in remote mode")
     f = ImageFilter.from_params(QueryParams(query))
     if not target.strip():
         return redirect(request, f"/images?{query}", err="Enter a target folder.")
