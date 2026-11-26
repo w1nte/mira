@@ -103,7 +103,36 @@ are never moved or modified.
   - Image detail with face boxes.
   - Timeline / data overview and a metadata table.
 
-## Installation (Windows + NVIDIA GPU)
+## Installation
+
+### Windows app (setup program)
+
+The simplest way on Windows: download the setup program from the
+[releases](https://github.com/w1nte/vision-tagger/releases) (or from the artifacts of the
+*Windows installer* workflow) and run it. No administrator rights are needed.
+
+- **gpu** for an NVIDIA graphics card (CUDA and cuDNN are included; needs driver R580 or newer).
+  It comes as a `.exe` plus `.bin` files: keep them in one folder and start the `.exe`.
+- **cpu** for every other PC (slower face detection, much smaller download).
+
+vision-tagger then starts from the Start menu like any other application, in a window of its
+own. Closing the window stops it (a running pipeline is paused and continues on the next start);
+starting it again while it runs opens another window. Install **Ollama** as well (step 4 below)
+for properties and search.
+
+- The library (settings, database, thumbnails) is kept in `%LOCALAPPDATA%\vision-tagger`. It
+  stays when you update or uninstall the app; settings are in `config.toml` there.
+- `vision-tagger-cli.exe` in the install folder is the command line (`vision-tagger-cli index
+  D:\Photos`, `vision-tagger-cli run`, …).
+- Logs: `%LOCALAPPDATA%\vision-tagger\data\logs\desktop.log`.
+
+From a source checkout the same window opens with `uv run vision-tagger desktop` (add
+`--extra desktop` to `uv sync` for a native window; without it, Edge or Chrome opens in app mode).
+The setup program is built by [`.github/workflows/installer.yml`](.github/workflows/installer.yml)
+from [`packaging/windows`](packaging/windows): PyInstaller makes the app folder, a self-test
+checks it, and Inno Setup packs it.
+
+### From source (Windows + NVIDIA GPU)
 
 1. **uv** (package manager):
    ```powershell

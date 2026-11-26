@@ -31,9 +31,15 @@ dependencies = [
 # CUDA/cuDNN runtime from pip, only a recent NVIDIA driver is needed) or `--extra cpu`.
 gpu = ["onnxruntime-gpu[cuda,cudnn]>=1.21"]
 cpu = ["onnxruntime>=1.19"]
+# `vision-tagger desktop`: a native window (WebView2 on Windows) instead of a browser app window
+desktop = ["pywebview>=5.3"]
 
 [project.scripts]
 vision-tagger = "vision_tagger.cli:app"
+
+[project.gui-scripts]
+# the desktop app without a console window (what the Windows installer starts)
+vision-tagger-app = "vision_tagger.desktop:main"
 
 [dependency-groups]
 dev = [
@@ -41,6 +47,8 @@ dev = [
     "pytest-timeout>=2.3",
     "ruff>=0.6",
 ]
+# builds the Windows app (packaging/windows): uv sync --extra gpu --extra desktop --group packaging
+packaging = ["pyinstaller>=6.11"]
 
 [build-system]
 requires = ["hatchling"]

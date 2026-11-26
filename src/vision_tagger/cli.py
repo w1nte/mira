@@ -473,16 +473,11 @@ def serve(
             typer.echo(f"Error: {exc}", err=True)
             raise typer.Exit(2) from exc
     if migrate_db:
-        from .db.migrate import migration_engine, schema_status, upgrade
+        from .db.migrate import upgrade_if_needed
 
         settings.ensure_dirs()
-        url = f"sqlite:///{settings.db_path.as_posix()}"
-        engine = migration_engine(url)
-        status = schema_status(engine)
-        engine.dispose()
-        if status.needs_upgrade and status.state != "new":
-            typer.echo("upgrading the database (a backup copy is made first)…")
-            upgrade(url, backup=True)
+        if upgrade_if_needed(settings.db_path):
+            typer.echo("upgraded the database (a backup copy was made first)")
     _db().dispose()  # fails early with a clear message if `vision-tagger migrate` is needed
     host = host or settings.web.host
     port = port or settings.web.port
@@ -493,6 +488,29 @@ def serve(
         threading.Timer(1.5, lambda: webbrowser.open(f"http://{host}:{port}/")).start()
     typer.echo(f"vision-tagger UI on http://{host}:{port}/")
     uvicorn.run(create_app(settings), host=host, port=port, log_level="info")
+
+
+@app.command()
+def desktop(
+    port: Annotated[
+        int | None, typer.Option(help="Port (default: web.port, or any free one).")
+    ] = None,
+) -> None:
+    """Open the app in a window of its own (local mode). Closing it stops the server."""
+    from . import config as config_mod
+    from .desktop import load_desktop_settings, run
+
+    # without a config file: the per-user config, as in the installed app
+    settings = _settings() if config_mod._resolve_config_file() else load_desktop_settings()
+    raise typer.Exit(run(settings, port=port))
+
+
+@app.command("self-test", hidden=True)
+def self_test() -> None:
+    """Check an installation or a frozen build (imports, resources, migrations, pages)."""
+    from .desktop import self_test as run_self_test
+
+    raise typer.Exit(run_self_test())
 
 
 if __name__ == "__main__":  # pragma: no cover

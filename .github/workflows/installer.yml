@@ -1,0 +1,115 @@
+name: Windows installer
+
+# Builds the desktop app for Windows (PyInstaller) and packs it into a setup program
+# (Inno Setup). The setup files are uploaded as workflow artifacts; a version tag (v1.2.3) also
+# creates a draft release with them.
+#
+#   cpu: small, runs everywhere
+#   gpu: NVIDIA GPU (CUDA and cuDNN included; needs driver R580 or newer), a setup .exe plus
+#        .bin files that have to stay in the same folder
+
+on:
+  workflow_dispatch:
+    inputs:
+      flavor:
+        description: Which build
+        type: choice
+        options: [both, gpu, cpu]
+        default: both
+  push:
+    tags: ["v*"]
+    branches: [main]
+    paths:
+      - packaging/**
+      - src/vision_tagger/desktop.py
+      - pyproject.toml
+      - uv.lock
+      - .github/workflows/installer.yml
+  pull_request:
+    paths:
+      - packaging/**
+      - src/vision_tagger/desktop.py
+      - pyproject.toml
+      - uv.lock
+      - .github/workflows/installer.yml
+
+concurrency:
+  group: installer-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build (${{ matrix.flavor }})
+    runs-on: windows-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        # manual run: as chosen; tag: both; push to main: cpu only (a quick check of the build)
+        flavor: >-
+          ${{ fromJSON(
+            github.event_name == 'workflow_dispatch'
+              && (inputs.flavor == 'both' && '["cpu","gpu"]' || format('["{0}"]', inputs.flavor))
+              || (startsWith(github.ref, 'refs/tags/') && '["cpu","gpu"]' || '["cpu"]')
+          ) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: Install the app and PyInstaller
+        run: uv sync --locked --no-dev --no-editable --extra ${{ matrix.flavor }} --extra desktop --group packaging
+
+      - name: Version
+        id: version
+        shell: pwsh
+        run: |
+          $v = uv run --no-sync python -c "import vision_tagger; print(vision_tagger.__version__)"
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Build the app folder
+        run: uv run --no-sync pyinstaller packaging/windows/vision-tagger.spec --noconfirm --clean
+
+      - name: Self-test of the built app
+        run: dist\vision-tagger\vision-tagger-cli.exe self-test
+
+      - name: Build the setup program
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup -y --no-progress
+          }
+          & $iscc /DAppVersion=${{ steps.version.outputs.version }} /DFlavor=${{ matrix.flavor }} packaging\windows\installer.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-ChildItem dist -File | Format-Table Name, Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vision-tagger-setup-${{ steps.version.outputs.version }}-${{ matrix.flavor }}
+          path: |
+            dist/*.exe
+            dist/*.bin
+          if-no-files-found: error
+          compression-level: 0
+
+  release:
+    name: Draft release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: setup
+          merge-multiple: true
+      - name: Create a draft release with the setup files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" setup/* --repo "$GITHUB_REPOSITORY" \
+            --draft --title "vision-tagger $GITHUB_REF_NAME" --generate-notes
