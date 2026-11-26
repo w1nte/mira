@@ -1,6 +1,8 @@
 # CLAUDE.md
 
-Guidance for Claude Code (and humans) working on this repository.
+Guidance for Claude Code (and humans) working on this repository. Read
+[`MEMORY.md`](MEMORY.md) too: decisions and lessons from earlier work. Keep it short and
+current: add what will matter again, delete what no longer holds.
 
 ## Project
 
@@ -151,10 +153,18 @@ Releasing:
 1. Just before publishing a GitHub release, rename `## Unreleased` to `## <tag> - <date>` (the
    tag you are about to create, today's date) and add a fresh, empty `## Unreleased` above it.
    Commit that to `main`.
+   `python packaging/changelog.py release <tag>` does exactly this.
 2. Publish the release with that tag on that commit. When its notes are left empty, the publish
    job of `.github/workflows/desktop.yml` fills them with the tag's section
    (`python packaging/changelog.py notes <tag>`). Notes written on GitHub are kept as they are.
-   Without a section for the tag it takes `Unreleased` and warns in the job log.
+
+If step 1 was forgotten, the workflow catches it: every build files `Unreleased` under the tag
+before packaging (so the app's "What's new" shows the version), the notes come from that section,
+and the publish job opens a pull request "Changelog: release <tag>" against `main` that moves only
+the entries of the released commit (newer ones stay under `Unreleased`). Merge it. Creating that
+pull request needs "Allow GitHub Actions to create and approve pull requests" (Settings → Actions →
+General); without it the job pushes the branch `changelog/release-<tag>` and warns, so merge that
+branch instead.
 
 `tests/test_changelog.py` validates the file (a broken format fails CI) and tests the parser,
 the notes script, the page and the workflow step. Check the file locally with
