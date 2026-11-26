@@ -53,7 +53,7 @@ Mira
 <h1 class="hero-title" data-i18n="hero_title">Find any photo by who, where and what.</h1>
 <p class="hero-sub" data-i18n="hero_sub">Mira brings order to huge, messy photo collections. It reads everything it can from each picture – who, where, when and what – right on your own computer.</p>
 <div class="cta-row">
-<a class="btn btn-primary" id="cta-primary" href="https://github.com/w1nte/vision-tagger/releases">
+<a class="btn btn-primary" id="cta-primary" href="https://github.com/w1nte/vision-tagger/releases/latest">
 <svg class="icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5v11"></path><path d="M7.5 10l4.5 4.5 4.5-4.5"></path><path d="M20.5 15v3.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V15"></path></svg>
 <span data-i18n="cta_primary">Download for Windows</span>
 </a>
@@ -212,30 +212,64 @@ Mira
 
 <div class="setup-grid">
 
-<div class="card">
+<div class="card card-app">
 <div class="card-head">
 <svg class="icon" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="3.5" width="19" height="13" rx="2"></rect><path d="M8 20.5h8"></path><path d="M12 16.5v4"></path></svg>
-<h3 data-i18n="win_t">Windows app</h3>
-<span class="tag" data-i18n="win_badge">Easiest</span>
+<h3 data-i18n="app_t">Desktop app</h3>
+<span class="tag" data-i18n="app_badge">Easiest</span>
 </div>
-<p class="card-sub" data-i18n="win_sub">A setup program with its own window. No administrator rights needed.</p>
+<p class="card-sub" data-i18n="app_sub">An app with its own window for Windows, macOS and Linux. Windows and Linux need no administrator rights.</p>
 <ol class="steps">
 <li>
 <span class="step-num">1</span>
-<div class="step-body"><span data-i18n="win_s1a">Download the setup from </span><a href="https://github.com/w1nte/vision-tagger/releases">GitHub Releases</a><span data-i18n="win_s1b">: </span><b>gpu</b><span data-i18n="win_s1c"> for NVIDIA cards (driver R580 or newer), </span><b>cpu</b><span data-i18n="win_s1d"> for every other PC.</span></div>
+<div class="step-body"><span data-i18n="app_s1a">Download the file for your system from </span><a href="https://github.com/w1nte/vision-tagger/releases/latest">GitHub Releases</a><span data-i18n="app_s1b">: </span><b>gpu</b><span data-i18n="app_s1c"> for NVIDIA cards (driver R580 or newer), </span><b>cpu</b><span data-i18n="app_s1d"> for every other computer.</span></div>
 </li>
 <li>
 <span class="step-num">2</span>
-<div class="step-body"><span data-i18n="win_s2a">Install </span><a href="https://ollama.com/download">Ollama</a><span data-i18n="win_s2b"> and pull the two models:</span>
-<pre class="code">ollama pull qwen2.5vl:7b
-ollama pull nomic-embed-text</pre>
+<div class="step-body"><span data-i18n="app_s2">Install it:</span>
+<dl class="systems">
+<div>
+<dt data-i18n="app_win_h">Windows 10/11 (x64)</dt>
+<dd><span data-i18n="app_win_d">Run the setup (.exe). If SmartScreen warns, click More info → Run anyway.</span>
+<p class="win-bin-old" data-i18n="win_bin_old">If the gpu setup comes with a .bin file (as in Mira 1.2.1), keep it in the same folder as the .exe.</p></dd>
+</div>
+<div>
+<dt data-i18n="app_mac_h">macOS 15 or newer, Apple silicon</dt>
+<dd data-i18n="app_mac_d">Open the .pkg. It is not signed by Apple, so macOS blocks it at first: click Open Anyway in System Settings → Privacy &amp; Security. Intel Macs are not supported.</dd>
+</div>
+<div>
+<dt data-i18n="app_lin_h">Linux x86_64</dt>
+<dd><span data-i18n="app_lin_d">glibc 2.35 or newer (Ubuntu 22.04, Debian 12, Fedora 36 or later). Unpack the archive and install it for your user, with a menu entry:</span>
+<pre class="code">tar -xzf Mira-&lt;version&gt;-linux-x86_64-cpu.tar.gz
+cd Mira-&lt;version&gt;-linux-x86_64-cpu
+./install.sh  <span class="comment" data-i18n="app_lin_c"># --uninstall removes it</span></pre>
+<p data-i18n="app_lin_gpu">The gpu archive comes in parts. Download all of them and unpack them together:</p>
+<pre class="code">cat Mira-&lt;version&gt;-linux-x86_64-gpu.tar.gz.part* | tar -xz</pre>
+</dd>
+</div>
+</dl>
 </div>
 </li>
 <li>
 <span class="step-num">3</span>
-<div class="step-body"><span data-i18n="win_s3a">Start Mira from the Start menu. Your library lives in </span><code>%LOCALAPPDATA%\vision-tagger</code><span data-i18n="win_s3b"> and survives updates.</span></div>
+<div class="step-body"><span data-i18n="app_s3a">Install </span><a href="https://ollama.com/download">Ollama</a><span data-i18n="app_s3b">. Mira downloads the AI models it needs itself (Home → Download now).</span>
+<div class="models-old">
+<p data-i18n="models_old">With Mira 1.2.1 or older, pull them once by hand:</p>
+<pre class="code">ollama pull qwen2.5vl:7b
+ollama pull nomic-embed-text</pre>
+</div>
+</div>
+</li>
+<li>
+<span class="step-num">4</span>
+<div class="step-body"><span data-i18n="app_s4">Start Mira like any other app. Your library is kept here:</span>
+<pre class="code"><span class="comment">Windows</span>  %LOCALAPPDATA%\vision-tagger
+<span class="comment">macOS</span>    ~/Library/Application Support/vision-tagger
+<span class="comment">Linux</span>    ~/.local/share/vision-tagger</pre>
+</div>
 </li>
 </ol>
+<p class="card-note"><b data-i18n="app_upd_lead">Updating.</b> <span data-i18n="app_upd">Run the new setup, .pkg or install.sh. It closes Mira (a running pipeline pauses), replaces the app and keeps your library, migrated with a backup.</span></p>
 </div>
 
 <div class="card">
@@ -255,16 +289,19 @@ docker compose up -d</pre>
 </li>
 <li>
 <span class="step-num">2</span>
-<div class="step-body"><span data-i18n="dk_s2">Pull the models inside the container:</span>
+<div class="step-body"><span data-i18n="dk_s3a">Open </span><code>http://&lt;server&gt;:8765</code><span data-i18n="dk_s3b">, log in and upload on Import. Add HTTPS through a reverse proxy to install it as an app.</span></div>
+</li>
+<li>
+<span class="step-num">3</span>
+<div class="step-body"><span data-i18n="dk_models">Mira downloads the AI models in the web UI (Home → Download now) or on the first run.</span>
+<div class="models-old">
+<p data-i18n="models_old">With Mira 1.2.1 or older, pull them once by hand:</p>
 <pre class="code">docker compose exec ollama \
   ollama pull qwen2.5vl:7b
 docker compose exec ollama \
   ollama pull nomic-embed-text</pre>
 </div>
-</li>
-<li>
-<span class="step-num">3</span>
-<div class="step-body"><span data-i18n="dk_s3a">Open </span><code>http://&lt;server&gt;:8765</code><span data-i18n="dk_s3b">, log in and upload on Import. Add HTTPS through a reverse proxy to install it as an app.</span></div>
+</div>
 </li>
 </ol>
 </div>
@@ -279,7 +316,7 @@ docker compose exec ollama \
 <ol class="steps">
 <li>
 <span class="step-num">1</span>
-<div class="step-body"><span data-i18n="src_s1a">Install </span><a href="https://docs.astral.sh/uv/">uv</a><span data-i18n="src_s1b"> and Ollama with both models. On Windows, add the C++ Build Tools (Desktop development with C++).</span></div>
+<div class="step-body"><span data-i18n="src_s1a">Install </span><a href="https://docs.astral.sh/uv/">uv</a><span data-i18n="src_s1b"> and Ollama; Mira downloads the AI models itself. On Windows, add the C++ Build Tools (Desktop development with C++).</span></div>
 </li>
 <li>
 <span class="step-num">2</span>
@@ -310,7 +347,7 @@ uv run vision-tagger init</pre>
 </li>
 <li>
 <span class="step-num step-num-solid">2</span>
-<div class="first-step-text"><div class="first-step-title" data-i18n="fr2_t">Let it work</div><div class="first-step-desc" data-i18n="fr2_d">Pipeline shows progress and time left. Close the app whenever you like; it continues on the next start.</div></div>
+<div class="first-step-text"><div class="first-step-title" data-i18n="fr2_t">Let it work</div><div class="first-step-desc" data-i18n="fr2_d">Pipeline shows progress and time left; missing AI models are downloaded first. Close the app whenever you like; it continues on the next start.</div></div>
 </li>
 <li>
 <span class="step-num step-num-solid">3</span>

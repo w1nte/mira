@@ -37,3 +37,13 @@ English is written in `index.html` and repeated in the `en` table in `site.js`; 
 languages are only in `site.js`. When you change a text, change it in both places and in every
 language. An element with `data-i18n="key"` gets its text from the table, `data-i18n-alt` its
 `alt` text and `data-i18n-value` its value. Texts are inserted as plain text, never as HTML.
+
+**Hints for older releases.** Two hints only matter for Mira 1.2.1 and older. Once a newer
+release with the automatic model download and a single-file gpu setup is out, delete them
+completely; no other text refers to them:
+
+- `models_old` (pull the Ollama models by hand): the two `<div class="models-old">` blocks in
+  `index.html` (desktop app step 3 and Docker step 3), the `models_old` key in all 11 tables in
+  `site.js`, and the `.models-old` rule in `style.css`.
+- `win_bin_old` (keep the `.bin` file next to the gpu setup): the `<p class="win-bin-old">` in
+  `index.html`, the `win_bin_old` key in all 11 tables, and the `.win-bin-old` rule.
