@@ -36,7 +36,7 @@
     </tr>
     {% for r in rows %}
     <tr>
-      <td class="missing-thumb"><a class="thumb" href="/images/{{ r.id }}"><img loading="lazy" src="/media/thumb/{{ r.id }}?size=96" alt=""></a></td>
+      <td class="missing-thumb"><a class="thumb" href="/images/{{ r.id }}">{{ thumb(r.id, 96) }}</a></td>
       <td><a href="/images/{{ r.id }}">{{ r.filename }}</a></td>
       <td class="missing-folder"><span class="mono" title="{{ r.path }}">{{ r.folder }}</span></td>
       <td class="nowrap">{{ r.date | dt('%Y-%m-%d') }}</td>

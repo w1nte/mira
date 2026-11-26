@@ -507,7 +507,8 @@ class Indexer:
             s.execute(
                 delete(ImageProperty).where(
                     ImageProperty.image_id == img.id,
-                    ImageProperty.source.not_in(("exif", "place")),  # place: from the position
+                    # place: from the position; manual: set by you (an NSFW verdict)
+                    ImageProperty.source.not_in(("exif", "place", "manual")),
                 )
             )
             s.execute(delete(VlmResult).where(VlmResult.image_id == img.id))

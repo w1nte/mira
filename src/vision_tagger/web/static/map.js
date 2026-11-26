@@ -244,12 +244,18 @@
         show.href = d.gallery;
         const photoQuery = d.gallery.split("?")[1] || "";
         thumbs.replaceChildren();
+        const nsfw = new Set((d.nsfw || []).map(String)); // covered until clicked (app.js)
         d.images.forEach((id) => {
           const a = make("a");
           a.href = "/images/" + encodeURIComponent(id) + (photoQuery ? "?" + photoQuery : "");
           const img = make("img");
-          img.src = "/media/thumb/" + encodeURIComponent(id) + "?size=160";
-          img.alt = "";
+          const src = "/media/thumb/" + encodeURIComponent(id) + "?size=160";
+          if (nsfw.has(String(id)) && window.vtNsfw) {
+            window.vtNsfw.cover(img, src, id);
+          } else {
+            img.src = src;
+            img.alt = "";
+          }
           a.append(img);
           thumbs.append(a);
         });

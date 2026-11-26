@@ -23,7 +23,12 @@
   <div class="viewer-wrap" x-data="{ boxes: true }">
     <div class="stage-photo">
       <div class="viewer" :class="boxes ? '' : 'hide-boxes'">
-        <img src="/media/{{ 'thumb/' if img.missing else 'image/' }}{{ img.id }}" alt="{{ vlm.caption if vlm else img.filename }}">
+        {% set photo_src = '/media/' ~ ('thumb/' if img.missing else 'image/') ~ img.id %}
+        {% if is_covered(img.id) %}
+        <img src="{{ nsfw_placeholder }}" data-nsfw="{{ img.id }}" data-nsfw-src="{{ photo_src }}" alt="NSFW" title="{{ _('Not safe for work – click to show') }}" style="--ar: {{ img.width or 4 }} / {{ img.height or 3 }}">
+        {% else %}
+        <img src="{{ photo_src }}" alt="{{ vlm.caption if vlm else img.filename }}">
+        {% endif %}
         {% if img.width and img.height %}
         {% for face in img.faces if not face.ignored %}
           {% set named = face.cluster and face.cluster.person %}
@@ -41,6 +46,7 @@
         {% endif %}
       </div>
     </div>
+    <p class="nsfw-hint">{{ icon('eye-off', 'sm') }} {{ _('Not safe for work. Click the photo to show it.') }}</p>
     <div class="row spread viewer-foot">
       {% if vlm and vlm.caption %}<p class="caption">{{ vlm.caption }}</p>{% else %}<span></span>{% endif %}
       {% if img.faces or animals %}<label class="toggle"><input type="checkbox" x-model="boxes"> {{ _('Boxes') if animals else _('Face boxes') }}</label>{% endif %}
@@ -101,6 +107,30 @@
     </section>
     {% endif %}
 
+    {% set nsfw_row = (props.get('nsfw') or [none])[0] %}
+    <section class="nsfw-panel" id="nsfw">
+      <h3>{{ 'nsfw' | label }}</h3>
+      <p>
+        {%- if nsfw_row is none %}{{ _('Not checked yet.') }}
+        {%- elif nsfw_row.value == 'yes' %}{{ icon('eye-off', 'sm') }}
+          {% if nsfw_row.source == 'manual' %}{{ _('Not safe for work – marked by you.') }}
+          {% elif nsfw_row.source == 'classifier' %}{{ _('Not safe for work – found by the NSFW check (score %(percent)s %%).', percent='%.0f' | format(nsfw_row.confidence * 100)) }}
+          {% else %}{{ _('Not safe for work – found by the vision model.') }}{% endif %}
+        {%- else %}
+          {% if nsfw_row.source == 'manual' %}{{ _('Safe for work – marked by you.') }}
+          {% elif nsfw_row.source == 'classifier' %}{{ _('Safe for work – checked by the NSFW check (score %(percent)s %%).', percent='%.0f' | format(nsfw_row.confidence * 100)) }}
+          {% else %}{{ _('Safe for work – checked by the vision model.') }}{% endif %}
+        {%- endif %}
+      </p>
+      <div class="row">
+        {% set manual = nsfw_row is not none and nsfw_row.source == 'manual' %}
+        {% if not (manual and nsfw_row.value == 'yes') %}<form method="post" action="/images/{{ img.id }}/nsfw"><input type="hidden" name="value" value="yes"><button class="small">{{ icon('eye-off', 'sm') }}{{ _('Mark as NSFW') }}</button></form>{% endif %}
+        {% if not (manual and nsfw_row.value == 'no') %}<form method="post" action="/images/{{ img.id }}/nsfw"><input type="hidden" name="value" value="no"><button class="small">{{ icon('eye', 'sm') }}{{ _('Not NSFW') }}</button></form>{% endif %}
+        {% if manual %}<form method="post" action="/images/{{ img.id }}/nsfw"><input type="hidden" name="value" value="auto"><button class="small ghost" title="{{ _('Forget your choice: the NSFW check and the vision model decide again') }}">{{ _('Automatic') }}</button></form>{% endif %}
+      </div>
+      {% if nsfw_row is not none and nsfw_row.value == 'yes' %}<label class="toggle nsfw-show"><input type="checkbox" data-nsfw-show{{ ' checked' if nsfw_shown() }}> {{ _('Show NSFW photos without asking') }}</label>{% endif %}
+    </section>
+
     <section>
       <h3>{{ _('Details') }}</h3>
       <dl class="kv">
@@ -128,7 +158,7 @@
       <h3>{{ _('Properties') }}</h3>
       {% if props %}
       <dl class="kv props">
-        {% for key, rows in props.items() %}
+        {% for key, rows in props.items() if key != 'nsfw' %}
         <dt><a href="/properties/{{ key }}">{{ key | label }}</a></dt>
         <dd class="chips">
           {% for p in rows %}

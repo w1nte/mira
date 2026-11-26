@@ -15,6 +15,10 @@ from ..common import back, cached_property_counts, ctx, redirect, render
 
 router = APIRouter()
 
+#: keys whose values are not merged, renamed or deleted on the property page: the NSFW verdict
+#: is set per photo (image page, gallery selection), see ``nsfw.verdict``
+MANAGED_KEYS = frozenset({"nsfw"})
+
 # Display order of property groups on the overview page (titles translated when shown).
 GROUPS: list[tuple[str, list[str]]] = [
     (
@@ -58,7 +62,7 @@ GROUPS: list[tuple[str, list[str]]] = [
             "tags",
         ],
     ),
-    (N_("Quality"), ["sharpness", "exposure", "aesthetic"]),
+    (N_("Quality"), ["sharpness", "exposure", "aesthetic", "nsfw"]),
     (N_("File"), ["year", "orientation", "capture_device", "has_gps"]),
 ]
 
@@ -124,6 +128,7 @@ def key_detail(request: Request, key: str, samples: int = 8) -> Response:
         aliases=aliases,
         spec=spec,
         f=f,
+        managed=key in MANAGED_KEYS,
     )
 
 
@@ -136,6 +141,8 @@ def merge(
 ) -> Response:
     c = ctx(request)
     url = back(request, f"/properties/{key}")
+    if key in MANAGED_KEYS:
+        return redirect(request, url, err=_("These values can't be merged or deleted here."))
     target = target.strip() or (values[0] if values else "")
     if not values or not target:
         return redirect(request, url, err=_("Select values and a target value."))
@@ -159,6 +166,8 @@ def merge(
 def delete(request: Request, key: str, values: list[str] = Form(default_factory=list)) -> Response:
     c = ctx(request)
     url = back(request, f"/properties/{key}")
+    if key in MANAGED_KEYS:
+        return redirect(request, url, err=_("These values can't be merged or deleted here."))
     if not values:
         return redirect(request, url, err=_("Select values to delete."))
     with c.db.write() as s:

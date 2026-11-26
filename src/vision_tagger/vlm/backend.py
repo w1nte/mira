@@ -264,7 +264,7 @@ class FakeBackend:
             elif base == "list":
                 out[f.name] = ["Trees", "a car"] if g > r else ["Buildings", "people"]
             elif base == "boolean":
-                out[f.name] = bright > 127
+                out[f.name] = False if f.name == "nsfw" else bright > 127
             elif base == "integer":
                 out[f.name] = int(bright) % 4
             else:

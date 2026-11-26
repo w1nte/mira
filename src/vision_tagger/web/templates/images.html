@@ -4,11 +4,13 @@
 {% block content %}
 {# "or" toggle of a facet section (Alpine state `alt`): its values are then added as alternatives #}
 {% macro or_toggle() %}<button type="button" class="or-toggle" :class="alt && 'on'" :aria-pressed="alt ? 'true' : 'false'" @click="alt = !alt" title="{{ _('Alternatives: add values with “or”, photos with any of them match. Ctrl+click (⌘+click) on a value does the same.') }}">{{ _('or') }}</button>{% endmacro %}
-<div x-data="{ filtersOpen: false }">
+{# selection (tick photos, then the action bar): `n` ticked; `selecting` shows every box #}
+<div x-data="{ filtersOpen: false, n: 0, selecting: false }" :class="selecting && 'selecting'" @change="n = vt.count($el)" data-select-scope>
 <div class="page-head">
   <div><h1>{{ _('Images') }}</h1><small>{% if f.is_empty %}{{ ngettext('%(num)d image', '%(num)d images', total) }}{% else %}{{ ngettext('%(num)d image matches the filter', '%(num)d images match the filter', total) }}{% endif %}</small></div>
   <div class="row">
     <button type="button" class="filters-btn" @click="filtersOpen = !filtersOpen" :aria-expanded="filtersOpen" aria-controls="filters">{{ _('Filters') }}</button>
+    {% if images %}<button type="button" class="btn" @click="selecting = !selecting; if (!selecting) { vt.toggleAll($root, false); n = 0 }" :aria-pressed="selecting ? 'true' : 'false'" title="{{ _('Tick photos to mark them as NSFW or not NSFW') }}">{{ icon('check', 'sm') }}{{ _('Select') }}</button>{% endif %}
     <a class="btn" href="/overview?{{ f.query_string() }}">{{ icon('chart', 'sm') }}{{ _('Timeline') }}</a>
     <a class="btn" href="/map{{ '?' ~ f.query_string() if not f.is_empty }}">{{ icon('map', 'sm') }}{{ _('Map') }}</a>
     <a class="btn" href="/overview/table?{{ f.query_string() }}">{{ _('Table') }}</a>
@@ -86,6 +88,18 @@
         <button class="primary block">{{ _('Apply') }}</button>
       </form>
     </section>
+
+    {% if nsfw %}
+    <section class="nsfw-filter">
+      <h3>{{ 'nsfw' | label }}</h3>
+      <div class="chips">
+        <a class="chip {{ 'active' if nsfw.hidden }}" href="/images{{ '?' ~ nsfw.hide_qs if nsfw.hide_qs }}" title="{{ _('Remove filter') if nsfw.hidden else _('Photos marked NSFW are left out') }}">{{ icon('eye-off') }}{{ _('Hide NSFW photos') }}</a>
+        <a class="chip {{ 'active' if nsfw.only }}" href="/images{{ '?' ~ nsfw.only_qs if nsfw.only_qs }}"{% if nsfw.only %} title="{{ _('Remove filter') }}"{% endif %}>{{ _('Only NSFW photos') }} <span class="n">{{ nsfw.count }}</span></a>
+      </div>
+      <label class="toggle nsfw-show"><input type="checkbox" data-nsfw-show{{ ' checked' if nsfw_shown() }}> {{ _('Show NSFW photos without asking') }}</label>
+      <small class="muted">{{ _('Only in this browser. Otherwise they are black until you click them.') }}</small>
+    </section>
+    {% endif %}
 
     {% set alt_people = alternatives.people %}
     <section{% if alt_people %} x-data="{ alt: {{ 'true' if f.who_count > 1 and f.persons_mode == 'any' else 'false' }} }"{% endif %}>
@@ -197,6 +211,13 @@
       <div class="thumbs" id="grid">
         {% include "partials/image_grid.html" %}
       </div>
+      <form id="gallery-actions" method="post" action="/images/nsfw" class="actionbar" x-show="n > 0" x-cloak>
+        <b x-text="vtT('%(n)s selected', { n: vtNum(n) })"></b>
+        <button name="value" value="yes" class="primary">{{ icon('eye-off', 'sm') }}{{ _('Mark as NSFW') }}</button>
+        <button name="value" value="no">{{ icon('eye', 'sm') }}{{ _('Not NSFW') }}</button>
+        <button name="value" value="auto" title="{{ _('Forget your choice: the NSFW check and the vision model decide again') }}">{{ _('Automatic') }}</button>
+        <button type="button" class="icon-btn" @click="vt.toggleAll($root, false); n = 0" aria-label="{{ _('Clear selection') }}" title="{{ _('Clear selection') }}">{{ icon('x') }}</button>
+      </form>
     {% else %}
       <div class="card empty">{{ _('No images match.') }}</div>
     {% endif %}

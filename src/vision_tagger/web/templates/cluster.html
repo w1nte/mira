@@ -5,7 +5,7 @@
   <div>
     <nav class="crumbs" aria-label="{{ _('Breadcrumb') }}"><a href="/faces">{{ _('Faces') }}</a>{% if cl.person %}<a href="/persons/{{ cl.person_id }}">{{ cl.person.name }}</a>{% endif %}</nav>
     <div class="title-row">
-      {% if cl.cover_face_id %}<img class="avatar lg" src="/media/face/{{ cl.cover_face_id }}" alt="">{% endif %}
+      {% if cl.cover_face_id %}{{ face_img(cl.cover_face_id, cls='avatar lg', lazy=false) }}{% endif %}
       <div>
         <h1>{{ cl.person.name if cl.person else _('Unnamed cluster') }} <small>#{{ cl.id }}</small></h1>
         <small>{{ _('%(faces)s in %(images)s', faces=ngettext('%(num)d face', '%(num)d faces', cl.face_count), images=ngettext('%(num)d image', '%(num)d images', n_images)) }}{% if cl.locked %} · <span class="nowrap">{{ icon('lock', 'sm') }} {{ _('kept on re-cluster') }}</span>{% endif %}</small>
@@ -36,7 +36,7 @@
       <h3 style="margin-top:20px">{{ _('Other clusters of %(name)s', name=cl.person.name) }}</h3>
       <div class="row">
         {% for o in other_clusters %}
-          <a href="/clusters/{{ o.id }}" title="#{{ o.id }} · {{ ngettext('%(num)d face', '%(num)d faces', o.face_count) }}"><img class="avatar" src="/media/face/{{ o.cover_face_id }}" alt="{{ _('Cluster #%(id)s', id=o.id) }}"></a>
+          <a href="/clusters/{{ o.id }}" title="#{{ o.id }} · {{ ngettext('%(num)d face', '%(num)d faces', o.face_count) }}">{{ face_img(o.cover_face_id, cls='avatar', alt=_('Cluster #%(id)s', id=o.id), lazy=false) }}</a>
         {% endfor %}
         <form method="post" action="/persons/{{ cl.person_id }}/merge-clusters"><button class="small">{{ _('Merge all') }}</button></form>
       </div>
@@ -48,7 +48,7 @@
     <div class="table-wrap"><table>
       {% for o, sim in similar %}
       <tr>
-        <td style="width:60px"><a href="/clusters/{{ o.id }}">{% if o.cover_face_id %}<img class="avatar" src="/media/face/{{ o.cover_face_id }}" alt="">{% endif %}</a></td>
+        <td style="width:60px"><a href="/clusters/{{ o.id }}">{% if o.cover_face_id %}{{ face_img(o.cover_face_id, cls='avatar', lazy=false) }}{% endif %}</a></td>
         <td><a class="ink" href="/clusters/{{ o.id }}">{{ o.person.name if o.person else _('Cluster #%(id)s', id=o.id) }}</a><br><small>{{ ngettext('%(num)d face', '%(num)d faces', o.face_count) }}</small></td>
         <td class="num"><span class="badge {{ 'ok' if sim > 0.5 else ('warn' if sim > 0.35 else '') }}">{{ '%.0f' | format(sim * 100) }}%</span></td>
         <td class="num">

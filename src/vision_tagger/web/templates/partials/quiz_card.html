@@ -18,7 +18,7 @@
   <div class="card quiz-feedback {{ 'good' if verdict.correct else 'bad' }}">
     <div class="burst" aria-hidden="true">{{ '🎉' if verdict.correct else '🙈' }}</div>
     <div class="quiz-body">
-      <img class="quiz-face small" src="/media/face/{{ face_id }}" alt="">
+      {{ face_img(face_id, cls='quiz-face small', lazy=false) }}
       <div class="quiz-main">
         <h2>{{ icon('check' if verdict.correct else 'x') }} {{ _('Correct!') if verdict.correct else _('Nope – that was %(name)s', name=verdict.answer.name) }}</h2>
         {% if age_line %}<p>{{ age_line }}</p>{% endif %}
@@ -41,7 +41,7 @@
           {% endif %}
         </div>
       </div>
-      {% if image_id %}<a class="thumb quiz-photo" href="/images/{{ image_id }}" title="{{ _('Open the photo') }}"><img src="/media/thumb/{{ image_id }}" alt=""></a>{% endif %}
+      {% if image_id %}<a class="thumb quiz-photo" href="/images/{{ image_id }}" title="{{ _('Open the photo') }}">{{ thumb(image_id, lazy=false) }}</a>{% endif %}
     </div>
   </div>
 
@@ -52,7 +52,7 @@
   {% elif question %}
   <div class="card quiz-question" x-data="{hint: false}">
     <div class="quiz-body">
-      <img class="quiz-face" src="/media/face/{{ question.face_id }}" alt="{{ _('Who is this?') }}">
+      {{ face_img(question.face_id, cls='quiz-face', alt=_('Who is this?'), lazy=false) }}
       <div class="quiz-main">
         <h2>{{ _("Who's that?") }}</h2>
         <form hx-post="/quiz/answer" hx-target="#quiz-card" class="options">
@@ -64,7 +64,7 @@
           {% endfor %}
         </form>
         <button type="button" class="link hint-toggle" @click="hint = !hint" :aria-expanded="hint">{{ icon('image', 'sm') }} <span x-show="!hint">{{ _('Show the whole photo (hint)') }}</span><span x-show="hint" x-cloak>{{ _('Hide the photo') }}</span></button>
-        <div x-show="hint" x-cloak class="hint-photo"><img src="/media/thumb/{{ question.image_id }}" alt=""></div>
+        <div x-show="hint" x-cloak class="hint-photo">{{ thumb(question.image_id, lazy=false) }}</div>
       </div>
     </div>
   </div>
@@ -78,7 +78,7 @@
   <div class="card quiz-question">
     <div class="quiz-body">
       <div class="quiz-strip">
-        {% for fid in question.face_ids %}<img src="/media/face/{{ fid }}" alt="" class="{{ 'first' if loop.first }}">{% endfor %}
+        {% for fid in question.face_ids %}{{ face_img(fid, cls='first' if loop.first else '', lazy=false) }}{% endfor %}
       </div>
       <div class="quiz-main">
         <h2>{{ _('Who is this?') }}</h2>
@@ -99,7 +99,7 @@
         </form>
         <datalist id="quiz-persons">{% for n in persons %}<option value="{{ n }}">{% endfor %}</datalist>
       </div>
-      {% if question.image_id %}<a class="thumb quiz-photo" href="/images/{{ question.image_id }}" title="{{ _('Open the photo') }}"><img src="/media/thumb/{{ question.image_id }}" alt=""></a>{% endif %}
+      {% if question.image_id %}<a class="thumb quiz-photo" href="/images/{{ question.image_id }}" title="{{ _('Open the photo') }}">{{ thumb(question.image_id, lazy=false) }}</a>{% endif %}
     </div>
   </div>
   {% endif %}

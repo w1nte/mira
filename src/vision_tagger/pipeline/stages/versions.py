@@ -26,6 +26,12 @@ def animals_stage_version(settings: Settings) -> str:
     return f"{models}-px{cfg.max_image_px}-s{cfg.min_score:g}-v1"
 
 
+def nsfw_stage_version(settings: Settings) -> str:
+    from ...nsfw.models import VIT_NSFW
+
+    return f"vit:{VIT_NSFW.sha256[:8]}-t{settings.nsfw.threshold:g}-v1"
+
+
 def vlm_stage_version(settings: Settings, model: str | None = None) -> str:
     from ...vlm.prompt import prompt_version
     from ...vlm.schema import Vocabulary

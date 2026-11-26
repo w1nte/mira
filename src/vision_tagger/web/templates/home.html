@@ -80,7 +80,7 @@
   <div class="memories">
     {% for m in d.memories %}
     <a class="memory" href="/images?from={{ m.year }}-{{ '%02d' % today.month }}-{{ '%02d' % today.day }}&to={{ m.year }}-{{ '%02d' % today.month }}-{{ '%02d' % today.day }}">
-      <img loading="lazy" src="/media/thumb/{{ m.image_ids[0] }}" alt="">
+      {{ thumb(safe_first(m.image_ids)[0]) }}
       <span class="memory-cap"><b>{{ ngettext('%(num)d year ago', '%(num)d years ago', m.years_ago) }}</b><small>{{ m.year }} · {{ ngettext('%(num)d photo', '%(num)d photos', m.image_ids | length) }}</small></span>
     </a>
     {% endfor %}
@@ -100,7 +100,7 @@
   {% if d.recent %}
   <div class="section-title"><h2>{{ _('Recently added') }}</h2><a class="btn ghost small" href="/images?sort=date_desc">{{ _('Show all') }}</a></div>
   <div class="thumbs recent">
-    {% for image_id in d.recent %}<a class="thumb" href="/images/{{ image_id }}"><img loading="lazy" src="/media/thumb/{{ image_id }}" alt=""></a>{% endfor %}
+    {% for image_id in d.recent %}<a class="thumb" href="/images/{{ image_id }}">{{ thumb(image_id) }}</a>{% endfor %}
   </div>
   {% endif %}
 {% endif %}

@@ -35,6 +35,7 @@ from vision_tagger.pipeline.runner import PipelineRunner
 from vision_tagger.pipeline.stages.ages import AgesStage
 from vision_tagger.pipeline.stages.embed import EmbedStage
 from vision_tagger.pipeline.stages.faces import FacesStage
+from vision_tagger.pipeline.stages.nsfw import NsfwStage
 from vision_tagger.pipeline.stages.vlm import VlmStage
 from vision_tagger.vlm.backend import FakeBackend
 from vision_tagger.vlm.schema import Vocabulary
@@ -42,7 +43,7 @@ from vision_tagger.web.app import create_app
 from vision_tagger.web.context import Job
 
 from .conftest import make_image
-from .helpers import FakeAgeEstimator
+from .helpers import FakeAgeEstimator, FakeNsfwClassifier
 from .test_faces_stage import FakeAnalyzer
 from .test_migrations import build_at, fill_first_version
 
@@ -56,6 +57,7 @@ def ok(resp):
 
 def analyse(ctx, settings) -> None:
     stages = {
+        "nsfw": NsfwStage(ctx.db, settings, classifier=FakeNsfwClassifier()),
         "faces": FacesStage(
             ctx.db, settings, analyzer=FakeAnalyzer(), age_estimator=FakeAgeEstimator()
         ),

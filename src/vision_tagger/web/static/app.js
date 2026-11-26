@@ -247,6 +247,101 @@ document.addEventListener(
   true
 );
 
+// NSFW covers (web/nsfw.py): an NSFW photo is a black tile (<img src="/static/nsfw.svg"
+// data-nsfw="<photo id>" data-nsfw-src="<its URL>">). The photo is only asked for when its cover
+// is clicked: the first click on a covered thumbnail reveals it (every picture of that photo on
+// the page) instead of opening it. Revealed photos stay revealed for the browser session.
+window.vtNsfw = (function () {
+  const KEY = "vt-nsfw-revealed";
+  const MAX = 5000;
+  function revealed() {
+    try { return new Set(JSON.parse(sessionStorage.getItem(KEY) || "[]").map(String)); } catch (e) { return new Set(); }
+  }
+  function remember(id) {
+    try {
+      const ids = revealed();
+      ids.delete(id);
+      ids.add(id);
+      sessionStorage.setItem(KEY, JSON.stringify(Array.from(ids).slice(-MAX)));
+    } catch (e) { /* private mode, storage full: revealed for this page only */ }
+  }
+  function show(img) {
+    const src = img.getAttribute("data-nsfw-src");
+    if (!src) return;
+    img.removeAttribute("data-nsfw-src");
+    img.removeAttribute("title");
+    img.alt = "";
+    img.src = src;
+  }
+  function reveal(id) {
+    remember(id);
+    document.querySelectorAll("img[data-nsfw-src]").forEach(function (img) {
+      if (img.dataset.nsfw === id) show(img);
+    });
+  }
+  function restore(root) {
+    const ids = revealed();
+    if (!ids.size || !root || !root.querySelectorAll) return;
+    root.querySelectorAll("img[data-nsfw-src]").forEach(function (img) {
+      if (ids.has(img.dataset.nsfw)) show(img);
+    });
+  }
+  // the covered picture a click is meant for: the cover itself, or the only picture of the
+  // link / label around it (a thumbnail's caption covers part of the picture)
+  function target(ev) {
+    if (!ev.target.closest) return null;
+    const img = ev.target.closest("img[data-nsfw-src]");
+    if (img) return img;
+    const host = ev.target.closest("a, label");
+    if (!host) return null;
+    const imgs = host.querySelectorAll("img");
+    return imgs.length === 1 && imgs[0].hasAttribute("data-nsfw-src") ? imgs[0] : null;
+  }
+  document.addEventListener("click", function (ev) {
+    if (ev.button !== 0 || ev.target.closest && ev.target.closest("input, button, .pickbox")) return;
+    const img = target(ev);
+    if (!img) return;
+    const scope = img.closest("[data-select-scope]");
+    if (scope && (scope.classList.contains("selecting") || scope.querySelector("input.pick:checked"))) return; // selects
+    ev.preventDefault();
+    ev.stopImmediatePropagation();
+    reveal(img.dataset.nsfw);
+  }, true);
+  // "Show NSFW photos without asking": a cookie of this browser (read by the server)
+  document.addEventListener("change", function (ev) {
+    const box = ev.target.closest && ev.target.closest("input[data-nsfw-show]");
+    if (!box) return;
+    document.cookie = box.checked ? "vt_nsfw=show; path=/; max-age=31536000; SameSite=Lax" : "vt_nsfw=; path=/; max-age=0; SameSite=Lax";
+    window.vtLoading.start();
+    window.location.reload();
+  });
+  restore(document);
+  document.addEventListener("htmx:load", function (ev) { restore(ev.detail && ev.detail.elt); });
+  // a covered picture made by a script (map popups): the same markup as web/nsfw.py writes
+  function cover(img, src, id) {
+    img.src = "/static/nsfw.svg";
+    img.dataset.nsfw = String(id);
+    img.setAttribute("data-nsfw-src", src);
+    img.alt = "NSFW";
+    img.title = vtT("Not safe for work – click to show");
+    if (revealed().has(String(id))) show(img);
+  }
+  return { reveal: reveal, restore: restore, cover: cover };
+})();
+
+// Gallery selection: while photos are ticked (or after "Select"), a click on a photo ticks it
+// instead of opening it.
+document.addEventListener("click", function (ev) {
+  if (ev.button !== 0 || !ev.target.closest) return;
+  const tile = ev.target.closest(".tile");
+  if (!tile || ev.target.closest("input")) return;
+  const scope = tile.closest("[data-select-scope]");
+  const box = tile.querySelector("input.pick");
+  if (!scope || !box || !(scope.classList.contains("selecting") || scope.querySelector("input.pick:checked"))) return;
+  ev.preventDefault();
+  box.click();
+});
+
 // Helpers used from Alpine components.
 window.vt = {
   count(scope) {

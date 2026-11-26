@@ -24,7 +24,7 @@
 <div class="compare-list">
   {% for p in pairs %}
   <div class="card compare-row {{ 'best' if best and p.age == best.age }}">
-    <a href="/images/{{ p.a.image_id }}" title="{{ _('%(name)s · open the photo', name=a.name) }}"><img loading="lazy" src="/media/aligned/{{ p.a.face_id }}?size=256" alt="{{ a.name }}"></a>
+    <a href="/images/{{ p.a.image_id }}" title="{{ _('%(name)s · open the photo', name=a.name) }}">{{ face_img(p.a.face_id, src='/media/aligned/' ~ p.a.face_id ~ '?size=256', alt=a.name) }}</a>
     <div class="compare-mid">
       <div class="compare-age">{{ p.age }}</div>
       <small class="muted">{{ p.a.label }}<br>{{ p.b.label }}</small>
@@ -32,7 +32,7 @@
       <small>{{ _('%(percent)s%% similar', percent='%.0f' | format([p.similarity, 0] | max * 100)) }}</small>
       {% if best and p.age == best.age %}<span class="badge accent" style="margin-top:4px">{{ _('most alike') }}</span>{% endif %}
     </div>
-    <a href="/images/{{ p.b.image_id }}" title="{{ _('%(name)s · open the photo', name=b.name) }}"><img loading="lazy" src="/media/aligned/{{ p.b.face_id }}?size=256" alt="{{ b.name }}"></a>
+    <a href="/images/{{ p.b.image_id }}" title="{{ _('%(name)s · open the photo', name=b.name) }}">{{ face_img(p.b.face_id, src='/media/aligned/' ~ p.b.face_id ~ '?size=256', alt=b.name) }}</a>
   </div>
   {% endfor %}
 </div>

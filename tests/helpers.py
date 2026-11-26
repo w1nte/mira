@@ -96,6 +96,31 @@ class FakeAgeEstimator:
         return [self.default] * len(boxes)
 
 
+# --------------------------------------------------------------------------- NSFW
+class FakeNsfwClassifier:
+    """Stands in for ``NsfwClassifier`` (no model download, no onnxruntime).
+
+    ``score(image)`` gives the NSFW score of a photo; by default every photo is safe.
+    """
+
+    def __init__(self, score=None):
+        self.providers = ["CPUExecutionProvider"]
+        self.using_gpu = False
+        self.loaded = False
+        self.calls = 0
+        self.scorer = score or (lambda image: 0.01)
+
+    def load(self):
+        self.loaded = True
+
+    def unload(self):
+        self.loaded = False
+
+    def score(self, image):
+        self.calls += 1
+        return self.scorer(image)
+
+
 # --------------------------------------------------------------------------- animals
 ANIMAL_DIM = 384
 

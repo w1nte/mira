@@ -5,7 +5,7 @@
   <div>
     <nav class="crumbs" aria-label="{{ _('Breadcrumb') }}"><a href="/animals">{{ _('Animals') }}</a></nav>
     <div class="title-row">
-      {% if pet.cover_animal_id %}<img class="avatar lg" src="/media/animal/{{ pet.cover_animal_id }}" alt="">{% endif %}
+      {% if pet.cover_animal_id %}{{ animal_img(pet.cover_animal_id, cls='avatar lg', lazy=false) }}{% endif %}
       <div>
         <h1>{{ pet_label(pet) }}{% if pet.name %} <small>#{{ pet.id }}</small>{% endif %}</h1>
         <small>{{ ngettext('%(num)d photo', '%(num)d photos', n_photos) }} · {{ pet.species | pretty('animal') }}{% if pet.locked %} · <span class="nowrap">{{ icon('lock', 'sm') }} {{ _('kept when grouping again') }}</span>{% endif %}</small>
@@ -40,7 +40,7 @@
     <div class="table-wrap"><table>
       {% for o, sim in similar %}
       <tr>
-        <td style="width:60px"><a href="/pets/{{ o.id }}">{% if o.cover_animal_id %}<img class="avatar" src="/media/animal/{{ o.cover_animal_id }}" alt="">{% endif %}</a></td>
+        <td style="width:60px"><a href="/pets/{{ o.id }}">{% if o.cover_animal_id %}{{ animal_img(o.cover_animal_id, cls='avatar', lazy=false) }}{% endif %}</a></td>
         <td><a class="ink" href="/pets/{{ o.id }}">{{ pet_label(o) }}</a><br><small>{{ ngettext('%(num)d photo', '%(num)d photos', photos.get(o.id, 0)) }}</small></td>
         <td class="num"><span class="badge {{ 'ok' if sim > 0.7 else ('warn' if sim > 0.5 else '') }}">{{ '%.0f' | format(sim * 100) }}%</span></td>
         <td class="num">

@@ -137,6 +137,12 @@ fields:
     description: Overall aesthetic quality as a photo.
     values: [low, medium, high]
 
+  # ---------------------------------------------------------------- safety
+  nsfw:
+    type: boolean
+    description: >-
+      Whether the image is not safe for work: nudity, sexual content, graphic violence or gore.
+
   # ---------------------------------------------------------------- inferred / assumed
   is_work_related:
     type: inferred_boolean

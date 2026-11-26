@@ -16,9 +16,9 @@
   {% for c in cards %}
   <a class="gen-card" href="/generations/{{ c.person.id }}">
     <div class="gen-pair">
-      <img loading="lazy" src="/media/aligned/{{ c.first.face_id }}?size=256" alt="">
+      {{ face_img(c.first.face_id, src='/media/aligned/' ~ c.first.face_id ~ '?size=256') }}
       <span class="arrow">{{ icon('arrow-right', 'sm') }}</span>
-      <img loading="lazy" src="/media/aligned/{{ c.last.face_id }}?size=256" alt="">
+      {{ face_img(c.last.face_id, src='/media/aligned/' ~ c.last.face_id ~ '?size=256') }}
     </div>
     <div class="meta">
       <b>{{ c.person.name }}</b>

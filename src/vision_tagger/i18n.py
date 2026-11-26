@@ -228,6 +228,7 @@ JS_KEYS = [
     "Photos in this folder: %(n)s",
     "File no longer available",
     "%(n)s selected",
+    "Not safe for work – click to show",
 ]
 
 
