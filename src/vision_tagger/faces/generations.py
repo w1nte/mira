@@ -13,7 +13,7 @@ from __future__ import annotations
 import hashlib
 import io
 import logging
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -25,8 +25,9 @@ from sqlalchemy.orm import Session
 
 from ..db.models import Face, Person
 from ..db.models import Image as ImageRow
+from ..db.util import chunked
 from ..imaging import load_image
-from .ages import analyse_person
+from .ages import FaceAge, analyse_person
 from .align import align_face, frontalness
 from .vectors import from_blob, normalize
 
@@ -58,13 +59,83 @@ class Frame:
         return f"{age}{year}"
 
 
+def _size_score(det_score: float, face_px: int) -> float:
+    return float(det_score or 0) * min(1.0, (face_px or 0) / 160.0)
+
+
 def _quality(det_score: float, face_px: int, landmarks) -> float:
     frontal = frontalness(np.asarray(landmarks, dtype=np.float32)) if landmarks else 0.5
-    return float(det_score or 0) * min(1.0, (face_px or 0) / 160.0) * (0.25 + 0.75 * frontal)
+    return _size_score(det_score, face_px) * (0.25 + 0.75 * frontal)
+
+
+_ROUND = 8  # faces per age whose landmarks are decoded per round (see _best_frames)
+
+
+@dataclass
+class _Candidate:
+    bound: float  # the quality if the face were perfectly frontal (an upper bound)
+    face_id: int
+    info: FaceAge
+    age: int
+    estimated: bool
+    det_score: float
+    face_px: int
+
+
+def _best_frames(s: Session, by_age: dict[int, list[_Candidate]], person: str) -> list[Frame]:
+    """Per age the face with the highest quality (ties: the lowest face id), youngest first.
+
+    Quality needs the landmarks (JSON) and the frontalness of each face, but never exceeds the
+    candidate's ``bound``. So faces are evaluated from the highest bound down, a few per age
+    and round (one query for all ages), until no remaining face can reach the best quality:
+    the result is exact, but only a fraction of the faces is decoded.
+    """
+    for candidates in by_age.values():
+        candidates.sort(key=lambda c: (-c.bound, c.face_id))
+    best: dict[int, Frame] = {}
+    pos = dict.fromkeys(by_age, 0)
+    while True:
+        batch: list[_Candidate] = []
+        for age, candidates in by_age.items():
+            current = best.get(age)
+            take = [
+                c
+                for c in candidates[pos[age] : pos[age] + _ROUND]
+                if current is None or c.bound >= current.quality
+            ]
+            pos[age] += _ROUND
+            batch += take
+        if not batch:
+            break
+        landmarks: dict[int, object] = {}
+        for part in chunked(sorted(c.face_id for c in batch)):
+            landmarks.update(
+                s.execute(select(Face.id, Face.landmarks).where(Face.id.in_(part))).all()
+            )
+        for c in batch:
+            quality = _quality(c.det_score, c.face_px, landmarks.get(c.face_id)) * (
+                0.7 if c.estimated else 1.0
+            )
+            current = best.get(c.age)
+            if (
+                current is None
+                or quality > current.quality
+                or (quality == current.quality and c.face_id < current.face_id)
+            ):
+                best[c.age] = Frame(
+                    face_id=c.face_id,
+                    image_id=c.info.image_id,
+                    age=c.age,
+                    age_estimated=c.estimated,
+                    recorded_at=c.info.recorded_at,
+                    quality=quality,
+                    person=person,
+                )
+    return [best[a] for a in sorted(best)]
 
 
 def growup_frames(s: Session, person_id: int, max_frames: int = MAX_FRAMES) -> list[Frame]:
-    """One good face per age, youngest first."""
+    """One good face per age (the best :func:`_quality`), youngest first."""
     person = s.get(Person, person_id)
     if person is None:
         return []
@@ -72,35 +143,26 @@ def growup_frames(s: Session, person_id: int, max_frames: int = MAX_FRAMES) -> l
     by_face = {f.face_id: f for f in ages.faces}
     if not by_face:
         return []
-    rows = s.execute(
-        select(Face.id, Face.det_score, Face.face_px, Face.landmarks, Face.clusterable).where(
-            Face.id.in_(list(by_face))
-        )
-    ).all()
-    best: dict[int, Frame] = {}
-    for face_id, det, px, landmarks, clusterable in rows:
-        info = by_face[face_id]
-        if not clusterable:
-            continue  # tiny or blurry detections make ugly frames
-        if info.calendar_age is not None and not info.suspicious:
-            age, estimated = info.calendar_age, False
-        elif info.face_age is not None:
-            age, estimated = info.face_age, True
-        else:
-            continue
-        frame = Frame(
-            face_id=face_id,
-            image_id=info.image_id,
-            age=max(0, age),
-            age_estimated=estimated,
-            recorded_at=info.recorded_at,
-            quality=_quality(det, px, landmarks) * (0.7 if estimated else 1.0),
-            person=person.name,
-        )
-        current = best.get(frame.age)
-        if current is None or frame.quality > current.quality:
-            best[frame.age] = frame
-    frames = [best[a] for a in sorted(best)]
+    by_age: dict[int, list[_Candidate]] = {}
+    for part in chunked(sorted(by_face)):
+        for face_id, det, px, clusterable in s.execute(
+            select(Face.id, Face.det_score, Face.face_px, Face.clusterable).where(Face.id.in_(part))
+        ):
+            info = by_face[face_id]
+            if not clusterable:
+                continue  # tiny or blurry detections make ugly frames
+            if info.calendar_age is not None and not info.suspicious:
+                age, estimated = info.calendar_age, False
+            elif info.face_age is not None:
+                age, estimated = info.face_age, True
+            else:
+                continue
+            bound = _size_score(det, px) * (0.7 if estimated else 1.0)
+            age = max(0, age)
+            by_age.setdefault(age, []).append(
+                _Candidate(bound, face_id, info, age, estimated, det, px)
+            )
+    frames = _best_frames(s, by_age, person.name)
     if len(frames) > max_frames:  # keep the span, thin out evenly
         idx = np.linspace(0, len(frames) - 1, max_frames).round().astype(int)
         frames = [frames[i] for i in sorted(set(idx.tolist()))]
@@ -254,22 +316,45 @@ class AgePair:
     similarity: float  # cosine similarity of the two face embeddings
 
 
-def _embeddings(s: Session, face_ids: list[int]) -> dict[int, np.ndarray]:
-    return {
-        fid: normalize(from_blob(emb))
-        for fid, emb in s.execute(select(Face.id, Face.embedding).where(Face.id.in_(face_ids)))
-    }
+def _embeddings(
+    s: Session, face_ids: Iterable[int], known: dict[int, np.ndarray] | None = None
+) -> dict[int, np.ndarray]:
+    """Normalised embeddings by face id; ids already in ``known`` are not loaded again."""
+    out = known if known is not None else {}
+    missing = sorted({f for f in face_ids if f not in out})
+    for part in chunked(missing):
+        for fid, emb in s.execute(select(Face.id, Face.embedding).where(Face.id.in_(part))):
+            out[fid] = normalize(from_blob(emb))
+    return out
+
+
+#: ``person_id -> growup frames``; lets callers pass cached frames (see ``web.context``)
+FramesOf = Callable[[int], list[Frame]]
 
 
 def compare_at_same_age(
-    s: Session, person_a: int, person_b: int, tolerance: int = 1
+    s: Session,
+    person_a: int,
+    person_b: int,
+    tolerance: int = 1,
+    frames_of: FramesOf | None = None,
 ) -> list[AgePair]:
     """Faces of two persons at (about) the same age, with their similarity."""
-    return pair_frames(s, growup_frames(s, person_a), growup_frames(s, person_b), tolerance)
+    frames = frames_of or (lambda pid: growup_frames(s, pid))
+    return pair_frames(s, frames(person_a), frames(person_b), tolerance)
 
 
-def pair_frames(s: Session, fa: list[Frame], fb: list[Frame], tolerance: int = 1) -> list[AgePair]:
-    """Match frames of two persons by age; exact matches win, every face is used once."""
+def pair_frames(
+    s: Session,
+    fa: list[Frame],
+    fb: list[Frame],
+    tolerance: int = 1,
+    embeddings: dict[int, np.ndarray] | None = None,
+) -> list[AgePair]:
+    """Match frames of two persons by age; exact matches win, every face is used once.
+
+    ``embeddings``: a cache shared between calls (filled as needed).
+    """
     candidates = [
         (abs(a.age - b.age), -(a.quality + b.quality), a, b)
         for a in fa
@@ -278,13 +363,15 @@ def pair_frames(s: Session, fa: list[Frame], fb: list[Frame], tolerance: int = 1
     ]
     if not candidates:
         return []
-    emb = _embeddings(s, [f.face_id for f in fa + fb])
+    emb = _embeddings(s, [f.face_id for f in fa + fb], embeddings)
     used_a: set[int] = set()
     used_b: set[int] = set()
     pairs: list[AgePair] = []
     for _diff, _q, a, b in sorted(candidates, key=lambda c: (c[0], c[1], c[2].age)):
         if a.face_id in used_a or b.face_id in used_b:
             continue
+        if a.face_id not in emb or b.face_id not in emb:
+            continue  # deleted meanwhile (frames may come from a cache)
         used_a.add(a.face_id)
         used_b.add(b.face_id)
         pairs.append(AgePair(a.age, a, b, float(emb[a.face_id] @ emb[b.face_id])))
@@ -300,12 +387,14 @@ class Resemblance:
     same_age_pairs: int
 
 
-def resemblance(s: Session, person_id: int) -> list[Resemblance]:
+def resemblance(s: Session, person_id: int, frames_of: FramesOf | None = None) -> list[Resemblance]:
     """Who in the family looks most like this person?
 
     Uses faces at matching ages when both persons have them (fair for children vs. parents),
-    otherwise the overall face centroids.
+    otherwise the overall face centroids. Needs the frames of every person: pass
+    ``frames_of`` to reuse cached ones.
     """
+    frames = frames_of or (lambda pid: growup_frames(s, pid))
     me = s.get(Person, person_id)
     if me is None:
         return []
@@ -315,12 +404,13 @@ def resemblance(s: Session, person_id: int) -> list[Resemblance]:
     if person_id not in pids:
         return []
     mine = mat[pids.index(person_id)]
-    my_frames = growup_frames(s, person_id)
+    my_frames = frames(person_id)
+    embeddings: dict[int, np.ndarray] = {}  # my faces are loaded once, not once per person
     out: list[Resemblance] = []
     for pid, name, vec in zip(pids, names, mat, strict=True):
         if pid == person_id:
             continue
-        pairs = pair_frames(s, my_frames, growup_frames(s, pid))
+        pairs = pair_frames(s, my_frames, frames(pid), embeddings=embeddings)
         sim = float(np.mean([p.similarity for p in pairs])) if pairs else float(mine @ vec)
         out.append(Resemblance(pid, name, sim, len(pairs)))
     out.sort(key=lambda r: -r.similarity)

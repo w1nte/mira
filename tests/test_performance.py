@@ -2,22 +2,29 @@
 
 from __future__ import annotations
 
+import random
 import sqlite3
 from datetime import datetime
 
+import numpy as np
 from sqlalchemy import func, select
 
 from vision_tagger.db.cache import VersionedCache
 from vision_tagger.db.models import (
+    Cluster,
+    Face,
     Image,
     ImageProperty,
+    Person,
 )
 from vision_tagger.db.session import Database
+from vision_tagger.faces import generations as G
+from vision_tagger.faces.ages import analyse_person
 from vision_tagger.query import ImageFilter, property_counts, property_keys
 from vision_tagger.vlm.backend import FakeBackend
 from vision_tagger.vlm.schema import Vocabulary
 
-from .helpers import add_image
+from .helpers import add_face, add_image, noisy, person_centers
 
 
 # --------------------------------------------------------------------------- versioned cache
@@ -86,6 +93,82 @@ def test_property_keys_and_counts_match_plain_queries(db):
         s.get(Image, 6).missing = False
     with db.session() as s:
         assert property_counts(s) == naive(s, missing_ok=True)  # no missing image left
+
+
+# --------------------------------------------------------------------------- generations
+def _old_growup_frames(s, person_id, max_frames=G.MAX_FRAMES):
+    """The straightforward version: quality of every face, best per age (reference)."""
+    person = s.get(Person, person_id)
+    ages = analyse_person(s, person)
+    by_face = {f.face_id: f for f in ages.faces}
+    best: dict[int, G.Frame] = {}
+    for face_id, det, px, landmarks, clusterable in s.execute(
+        select(Face.id, Face.det_score, Face.face_px, Face.landmarks, Face.clusterable)
+        .where(Face.id.in_(list(by_face)))
+        .order_by(Face.id)
+    ):
+        info = by_face[face_id]
+        if not clusterable:
+            continue
+        if info.calendar_age is not None and not info.suspicious:
+            age, estimated = info.calendar_age, False
+        elif info.face_age is not None:
+            age, estimated = info.face_age, True
+        else:
+            continue
+        frame = G.Frame(
+            face_id,
+            info.image_id,
+            max(0, age),
+            estimated,
+            info.recorded_at,
+            G._quality(det, px, landmarks) * (0.7 if estimated else 1.0),
+            person.name,
+        )
+        current = best.get(frame.age)
+        if current is None or frame.quality > current.quality:
+            best[frame.age] = frame
+    frames = [best[a] for a in sorted(best)]
+    if len(frames) > max_frames:
+        idx = np.linspace(0, len(frames) - 1, max_frames).round().astype(int)
+        frames = [frames[i] for i in sorted(set(idx.tolist()))]
+    return frames
+
+
+def test_growup_frames_pick_exactly_the_best_face_per_age(db):
+    rng = np.random.default_rng(3)
+    pyrng = random.Random(3)
+    center = person_centers(1)[0]
+    with db.write() as s:
+        cluster = Cluster(locked=True, person=Person(name="Kim", birth_year=1990))
+        s.add(cluster)
+        s.flush()
+        for n in range(400):
+            img = add_image(s, n, recorded_at=datetime(1990 + n % 45, 1 + n % 12, 1))
+            yaw = pyrng.uniform(-0.5, 0.5)
+            landmarks = (
+                None
+                if n % 17 == 0
+                else [[30, 40], [70, 40], [50 + 40 * yaw, 60], [35, 80], [65, 80]]
+            )
+            add_face(
+                s,
+                img.id,
+                noisy(center, rng),
+                cluster_id=cluster.id,
+                age=n % 45 + pyrng.choice([-9, 0, 0, 1]),
+                # many exact ties in det_score / size
+                det_score=pyrng.choice([0.7, 0.8, 0.9, 0.9]),
+                face_px=pyrng.choice([60, 120, 200, 200]),
+                landmarks=landmarks,
+                clusterable=n % 13 != 0,
+            )
+        pid = cluster.person_id
+    with db.session() as s:
+        expected = _old_growup_frames(s, pid)
+        assert expected
+        assert G.growup_frames(s, pid) == expected
+        assert G.growup_frames(s, pid, max_frames=100) == _old_growup_frames(s, pid, 100)
 
 
 # --------------------------------------------------------------------------- gallery / search

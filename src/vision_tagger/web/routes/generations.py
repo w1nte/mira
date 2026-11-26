@@ -10,6 +10,7 @@ from sqlalchemy import select
 
 from ...db.models import Person
 from ...faces.generations import (
+    FramesOf,
     aligned_portrait,
     compare_at_same_age,
     growup_animation,
@@ -26,13 +27,23 @@ def _cache(request: Request):
     return ctx(request).settings.cache_dir / "aligned"
 
 
+def _frames_of(request: Request) -> FramesOf:
+    """Grow-up frames per person, cached until the database changes.
+
+    The overview and the look-alike ranking need the frames of *every* person.
+    """
+    cache = ctx(request).cache
+    return lambda pid: cache.get(("growup_frames", pid), lambda s: growup_frames(s, pid))
+
+
 @router.get("/generations")
 def overview(request: Request) -> Response:
     c = ctx(request)
+    frames_of = _frames_of(request)
     cards = []
     with c.db.session() as s:
         for person in s.scalars(select(Person).order_by(Person.name)):
-            frames = growup_frames(s, person.id)
+            frames = frames_of(person.id)
             if not frames:
                 continue
             ages = [f.age for f in frames if f.age is not None]
@@ -56,8 +67,9 @@ def person_view(request: Request, person_id: int, compare: int | None = None) ->
         person = s.get(Person, person_id)
         if person is None:
             return redirect(request, "/generations", err="Person not found.")
-        frames = growup_frames(s, person_id)
-        looks_like = resemblance(s, person_id)[:5]
+        frames_of = _frames_of(request)
+        frames = frames_of(person_id)
+        looks_like = resemblance(s, person_id, frames_of)[:5]
         others = [p for p in s.scalars(select(Person).order_by(Person.name)) if p.id != person_id]
     payload = [
         {"src": f"/media/aligned/{f.face_id}", "label": f.label, "image": f.image_id}
@@ -87,7 +99,7 @@ def compare_view(request: Request, person_id: int, other_id: int) -> Response:
         a, b = s.get(Person, person_id), s.get(Person, other_id)
         if a is None or b is None:
             return redirect(request, "/generations", err="Person not found.")
-        pairs = compare_at_same_age(s, person_id, other_id)
+        pairs = compare_at_same_age(s, person_id, other_id, frames_of=_frames_of(request))
         others = [p for p in s.scalars(select(Person).order_by(Person.name)) if p.id != person_id]
     best = max(pairs, key=lambda p: p.similarity) if pairs else None
     if best is not None and best.similarity < MEANINGFUL_SIMILARITY:
