@@ -91,6 +91,10 @@ start and control it from a local web UI. Originals are never moved or modified.
     6"), with how similar the faces are.
   - **Looks most like…**: who in the family resembles a person most, compared at matching ages
     where possible.
+- **Places and map.** Photos with a GPS position are grouped into places, each with a name to
+  filter by ("Berlin, Germany"; with the optional OpenStreetMap lookup "Prenzlauer Berg,
+  Berlin"). The map shows a heatmap of all geotagged photos, honouring the gallery filters, with
+  the places on top. See [Places and map](#places-and-map).
 - **Web UI.**
   - Face cluster overview with inline naming, merge, split, move, auto-split and remove.
   - Persons, including merging persons.
@@ -199,6 +203,7 @@ uv run vision-tagger growup "Anna" anna-growing-up.webp  # grow-up animation
 | **Quiz** | "Who's that?": name the largest unnamed clusters with one click (suggestions from references and look-alikes), or play the face quiz with score, streaks and "you vs. the AI"; wrong answers can fix misfiled faces. Keys 1–4 and Enter. |
 | **Generations** | Every person with photos from different ages. Per person: a grow-up timelapse (play, scrub, download as animated WebP), "looks most like…" ranking, and a same-age comparison with any other person. |
 | **Search** | Search box in the top bar on every page (`/` focuses it). Shows how the request was understood (persons, required / preferred / excluded properties, dates, keywords), ranks the results and, with **Deep search**, gives the LLM's reason for each. "Open in filter builder" turns the strict part into a gallery filter; results can be exported. |
+| **Map** | Heatmap of the geotagged photos of the current filter (e.g. one person's photos), the places with their photo counts (click one for thumbnails, *Show photos* and renaming), **Photos in this area** (the map bounds as a gallery filter) and *Find places*. The view is kept in the URL (`#zoom/lat/lon`). |
 | **Overview** | Timeline (year → month → day), breakdowns by folder, camera, file type, date reliability, work/personal, orientation, and a sortable metadata table. |
 
 The sidebar groups the pages into *Library*, *People* and *Organize* and shows what the pipeline
@@ -207,6 +212,62 @@ is doing right now. On small screens it folds away behind the menu button.
 **Light and dark mode.** The switch at the bottom of the sidebar picks the theme: *System*
 (follows your operating system), *Light* or *Dark*. The choice is kept in a cookie (`vt_theme`),
 so every page is rendered in the right theme from the start, without flashing.
+
+## Places and map
+
+Phones and many cameras store where a photo was taken (EXIF GPS). vision-tagger keeps that
+position in `images.lat` / `images.lon` and groups the photos into **places**:
+
+- Photos closer than `geo.cluster_km` (750 m) to each other form a place (DBSCAN with
+  haversine distance). Groups wider than `geo.max_place_km` (5 km) are split, and neighbouring
+  groups that get the same name are joined, so a walk through a town is one place.
+- Every photo gets the place as `images.place_id` and as the properties **place**, **city** and
+  **country**. They work everywhere other properties work: gallery facets and filters, the
+  properties page, XMP export and the search index. `/images?place=12` shows one place,
+  `/images?bbox=minlon,minlat,maxlon,maxlat` an area of the map.
+- Places are found at the end of every scan, with **Find places** on the map page, or with
+  `vision-tagger places` (`--refresh` groups everything again and renames every place you did
+  not name).
+- **Your names are kept.** Rename a place in its popup on the map: the name, the place and its
+  photos survive regrouping (like locked face clusters), and new photos nearby join it. An empty
+  name returns to the automatic one. Values you merge or rename on the properties page stay
+  merged too.
+
+**Offline names (default).** A place is named after the town it lies in: the nearest one, where
+big towns reach farther, so a photo in a suburb gets the city's name and a photo in a village
+the village's name. The towns come from [GeoNames](https://www.geonames.org/) ("cities with a
+population of at least 1000", 130,000 towns, CC BY 4.0). The first time places are named,
+vision-tagger downloads a copy of that data (3 MB) from the npm registry (the
+[`all-the-cities`](https://www.npmjs.com/package/all-the-cities) package, version 3.1.0, MIT),
+checks its size and SHA-256 and converts it into `data/models/geo`. GeoNames' own server
+publishes a new dump every day, which can't be checked against a fixed checksum. To use an
+official dump instead, download `cities500.zip` (or `cities1000.zip`, ...) from
+<https://download.geonames.org/export/dump/> and set `geo.cities_file`; with
+`geo.download_gazetteer = false` nothing is downloaded at all (places are then named by their
+coordinates, e.g. `52.516° N, 13.378° E`).
+
+**OpenStreetMap names (optional).** With `geo.nominatim = true`, places are named from
+OpenStreetMap through [Nominatim](https://nominatim.org/) reverse geocoding, down to the district
+("Prenzlauer Berg, Berlin"), in `geo.language`. This **sends the position of every new place to
+the Nominatim server** (rounded to about 100 m), so it is off by default. vision-tagger follows
+the [usage policy](https://operations.osmfoundation.org/policies/nominatim/) of the public
+server: at most one request per second, an identifying User-Agent without personal data, every
+answer cached in the database (`geocode_cache`) and never asked again, and no further requests
+in a run after the server refuses one. A self-hosted server can be set with `geo.nominatim_url`.
+
+**Map tiles.** The map background comes from `geo.tile_url`, by default the OpenStreetMap tile
+server (`https://tile.openstreetmap.org/{z}/{x}/{y}.png`, with its required attribution). The
+heatmap data stays on your machine, but **every tile request tells the tile server which area
+you are looking at.** Point `geo.tile_url` (and `geo.tile_attribution`) at your own tile
+server, or set it to `""`: the map then shows a coarse offline world outline (Natural Earth,
+public domain) instead. The same outline appears when the tiles can't be loaded.
+
+**Licenses.** Map data and OpenStreetMap names: © OpenStreetMap contributors, available under
+the [Open Database License](https://www.openstreetmap.org/copyright). Offline place names:
+GeoNames, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). World outline: Natural
+Earth, public domain. Vendored libraries (in `web/static/vendor`, with their license files):
+[Leaflet](https://leafletjs.com/) 1.9.4 and [Leaflet.heat](https://github.com/Leaflet/Leaflet.heat)
+0.2.0 (both BSD 2-Clause).
 
 ## Using the results in other applications
 
@@ -297,6 +358,8 @@ Important knobs:
 - `vlm.model`, `vlm.concurrency`: set `concurrency` to match `OLLAMA_NUM_PARALLEL` for
   parallel requests.
 - `derived.work_path_keywords`: folder or file-name hints for work images.
+- `geo.cluster_km`, `geo.nominatim`, `geo.tile_url`: places and the map (see
+  [Places and map](#places-and-map)).
 
 ## Data
 
@@ -311,10 +374,11 @@ Everything lives in `data/`:
   - HEIC photos use their embedded preview when it is large enough (a few milliseconds instead
     of decoding 12 megapixels).
   - Turn this off with `index.thumbnails = false`.
+- `models/geo`: the converted GeoNames towns for place names (downloaded once).
 
 Main tables: `images` (+ `metadata` JSON), `duplicate_files`, `stage_status`, `runs`, `faces`,
 `clusters`, `persons`, `person_references`, `image_properties`, `property_aliases`,
-`vlm_results`.
+`vlm_results`, `places`, `geocode_cache`.
 
 ## Development
 
