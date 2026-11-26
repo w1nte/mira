@@ -20,6 +20,7 @@ from ..indexer import ensure_stage_rows
 from ..pipeline import control
 from ..pipeline.runner import BackgroundRunner, PipelineRunner
 from ..pipeline.stages import STAGE_NAMES, default_stage_factory, stage_versions
+from ..updates import UpdateChecker
 from ..vlm.models import OllamaStatus, ollama_status
 
 log = logging.getLogger(__name__)
@@ -123,6 +124,9 @@ class AppContext:
         self._versions: tuple[float, dict[str, str]] = (-1.0, {})
         self._search: Any = None
         self._search_lock = threading.Lock()
+        #: the update check (``updates.check``): in the background, about once a day
+        self.updates = UpdateChecker(settings)
+        self.updates.start()
 
     def _resume_paused(self) -> None:
         """Continue the pipeline that was paused when the app last closed."""
@@ -205,6 +209,7 @@ class AppContext:
             return []
 
     def close(self) -> None:
+        self.updates.stop()
         self.downloads.request_stop()  # Ollama keeps the layers; the next download continues
         if self.ingest is not None:
             self.ingest.close()

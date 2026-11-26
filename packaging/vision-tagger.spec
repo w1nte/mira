@@ -11,6 +11,7 @@
 # ruff: noqa
 import re
 import sys
+from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as dist_version
 from pathlib import Path
 
@@ -36,6 +37,12 @@ datas += collect_data_files("vision_tagger")  # templates, static files, vocabul
 # Alembic reads the migration scripts from disk, so they ship as files too
 datas += collect_data_files("vision_tagger.migrations", include_py_files=True)
 datas += copy_metadata("vision-tagger")  # __version__
+# the update check tells the cpu and gpu builds apart by the installed ONNX Runtime
+for onnx_dist in ("onnxruntime-gpu", "onnxruntime"):
+    try:
+        datas += copy_metadata(onnx_dist)
+    except PackageNotFoundError:
+        pass
 datas += collect_data_files("insightface", includes=["**/*.pkl", "**/*.npy", "**/*.txt"])
 
 hiddenimports = []

@@ -6,7 +6,11 @@ Mira shows them on its "What's new" page, and each GitHub release uses its secti
 ## Unreleased
 
 ### New
+- The installed app tells you when a new Mira is out (Home, sidebar and Pipeline page), with a link to the download; `updates.check = "off"` turns this off.
 - A "What's new" page lists the changes of every version; it is linked in the sidebar and next to the version on the Pipeline page.
+
+### Changed
+- The Windows gpu setup is a single `.exe` again; it no longer needs a `.bin` file next to it.
 
 ## 1.3 - 2026-11-26
 

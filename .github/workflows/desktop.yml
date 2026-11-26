@@ -3,7 +3,7 @@ name: Desktop apps
 # Builds the desktop app with PyInstaller (packaging/vision-tagger.spec), checks it with its
 # self-test and packs it:
 #
-#   Windows  Mira-setup-<version>-<flavor>.exe (gpu: plus .bin files)   Inno Setup
+#   Windows  Mira-setup-<version>-<flavor>.exe (one file)                Inno Setup
 #   Linux    Mira-<version>-linux-x86_64-<flavor>.tar.gz (or .partNN)    with install.sh
 #   macOS    Mira-<version>-macos-arm64.pkg (Apple silicon, cpu)          pkgbuild/productbuild
 #
@@ -157,8 +157,38 @@ jobs:
           if (-not (Test-Path $iscc)) {
             choco install innosetup -y --no-progress
           }
-          & $iscc /DAppVersion=$env:VERSION /DFlavor=$env:FLAVOR packaging\windows\installer.iss
+          $common = @("/DAppVersion=$env:VERSION", "/DFlavor=$env:FLAVOR")
+          if ($env:TAG) { $common += "/DReleaseTag=$env:TAG" }
+          # one setup file; the gpu flavour compresses to about 285 MB
+          $out = & $iscc @common packaging\windows\installer.iss 2>&1
+          $code = $LASTEXITCODE
+          $out | Write-Output
+          if ($code -ne 0 -and ($out -join "`n") -match 'Disk spanning must be enabled') {
+            # over Inno's single-file limit: split into .bin files. A first pass counts them, so
+            # the setup knows which ones to download when it is started without them.
+            $probe = Join-Path $env:RUNNER_TEMP "slices"
+            & $iscc @common /DSpanning "/O$probe" packaging\windows\installer.iss
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $slices = (Get-ChildItem $probe -Filter "*.bin").Count
+            Write-Output "split into $slices .bin file(s)"
+            & $iscc @common /DSpanning "/DSlices=$slices" packaging\windows\installer.iss
+            $code = $LASTEXITCODE
+          }
+          if ($code -ne 0) { exit $code }
+
+      - name: Split setup variant compiles (check only)
+        # the code that downloads missing .bin files only runs in a split setup, which today's
+        # builds don't need; compile it here so it can't break unnoticed
+        if: runner.os == 'Windows' && matrix.flavor == 'cpu' && github.event_name != 'release'
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          $check = Join-Path $env:RUNNER_TEMP "split-check"
+          & $iscc /DAppVersion=$env:VERSION /DFlavor=cpu /DSpanning /DSlices=1 /DReleaseTag=check "/O$check" packaging\windows\installer.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-ChildItem $check | Format-Table Name, Length
 
       - name: Archive with install.sh (Linux)
         if: runner.os == 'Linux'

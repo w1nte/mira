@@ -92,6 +92,7 @@ def pipeline_page(request: Request) -> Response:
         roots=_roots(request),
         settings=c.settings,
         providers=c.onnx_providers(),
+        up=c.updates.status(),
         **models_context(c),
         **status_context(request),
     )
@@ -148,6 +149,7 @@ def health_partial(request: Request) -> Response:
         "partials/health.html",
         providers=c.onnx_providers(),
         settings=c.settings,
+        up=c.updates.status(),
         **models_context(c, fresh=True),
     )
 

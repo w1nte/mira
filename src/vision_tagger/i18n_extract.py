@@ -124,7 +124,10 @@ NOTES: dict[str, str] = {
     "finishing": "Phase of an AI model download, after the model name.",
     "Downloading AI models": "Name of the job that downloads the AI models (shown while it runs).",
     "Search queries": "What an AI model is used for: understanding what the user searches for.",
-    "What's new": "Sidebar link and page title: what changed in each version of the app.",
+    "What\u2019s new": (  # with the typographic apostrophe, like the UI text
+        "Sidebar link and page title: what changed in each version of the app; also the "
+        "link to the release notes of a newer version."
+    ),
     "Version": "The app's version number (Environment card on the Pipeline page).",
     "Unreleased": "What's new page: heading of the changes that are in no released version yet.",
     "changelog|New": "What's new page: heading above the new features of a version.",

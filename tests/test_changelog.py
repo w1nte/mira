@@ -337,7 +337,7 @@ def _section(page: str, anchor: str) -> str:
 def test_the_page_lists_the_releases_and_marks_the_current_version(client, monkeypatch):
     monkeypatch.setattr(changelog_route, "__version__", "1.2.1")
     page = client.get("/changelog").text
-    assert "<title>What's new · Mira</title>" in page
+    assert "<title>What\u2019s new · Mira</title>" in page
     assert "You are using Mira 1.2.1." in page
     for release in changelog.releases()[1:]:
         assert f'id="v{release.version}"' in page
@@ -393,13 +393,13 @@ def test_the_page_chrome_is_translated_and_the_entries_stay_english(client, monk
     monkeypatch.setattr(changelog_route, "__version__", "1.2")
     page = client.get("/changelog", headers=DE).text
     assert '<html lang="de"' in page
-    assert "<h1>Neuigkeiten</h1>" in page and "Du verwendest Mira 1.2." in page
+    assert "<h1>Was ist neu</h1>" in page and "Du verwendest Mira 1.2." in page
     current = _section(page, "v1.2")
     assert "Aktuelle Version" in current
     assert ">Neu</h3>" in current and ">Geändert</h3>" in current and ">Behoben</h3>" in current
     assert '<ul class="changelog-items" lang="en">' in current
     assert "Database page: export the library database" in current  # English, as written
-    assert ">New</h3>" not in page and "What's new" not in page
+    assert ">New</h3>" not in page and "What\u2019s new" not in page
 
 
 def test_the_page_is_linked_from_the_sidebar_and_the_environment_card(client):
@@ -408,8 +408,10 @@ def test_the_page_is_linked_from_the_sidebar_and_the_environment_card(client):
         assert re.search(r'<a class="foot-link[^"]*" href="/changelog"', page), url
     assert 'aria-current="page">' in client.get("/changelog").text.split('href="/changelog"')[1]
     health = client.get("/partials/health").text
-    assert """<a href="/changelog">What's new</a>""" in health
-    assert "Neuigkeiten" in client.get("/partials/health", headers=DE).text
+    # one Version row (shared with the update check): the version links to the page
+    assert health.count("<dt>Version</dt>") == 1
+    assert re.search(r'<a href="/changelog" title="What\u2019s new">Mira [^<]+</a>', health)
+    assert 'title="Was ist neu"' in client.get("/partials/health", headers=DE).text
 
 
 # --------------------------------------------------------------------------- release workflow

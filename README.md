@@ -138,9 +138,10 @@ runs opens another window. Install **Ollama** as well (step 4 below) for propert
 Mira then downloads the models it needs by itself.
 
 **Windows.** Run the setup program; it installs into `%LOCALAPPDATA%\Programs\Mira` and adds
-Mira to the Start menu. The gpu setup comes as a `.exe` plus `.bin` files: keep them in one
-folder and start the `.exe`. The setup is not signed, so SmartScreen may warn about an
-"unrecognized app": click **More info → Run anyway**.
+Mira to the Start menu. Each setup is a single `.exe`; only the gpu setup of 1.2.1 also needs
+its `.bin` file in the same folder. (Should a future setup ever be split into `.bin` files, it
+downloads missing ones from the release by itself.) The setup is not signed, so SmartScreen may
+warn about an "unrecognized app": click **More info → Run anyway**.
 
 **macOS.** Open the `.pkg`; it installs `Mira.app` into the Applications folder (macOS asks for
 an administrator password). The package is not signed by Apple, so macOS first refuses to open
@@ -165,7 +166,8 @@ bigger than GitHub allows for one file, so it comes in parts: download all
 tar -xz`. On Linux, Mira's window is Chrome, Chromium or Edge in app mode (the app does not
 bundle GTK or Qt for a native window); without one of them it opens in your default browser.
 
-**Updating.** Run the new setup program, the new `.pkg`, or the new `install.sh`. They detect the
+**Updating.** Mira tells you when a new version is out (see [Updates](#updates)). Run the new
+setup program, the new `.pkg`, or the new `install.sh`. They detect the
 installed version and update it: a running Mira is asked to quit first (a running pipeline is
 paused and continues on the next start), the program files are replaced, and your library is
 kept and its database migrated to the new version (a backup copy is made first,
@@ -225,6 +227,36 @@ packs it. See [Releases](#releases).
 
 For CPU-only machines (or Linux/macOS) use `uv sync --extra cpu` and set
 `providers = ["CPUExecutionProvider"]` in `config.toml`.
+
+## Updates
+
+The installed desktop app looks for a new release once a day and tells you when there is one:
+
+- **What is checked.** About 15 seconds after the start, and then every 24 hours while it runs,
+  Mira asks GitHub for the newest release of this repository
+  (`https://api.github.com/repos/w1nte/vision-tagger/releases/latest`) and compares its version
+  with the one you run. The answer is kept in `update-check.json` in the data folder, so
+  starting the app often doesn't ask GitHub more than about once a day.
+- **What you see.** When a newer version exists, the sidebar shows *Update available: Mira
+  1.3*, and Home shows a card with *What's new* (the release page), *Download* (the installer
+  for your computer, when it is a single file; otherwise the release page has it) and *Not now*,
+  which hides the card for that version (the sidebar keeps the notice). The Environment card on
+  the Pipeline page shows your version, the last check and its result, and a *Check now*
+  button.
+- **Privacy.** One request to `api.github.com`, without an account, cookies or anything about
+  your photos or library. GitHub sees what any web request shows: your IP address, the time and
+  a client name with the version (`Mira-update-check/1.2`).
+- **Nothing is installed by itself.** Mira never downloads or installs anything on its own. To
+  update, run the new setup (see [Updating](#desktop-app-windows-macos-linux)): your library is
+  kept and its database migrated, with a backup copy first.
+- **Turning it off.** Set `check = "off"` in the `[updates]` section of `config.toml` (or the
+  environment variable `VT_UPDATES__CHECK=off`). The default, `"auto"`, checks only in the
+  installed app; `"on"` also checks from a source checkout, on a server or in Docker (there the
+  card links to the release page, since the server's system is not the viewer's).
+  `prereleases = true` also tells you about release candidates and betas.
+- **Command line.** `vision-tagger update-check` (`vision-tagger-cli update-check` in the
+  installed app) prints your version, the newest one and the download link. Exit code 0: up to
+  date, 1: an update is available, 2: unknown (no connection, GitHub's rate limit).
 
 ## Upgrading
 
@@ -685,6 +717,8 @@ Important knobs:
 - `pipeline.stages`: leave it out to run every stage, including stages that later versions
   add. List stages only to turn some off. The Pipeline page shows the stages your config turns
   off, so you can still run them once.
+- `updates.check` (`"auto"`, `"on"`, `"off"`) and `updates.prereleases`: looking for new
+  releases (see [Updates](#updates)).
 
 **Updates.** `config.toml` carries a `config_version`. When a new version of Mira changes what
 a setting means or where it lives, it updates older files itself when it loads them, keeping
@@ -717,6 +751,7 @@ Everything lives in `data/`:
 - `vision_tagger.sqlite3.bak-*`: backups made before a migration or an import. Delete old ones
   when you no longer need them.
 - `secret.key`: the key that signs login cookies. Delete it to log everyone out.
+- `update-check.json`: the last update check and the version you dismissed on Home.
 
 Main tables: `images` (+ `metadata` JSON), `duplicate_files`, `stage_status`, `runs`, `faces`,
 `clusters`, `persons`, `person_references`, `image_properties`, `property_aliases`,

@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}{{ _("What's new") }}{% endblock %}
+{% block title %}{{ _('What’s new') }}{% endblock %}
 {% block content %}
 {# the entries are English (resources/CHANGELOG.md); only the page around them is translated #}
 {% set titles = {'New': pgettext('changelog', 'New'), 'Changed': pgettext('changelog', 'Changed'), 'Fixed': pgettext('changelog', 'Fixed')} %}
 <div class="page-head">
   <div>
-    <h1>{{ _("What's new") }}</h1>
+    <h1>{{ _('What’s new') }}</h1>
     <p class="muted">{{ _('You are using %(app)s %(version)s.', app=app_name, version=version) }}</p>
   </div>
 </div>

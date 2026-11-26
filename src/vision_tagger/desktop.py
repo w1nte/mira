@@ -223,6 +223,10 @@ class WebviewWindow:
     def show(self, url: str, idle_seconds: IdleClock) -> None:
         with contextlib.suppress(Exception):  # exports and animations are downloads
             self.webview.settings["ALLOW_DOWNLOADS"] = True
+        with contextlib.suppress(Exception):
+            # target="_blank" links (the release page, Ollama's download page) open in the
+            # user's browser, not in this window (pywebview's default, made explicit)
+            self.webview.settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] = True
         self.storage.mkdir(parents=True, exist_ok=True)
         if self.closing.is_set():
             return
@@ -819,6 +823,7 @@ def self_test() -> int:
         settings = Settings(
             paths={"data_dir": root / "data", "image_roots": [photos]},
             vlm={"backend": "fake"},
+            updates={"check": "off"},  # a build check asks nobody on the internet
         )
         settings.ensure_dirs()
         from .db.session import Database
