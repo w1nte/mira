@@ -10,10 +10,23 @@ from sqlalchemy import func, select
 
 from ...db.models import Cluster, Face, Image, Person, PersonReference
 from ...faces import clustering as C
-from ...faces.ages import analyse_person, estimate_birth_year, person_faces
+from ...faces.ages import (
+    BirthYearEstimate,
+    analyse_person,
+    estimate_birth_year,
+    person_faces,
+)
 from ..common import back, ctx, ints, redirect, render
 
 router = APIRouter()
+
+
+def _birth_estimate(c, person_id: int) -> BirthYearEstimate | None:
+    """Estimated birth year from all faces of a person; cached until the database changes."""
+    return c.cache.get(
+        ("birth_estimate", person_id),
+        lambda s: estimate_birth_year(person_faces(s, person_id)),
+    )
 
 
 @router.get("/persons")
@@ -21,45 +34,42 @@ def persons_overview(request: Request) -> Response:
     c = ctx(request)
     today = date.today()
     with c.db.session() as s:
+        persons = list(s.scalars(select(Person).order_by(Person.name)))
+        # one query per table instead of three per person
+        clusters: dict[int, list[Cluster]] = {}
+        for cl in s.scalars(
+            select(Cluster)
+            .where(Cluster.person_id.is_not(None))
+            .order_by(Cluster.person_id, Cluster.face_count.desc(), Cluster.id)
+        ):
+            clusters.setdefault(cl.person_id, []).append(cl)  # type: ignore[arg-type]
+        n_images = dict(
+            s.execute(
+                select(Cluster.person_id, func.count(func.distinct(Face.image_id)))
+                .join(Cluster, Cluster.id == Face.cluster_id)
+                .where(Cluster.person_id.is_not(None), Face.ignored.is_(False))
+                .group_by(Cluster.person_id)
+            ).all()
+        )
+        n_refs = dict(
+            s.execute(
+                select(PersonReference.person_id, func.count()).group_by(PersonReference.person_id)
+            ).all()
+        )
         rows = []
-        for person in s.scalars(select(Person).order_by(Person.name)):
-            clusters = list(
-                s.scalars(
-                    select(Cluster)
-                    .where(Cluster.person_id == person.id)
-                    .order_by(Cluster.face_count.desc())
-                )
-            )
-            n_images = (
-                s.scalar(
-                    select(func.count(func.distinct(Face.image_id)))
-                    .join(Cluster, Cluster.id == Face.cluster_id)
-                    .where(Cluster.person_id == person.id, Face.ignored.is_(False))
-                )
-                or 0
-            )
-            n_refs = (
-                s.scalar(
-                    select(func.count())
-                    .select_from(PersonReference)
-                    .where(PersonReference.person_id == person.id)
-                )
-                or 0
-            )
-            cover = clusters[0].cover_face_id if clusters else None
-            estimate = (
-                None if person.birth_year else estimate_birth_year(person_faces(s, person.id))
-            )
+        for person in persons:
+            own = clusters.get(person.id, [])
+            estimate = None if person.birth_year else _birth_estimate(c, person.id)
             rows.append(
                 {
                     "person": person,
                     "age": (today.year - person.birth_year) if person.birth_year else None,
                     "estimate": estimate if estimate and estimate.confidence != "low" else None,
-                    "clusters": clusters,
-                    "faces": sum(cl.face_count for cl in clusters),
-                    "images": n_images,
-                    "refs": n_refs,
-                    "cover": cover,
+                    "clusters": own,
+                    "faces": sum(cl.face_count for cl in own),
+                    "images": n_images.get(person.id, 0),
+                    "refs": n_refs.get(person.id, 0),
+                    "cover": own[0].cover_face_id if own else None,
                 }
             )
     return render(request, "persons.html", rows=rows)

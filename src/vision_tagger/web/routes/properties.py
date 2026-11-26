@@ -8,9 +8,9 @@ from sqlalchemy import select
 
 from ...db.models import ImageProperty
 from ...properties import delete_value, list_aliases, merge_values, remove_alias
-from ...query import ImageFilter, property_counts
+from ...query import ImageFilter
 from ...vlm.schema import Vocabulary
-from ..common import back, ctx, redirect, render
+from ..common import back, cached_property_counts, ctx, redirect, render
 
 router = APIRouter()
 
@@ -78,7 +78,7 @@ def overview(request: Request, limit: int = 24) -> Response:
     c = ctx(request)
     f = ImageFilter.from_params(request.query_params)
     with c.db.session() as s:
-        counts = property_counts(s, f)
+        counts = cached_property_counts(c, s, f)
     return render(
         request,
         "properties.html",
@@ -94,7 +94,7 @@ def key_detail(request: Request, key: str, samples: int = 8) -> Response:
     c = ctx(request)
     f = ImageFilter.from_params(request.query_params)
     with c.db.session() as s:
-        values = property_counts(s, f, key=key).get(key, [])
+        values = cached_property_counts(c, s, f, key=key).get(key, [])
         sample_ids: dict[str, list[int]] = {}
         for value, _n in values[:200]:
             stmt = (
@@ -167,5 +167,5 @@ def value_options(request: Request, key: str = "") -> Response:
     values: list[tuple[str, int]] = []
     if key:
         with c.db.session() as s:
-            values = property_counts(s, None, key=key).get(key, [])[:500]
+            values = cached_property_counts(c, s, None, key=key).get(key, [])[:500]
     return render(request, "partials/value_options.html", values=values)

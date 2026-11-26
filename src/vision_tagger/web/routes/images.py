@@ -17,10 +17,9 @@ from ...query import (
     neighbours,
     page_images,
     person_counts,
-    property_counts,
     property_keys,
 )
-from ..common import back, ctx, redirect, render
+from ..common import back, cached_property_counts, ctx, redirect, render
 from ..context import Job
 
 router = APIRouter()
@@ -64,7 +63,7 @@ def gallery(request: Request) -> Response:
     with c.db.session() as s:
         total = count_images(s, f)
         images = page_images(s, f, 0, size)
-        facets_all = property_counts(s, f, keys=FACET_KEYS)
+        facets_all = cached_property_counts(c, s, f, keys=FACET_KEYS)
         facets = {k: facets_all[k][:12] for k in FACET_KEYS if k in facets_all}
         people = person_counts(s, f)[:30]
         all_persons = list(s.scalars(select(Person).order_by(Person.name)))

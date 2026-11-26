@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import logging
+import string
 import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
@@ -21,10 +22,11 @@ from dataclasses import dataclass, field
 from sqlalchemy import and_, func, or_, select
 
 from ..config import Settings
+from ..db.cache import VersionedCache
 from ..db.models import Cluster, Face, Image, ImageEmbedding, ImageProperty, VlmResult
 from ..db.session import Database
-from ..db.util import like_escape
-from ..query import all_image_ids
+from ..db.util import chunked, like_escape
+from ..query import all_image_ids, property_counts
 from ..vlm.backend import VlmBackend, VlmError, make_backend
 from ..vlm.schema import Vocabulary, default_synonyms_path
 from .index import EmbeddingMatrix
@@ -65,6 +67,14 @@ class SearchResult:
     seconds: float = 0.0
 
 
+_ASCII_LOWER = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
+
+
+def _ascii_lower(text: str) -> str:
+    """Lower-case like SQLite's ``lower()`` / ``LIKE`` (ASCII letters only)."""
+    return text.translate(_ASCII_LOWER)
+
+
 class SearchEngine:
     def __init__(self, db: Database, settings: Settings, backend: VlmBackend | None = None) -> None:
         self.db = db
@@ -72,6 +82,7 @@ class SearchEngine:
         self.vocab = Vocabulary.load(settings.vlm.vocabulary_file)
         self.backend = backend or make_backend(settings.vlm, self.vocab)
         self.index = EmbeddingMatrix(db)
+        self.cache = VersionedCache(db)
         self._cache: OrderedDict[tuple[str, str], Interpretation] = OrderedDict()
         self._ctx: tuple[float, SearchContext] | None = None
 
@@ -84,7 +95,10 @@ class SearchEngine:
         if self._ctx is None or time.monotonic() - self._ctx[0] > max_age:
             synonyms = self.settings.vlm.synonyms_file or default_synonyms_path()
             with self.db.session() as s:
-                self._ctx = (time.monotonic(), build_context(s, self.vocab, synonyms))
+                self._ctx = (
+                    time.monotonic(),
+                    build_context(s, self.vocab, synonyms, counts=self.value_counts()),
+                )
         return self._ctx[1]
 
     def interpret(self, query: str) -> Interpretation:
@@ -168,15 +182,41 @@ class SearchEngine:
                             ),
                         )
                     ),
-                    select(ImageProperty.image_id).where(
-                        ImageProperty.value.ilike(like, escape="\\")
-                    ),
                     select(Image.id).where(Image.rel_path.ilike(like, escape="\\")),
                 ):
                     found.update(i for i in s.scalars(stmt) if i in candidates)
+                found.update(i for i in self._images_with_value(s, word) if i in candidates)
                 for i in found:
                     hits[i] = hits.get(i, 0) + 1
         return {i: n / len(keywords) for i, n in hits.items()}
+
+    def value_counts(self) -> dict[str, list[tuple[str, int]]]:
+        """``property_counts`` of the whole library, cached until the database changes."""
+        return self.cache.get("property_counts", property_counts)
+
+    def _images_with_value(self, s, word: str) -> set[int]:
+        """Images with a property value containing ``word`` (like ``value ILIKE '%word%'``).
+
+        The distinct values (a few thousand) are matched here instead of scanning millions of
+        property rows; then only the matching values are looked up in the index.
+        """
+        needle = _ascii_lower(word)
+        matches: dict[str, list[str]] = {}
+        for key, values in self.value_counts().items():
+            hits = [v for v, _n in values if needle in _ascii_lower(v)]
+            if hits:
+                matches[key] = hits
+        out: set[int] = set()
+        for key, values in matches.items():
+            for part in chunked(values):
+                out.update(
+                    s.scalars(
+                        select(ImageProperty.image_id).where(
+                            ImageProperty.key == key, ImageProperty.value.in_(part)
+                        )
+                    )
+                )
+        return out
 
     def _semantic_scores(
         self, it: Interpretation, candidates: list[int], notes: list[str]

@@ -13,9 +13,8 @@ from ...query import (
     conditions,
     date_histogram,
     folder_children,
-    property_counts,
 )
-from ..common import ctx, render
+from ..common import cached_property_counts, ctx, render
 
 router = APIRouter()
 
@@ -63,7 +62,7 @@ def overview(request: Request, level: str | None = None) -> Response:
         exts = column_counts(s, f, Image.ext, limit=20)
         date_sources = column_counts(s, f, Image.date_source, limit=10)
         size_total = s.scalar(select(func.sum(Image.size_bytes)).where(*conditions(f))) or 0
-        props = property_counts(s, f, keys=BREAKDOWN_KEYS)
+        props = cached_property_counts(c, s, f, keys=BREAKDOWN_KEYS)
         with_faces = (
             s.scalar(
                 select(func.count(func.distinct(Face.image_id))).where(

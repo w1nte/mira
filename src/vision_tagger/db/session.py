@@ -8,12 +8,15 @@ when a deferred read transaction tries to upgrade to a write.
 
 from __future__ import annotations
 
+import sqlite3
+import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 from sqlalchemy import Engine, create_engine, event
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 from .models import Control
@@ -38,6 +41,8 @@ class Database:
         self._immediate_engine = self.engine.execution_options(sqlite_immediate=True)
         self._read = sessionmaker(bind=self.engine, expire_on_commit=False)
         self._write = sessionmaker(bind=self._immediate_engine, expire_on_commit=False)
+        self._watch: sqlite3.Connection | None = None
+        self._watch_lock = threading.Lock()
 
     def create_all(self) -> None:
         """Create a new database or verify the schema of an existing one.
@@ -78,7 +83,28 @@ class Database:
         finally:
             s.close()
 
+    def data_version(self) -> int | None:
+        """A number that changes whenever any connection or process commits a change.
+
+        Uses ``PRAGMA data_version`` on a dedicated connection that never writes itself (the
+        pragma ignores the connection's own commits). ``None`` if unavailable (in-memory or
+        non-SQLite databases): callers must then not cache.
+        """
+        database = make_url(self.url).database
+        if self.engine.dialect.name != "sqlite" or not database or database == ":memory:":
+            return None
+        with self._watch_lock:
+            if self._watch is None:
+                self._watch = sqlite3.connect(
+                    database, timeout=60, isolation_level=None, check_same_thread=False
+                )
+            return int(self._watch.execute("PRAGMA data_version").fetchone()[0])
+
     def dispose(self) -> None:
+        with self._watch_lock:
+            if self._watch is not None:
+                self._watch.close()
+                self._watch = None
         self.engine.dispose()
 
 

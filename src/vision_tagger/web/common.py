@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -10,7 +11,9 @@ from urllib.parse import urlencode, urlsplit
 from fastapi import Request
 from fastapi.responses import RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
+from sqlalchemy.orm import Session
 
+from ..query import ImageFilter, property_counts
 from .context import AppContext
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -53,6 +56,28 @@ def back(request: Request, default: str = "/") -> str:
         return default
     query = "&".join(p for p in parts.query.split("&") if p and not p.startswith(("msg=", "err=")))
     return parts.path + (f"?{query}" if query else "")
+
+
+def cached_property_counts(
+    c: AppContext,
+    s: Session,
+    f: ImageFilter | None,
+    *,
+    key: str | None = None,
+    keys: Iterable[str] | None = None,
+) -> dict[str, list[tuple[str, int]]]:
+    """:func:`query.property_counts`; for the whole library cached until the next commit.
+
+    Counting millions of property rows is the slowest part of the property, gallery and
+    overview pages. The result is shared: do not modify it.
+    """
+    if f is not None and not f.is_empty:
+        return property_counts(s, f, key=key, keys=keys)
+    wanted = tuple(keys) if keys is not None else None
+    return c.cache.get(
+        ("property_counts", key, wanted),
+        lambda s2: property_counts(s2, None, key=key, keys=wanted),
+    )
 
 
 def ints(values: list[str] | None) -> list[int]:
