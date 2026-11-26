@@ -193,6 +193,8 @@ JOB_TITLES = {
     "references": N_("References"),
     "export": N_("Export"),
     "sidecars": N_("Sidecars"),
+    "import": N_("Database import"),
+    "locations": N_("Location check"),
 }
 
 

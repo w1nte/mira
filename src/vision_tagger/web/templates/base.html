@@ -46,6 +46,7 @@
       <div class="navgroup">{{ _('System') }}</div>
       {{ navlink('/import', 'upload', _('Import'), path.startswith('/import')) }}
       {{ navlink('/pipeline', 'gauge', _('Pipeline'), path.startswith('/pipeline')) }}
+      {{ navlink('/database', 'database', _('Database'), path.startswith('/database')) }}
     </nav>
     <div class="sidebar-foot">
       <div id="activity" hx-get="/partials/activity" hx-trigger="load, every 5s [document.visibilityState === 'visible']"></div>

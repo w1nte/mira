@@ -69,6 +69,8 @@ def test_pages_render(client):
         "/overview?from=2021&to=2021",
         "/overview?from=2021-01&to=2021-01",
         "/overview/table?order=size&desc=0",
+        "/database",
+        "/database/missing",
         "/partials/value-options?key=objects",
         "/api/status",
         "/api/clusters/search?q=",
@@ -459,6 +461,8 @@ def test_no_inline_event_handlers_and_icons_exist(client):
         "/quiz",
         "/quiz?mode=name",
         "/generations",
+        "/database",
+        "/database/missing",
         f"/generations/{pid}",
         f"/generations/{pid}/compare/{pid + 1}",
     ]

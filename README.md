@@ -182,6 +182,43 @@ uv run vision-tagger migrate          # upgrades the database schema; writes a b
 - Databases from the very first version are upgraded too.
 - `vision-tagger migrate --check` only reports whether an upgrade is needed.
 
+## Moving a library to another computer (export / import)
+
+Everything Mira knows about your photos (index, faces, clusters, names, properties, collections,
+settings) is in one database file. The **Database** page (sidebar, *System*) exports and imports
+it; the photos themselves are not part of it, copy them separately.
+
+- **Export** downloads `vision-tagger-YYYY-MM-DD.sqlite3`: a consistent snapshot, made while
+  Mira keeps running, also while the pipeline works (`VACUUM INTO`, so it is compact and one
+  self-contained file).
+- **Import** replaces the current library with such a file.
+  - It is refused while the pipeline runs or is paused, or while another job runs: stop the
+    pipeline first.
+  - The file is checked first (SQLite, not damaged, a Mira database, a schema this version
+    knows). Files from older versions are migrated, files from newer versions are refused.
+  - A backup of the current database stays next to it: `vision_tagger.sqlite3.bak-import-<time>`.
+  - Thumbnails and face crops are cleared (image ids now mean other photos) and made again on
+    demand. The pipeline state of the other computer (a run that was active there) is reset.
+  - The library folders become the imported folders that exist on this computer plus the ones
+    configured before; remote mode keeps its upload folder.
+- **Missing files.** After an import Mira checks where every photo is, not only those below
+  the current folders. Photos that are not where the other computer had them are flagged as
+  missing and listed under **Database → Missing files** (with their faces and names), with a
+  **Check again** button. The gallery, search and statistics leave missing photos out, as they
+  do for files that vanished; their faces stay in *Faces* and *Persons*.
+- **Re-linking.** Add or scan the folder where the photos are now (in remote mode: upload them
+  again). A new file whose perceptual hash matches a missing photo (same pHash, dHash within
+  `index.dhash_max_distance`) is linked to that photo instead of being added again: same id,
+  all faces, names, properties and manual dates kept. The scan result counts these as *moved*.
+
+From the command line (close the web UI first for an import):
+
+```powershell
+uv run vision-tagger db export D:\Backup                 # writes vision-tagger-<date>.sqlite3
+uv run vision-tagger db import D:\Backup\vision-tagger-2026-11-26.sqlite3
+uv run vision-tagger index "E:\Photos"                  # re-links the photos found there
+```
+
 ## Quick start
 
 ```powershell
@@ -220,6 +257,7 @@ uv run vision-tagger export "D:\Export\Anna at the beach" --filter "p=1&t=locati
 uv run vision-tagger sidecars                    # XMP next to the originals (digiKam, Immich, …)
 uv run vision-tagger search "Anna am Strand im Sommer, ohne Arbeitsfotos" --deep
 uv run vision-tagger growup "Anna" anna-growing-up.webp  # grow-up animation
+uv run vision-tagger db export | import FILE     # whole database (see "Moving a library")
 ```
 
 `Ctrl+C` during `run` stops gracefully. Running `run` again continues where it stopped.
@@ -232,6 +270,7 @@ uv run vision-tagger growup "Anna" anna-growing-up.webp  # grow-up animation
 | **Collections** | A collection is a saved filter: it stays up to date as new photos arrive. Suggested ones (people, places, events, this year) appear by themselves; **Save as collection** in *Images* adds your own. Rename, reorder and delete them here. |
 | **Import** | Local mode: your photo folders, with a folder browser, and **Scan now**. Remote mode: upload photos, folders or ZIP files (see [Remote mode](#remote-mode-and-docker)). Shows what is being indexed and analysed right now. |
 | **Pipeline** | The technical part: start/pause/resume/stop runs (stages, batch size, limit), per-stage progress, ETA, errors (retry/skip), outdated results, jobs, recent runs, environment check (CUDA, Ollama, model). |
+| **Database** | Export the whole library database (backup, another computer) and import one (see [Moving a library](#moving-a-library-to-another-computer-export--import)). **Missing files** lists photos that are not where Mira last saw them; scanning their new folder re-links them. |
 | **Faces** | All clusters with cover face and size. Name inline (autocomplete), accept reference suggestions, select several to **merge**. Views for unclustered and ignored faces. |
 | **Cluster** | All faces of a cluster. Select faces to **split** into a new cluster, **assign to a person**, **move** to another cluster, or **remove**. **Auto-split** mixed clusters. Similar clusters with one-click merge. |
 | **Persons** | Named persons. Rename (renaming to an existing name merges), merge, delete, manage references. Images with *all* / *any* of the selected persons. Per person: birth year (set or estimated), age today, a "through the years" face timeline, and photos with a doubtful date with suggested fixes. |
@@ -437,6 +476,9 @@ Everything lives in `data/`:
   - Turn this off with `index.thumbnails = false`.
 
 - `uploads/`: unfinished uploads (remote mode); finished ones are moved into the upload folder.
+- `transfer/`: temporary files of database exports and imports (removed afterwards).
+- `vision_tagger.sqlite3.bak-*`: backups made before a migration or an import. Delete old ones
+  when you no longer need them.
 - `secret.key`: the key that signs login cookies. Delete it to log everyone out.
 
 Main tables: `images` (+ `metadata` JSON), `duplicate_files`, `stage_status`, `runs`, `faces`,

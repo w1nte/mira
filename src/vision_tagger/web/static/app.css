@@ -951,3 +951,38 @@ label.check { display: flex; gap: 9px; align-items: center; }
 .login-card { width: min(380px, 100%); padding: 28px; }
 .login-card .brand { padding: 0 0 18px; }
 .login-card h1 { font-size: 1.4rem; margin-bottom: 16px; }
+
+/* ---------- database: export, import, missing files */
+.db-stats { margin-bottom: 20px; }
+.db-card h2, .db-locations h2 { display: flex; align-items: center; gap: 8px; }
+.db-card h2 .i, .db-locations h2 .i { color: var(--text-3); }
+.db-card .row { gap: 12px; }
+.db-warning {
+  display: flex; gap: 10px; align-items: flex-start; margin: 0 0 12px; padding: 10px 14px;
+  border-radius: var(--radius-sm); background: var(--warn-soft); color: var(--warn);
+  border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
+}
+.db-warning p { margin: 0; }
+.db-warning > .i { margin-top: 3px; flex: none; }
+.db-import input[type="file"] { max-width: 100%; color: var(--text-2); }
+.db-import input[type="file"]::file-selector-button {
+  height: 32px; margin-right: 10px; padding: 0 12px; cursor: pointer;
+  border: 1px solid var(--line-2); border-radius: var(--radius-sm);
+  background: var(--panel); color: var(--text); font: inherit; font-weight: 500;
+}
+.db-import input[type="file"]::file-selector-button:hover { background: var(--hover); }
+.db-locations { margin-top: 20px; }
+.db-locations p { margin: 10px 0 0; }
+.db-locations p .i { vertical-align: -3px; }
+.db-job { margin-top: 12px; }
+.db-job .progress { margin-top: 8px; }
+.db-hint { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 20px; }
+.db-hint > .i { flex: none; margin-top: 2px; color: var(--accent); }
+.db-hint p { margin: 0; max-width: 90ch; }
+.db-hint p + p { margin-top: 6px; }
+.db-hint a .i { vertical-align: -3px; }
+#db-status:not(:empty) + .db-hint { margin-top: 16px; }
+.missing-thumb { width: 56px; }
+.missing-thumb .thumb { width: 44px; }
+.missing-folder .mono { overflow-wrap: anywhere; color: var(--text-2); }
+.card.empty > .i { color: var(--ok); }

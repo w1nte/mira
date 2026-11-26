@@ -20,7 +20,7 @@
       <div class="stat"><div class="v">{{ totals.faces }}</div><div class="l">{{ _('Faces') }}</div></div>
       <div class="stat"><div class="v">{{ totals.clusters }}</div><div class="l">{{ _('Clusters') }}</div></div>
       <div class="stat"><div class="v">{{ totals.persons }}</div><div class="l">{{ _('Persons') }}</div></div>
-      {% if totals.missing %}<div class="stat"><div class="v">{{ totals.missing }}</div><div class="l">{{ _('Missing files') }}</div></div>{% endif %}
+      {% if totals.missing %}<div class="stat"><div class="v">{{ totals.missing }}</div><div class="l"><a href="/database/missing">{{ _('Missing files') }}</a></div></div>{% endif %}
     </div>
   </section>
 
