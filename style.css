@@ -19,9 +19,6 @@
   --accent-soft: light-dark(#e9f1fc, #172739);
   --accent-border: light-dark(#85b1e6, #356192);
   --accent-ring: light-dark(rgba(10, 98, 204, 0.18), rgba(90, 168, 255, 0.24));
-  --danger: light-dark(#c42a30, #ff6b70);
-  --danger-soft: light-dark(#fcecec, #36171a);
-  --danger-border: light-dark(#f0c1c3, #723034);
   --shadow: light-dark(rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.55));
 
   --font-text: 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Roboto, Arial, sans-serif;
@@ -429,16 +426,6 @@ body {
   stroke: var(--accent);
 }
 
-.chip-exclude {
-  border-color: var(--danger-border);
-  background: var(--danger-soft);
-  color: var(--danger);
-}
-
-.chip-exclude .icon {
-  stroke: currentColor;
-}
-
 .results {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
@@ -844,13 +831,6 @@ body {
 /* .bin hint of the Mira 1.2.1 gpu setup; remove with the win_bin_old texts */
 .systems dd .win-bin-old {
   margin-top: 4px;
-}
-
-/* Model download by hand for Mira 1.2.1 and older; remove with the models_old texts */
-.models-old p {
-  margin: 8px 0 0;
-  font-size: 14px;
-  color: var(--muted);
 }
 
 .card-note {

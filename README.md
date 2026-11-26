@@ -1,8 +1,8 @@
 # Mira website (GitHub Pages)
 
 This branch holds only the one-page website for Mira, the photo search app developed on the
-`main` branch of this repository (where it is still called vision-tagger). It shares no history
-with the app's code.
+`main` branch of this repository ([w1nte/mira](https://github.com/w1nte/mira), formerly
+vision-tagger). It shares no history with the app's code.
 
 It is a plain static site: no build step, no frameworks, nothing loaded from other servers.
 
@@ -25,8 +25,8 @@ Then open <http://localhost:8000/>.
 
 ## Publishing
 
-GitHub Pages serves the root of the `gh-pages` branch at
-<https://w1nte.github.io/vision-tagger/>. Pushing to this branch updates the site.
+GitHub Pages serves the root of the `gh-pages` branch at <https://w1nte.github.io/mira/>.
+Pushing to this branch updates the site.
 
 To switch it on once: *Settings → Pages → Build and deployment → Source: Deploy from a branch*,
 then choose `gh-pages` and `/ (root)`.
@@ -38,12 +38,8 @@ languages are only in `site.js`. When you change a text, change it in both place
 language. An element with `data-i18n="key"` gets its text from the table, `data-i18n-alt` its
 `alt` text and `data-i18n-value` its value. Texts are inserted as plain text, never as HTML.
 
-**Hints for older releases.** Two hints only matter for Mira 1.2.1 and older. Once a newer
-release with the automatic model download and a single-file gpu setup is out, delete them
-completely; no other text refers to them:
-
-- `models_old` (pull the Ollama models by hand): the two `<div class="models-old">` blocks in
-  `index.html` (desktop app step 3 and Docker step 3), the `models_old` key in all 11 tables in
-  `site.js`, and the `.models-old` rule in `style.css`.
-- `win_bin_old` (keep the `.bin` file next to the gpu setup): the `<p class="win-bin-old">` in
-  `index.html`, the `win_bin_old` key in all 11 tables, and the `.win-bin-old` rule.
+**Hint for an older release.** `win_bin_old` (keep the `.bin` file next to the gpu setup) only
+matters for the split Windows gpu setups of Mira 1.2.1 and 1.3. Once the single-file gpu setup
+is the latest release, delete it completely; no other text refers to it: the
+`<p class="win-bin-old">` in `index.html`, the `win_bin_old` key in all 11 tables in `site.js`,
+and the `.win-bin-old` rule in `style.css`.
