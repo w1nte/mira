@@ -231,6 +231,29 @@ class Gazetteer:
                 best = (score, t)
         return best[1] if best else None
 
+    def larger_town(
+        self,
+        lat: float,
+        lon: float,
+        *,
+        population: int,
+        exclude: Iterable[str | None] = (),
+        max_km: float = 150.0,
+    ) -> Town | None:
+        """The nearest town with more people than ``population`` and another name: a landmark
+        that tells two places with the same name apart."""
+        skip = {e for e in exclude if e}
+        for k in (64, 1024):
+            towns = self.nearest(lat, lon, k=k)
+            for t in towns:
+                if t.distance_km > max_km:
+                    return None
+                if t.population > population and t.name not in skip:
+                    return t
+            if len(towns) < k:
+                break
+        return None
+
     def describe(self, lat: float, lon: float) -> PlaceName | None:
         """``"Berlin, Germany"``; US towns as ``"Austin, TX"``; city states just ``"Monaco"``."""
         t = self.town(lat, lon)

@@ -51,6 +51,13 @@ TOWNS = [
     (2924360, "Füssen", 47.57143, 10.70171, "PPL", "DE", "02", 15000),
     (5128581, "New York City", 40.71427, -74.00597, "PPL", "US", "NY", 8175133),
     (1880252, "Singapore", 1.28967, 103.85007, "PPLC", "SG", "01", 3547809),
+    # same names far apart (and the larger towns next to them)
+    (2866070, "Neustadt", 50.32890, 11.12110, "PPL", "DE", "02", 15000),  # near Coburg
+    (2939951, "Coburg", 50.25937, 10.96384, "PPLA3", "DE", "02", 41000),
+    (2864435, "Neustadt", 49.35009, 8.13886, "PPLA3", "DE", "08", 53000),  # Weinstraße
+    (2873891, "Mannheim", 49.48910, 8.46694, "PPLA3", "DE", "01", 307960),
+    (4250542, "Springfield", 39.80172, -89.64371, "PPLA", "US", "IL", 116250),
+    (4409896, "Springfield", 37.21533, -93.29824, "PPLA2", "US", "MO", 159498),
 ]
 
 BERLIN = (52.5163, 13.3777)  # Brandenburg Gate
@@ -308,19 +315,80 @@ def test_find_places_names_assigns_and_keeps_ids(db, towns):
         assert [p.name for p in s.scalars(select(Place))] == ["Berlin, Germany"]
 
 
-def test_neighbouring_places_with_the_same_name_merge(db, towns):
-    # a walk through Berlin, a photo every 1.3 km: too far apart for one group, but one town
+def test_same_named_groups_nearby_become_one_place(db, towns):
+    # a walk through Berlin (a photo every 1.3 km) and photos 15 km north of the centre: too
+    # far apart for one group and wider than max_place_km together - but all the same town
     walk = [(52.49 + k * 0.012, 13.40) for k in range(6)]
-    far = [(52.52 + k * 0.1, 13.70) for k in range(2)]  # 11 km apart: stays two places
+    north = [(52.65, 13.41), (52.6505, 13.41)]
     with db.write() as s:
-        ids = _photos(s, walk + far)
+        ids = _photos(s, walk + north)
     result = find_places(db, towns)
-    places = {_place_of(db, i).id for i in ids[:6]}
-    assert len(places) == 1 and _place_of(db, ids[0]).name == "Berlin, Germany"
-    assert _place_of(db, ids[0]).radius_m <= towns.geo.max_place_km * 1000
-    assert _place_of(db, ids[6]).id != _place_of(db, ids[7]).id
-    assert result.places == 3
-    assert find_places(db, towns, refresh=True).changed == 0  # stable
+    assert result.places == 1
+    berlin = _place_of(db, ids[0])
+    assert {_place_of(db, i).id for i in ids} == {berlin.id}
+    assert (berlin.name, berlin.auto_name) == ("Berlin, Germany", "Berlin, Germany")
+    assert berlin.radius_m > towns.geo.max_place_km * 1000
+    assert find_places(db, towns, refresh=True).changed == 0  # stable, same id
+    assert _place_of(db, ids[-1]).id == berlin.id
+    with db.session() as s:
+        assert len(s.scalars(select(Place)).all()) == 1
+
+
+def test_same_named_towns_far_apart_stay_apart_with_unique_names(db, towns):
+    with db.write() as s:
+        coburg = _photos(s, [(50.329, 11.121), (50.3292, 11.1213)])  # Neustadt near Coburg
+        palatinate = _photos(s, [(49.350, 8.139)], start=10)  # Neustadt an der Weinstraße
+        illinois = _photos(s, [(39.80, -89.64)], start=20)
+        missouri = _photos(s, [(37.21, -93.29)], start=30)
+    assert find_places(db, towns).places == 4
+    a, b = _place_of(db, coburg[0]), _place_of(db, palatinate[0])
+    assert a.id != b.id  # 220 km apart: two places ...
+    assert (a.name, b.name) == ("Neustadt (Coburg), Germany", "Neustadt (Mannheim), Germany")
+    assert a.auto_name == b.auto_name == "Neustadt, Germany"  # ... named after the larger town
+    assert _props(db, coburg[0]) == {
+        "place": "Neustadt (Coburg), Germany",
+        "city": "Neustadt",
+        "country": "Germany",
+    }
+    # the Springfields differ by state already: not merged, names unchanged
+    assert _place_of(db, illinois[0]).name == "Springfield, IL"
+    assert _place_of(db, missouri[0]).name == "Springfield, MO"
+
+    assert find_places(db, towns, refresh=True).changed == 0
+    assert _place_of(db, palatinate[0]).name == "Neustadt (Mannheim), Germany"
+    # a new photo 10 km from Neustadt near Coburg: same automatic name, close -> joins it
+    with db.write() as s:
+        later = _photos(s, [(50.40, 11.20)], start=40)[0]
+    find_places(db, towns)
+    joined = _place_of(db, later)
+    assert (joined.id, joined.name) == (a.id, "Neustadt (Coburg), Germany")
+
+    # one Neustadt gone: the other one gets its plain name back
+    with db.write() as s:
+        for image_id in palatinate:
+            s.get(Image, image_id).lat = None
+    find_places(db, towns)
+    assert _place_of(db, coburg[0]).name == "Neustadt, Germany"
+
+
+def test_automatic_names_never_take_a_user_name(db, towns):
+    with db.write() as s:
+        paris = _photos(s, [EIFFEL])[0]
+        berlin = _photos(s, [BERLIN], start=10)[0]
+    find_places(db, towns)
+    rename_place(db, towns, _place_of(db, paris).id, "Berlin, Germany")
+    find_places(db, towns, refresh=True)
+    assert _place_of(db, paris).name == "Berlin, Germany"  # the user's name wins
+    # no region and no larger town nearby (in the test data): numbered
+    assert _place_of(db, berlin).name == "Berlin, Germany (2)"
+    assert _place_of(db, berlin).auto_name == "Berlin, Germany"
+    # back to the automatic name: "Paris, France" is free
+    rename_place(db, towns, _place_of(db, paris).id, "")
+    assert _place_of(db, paris).name == "Paris, France"
+    # an automatic name that is taken is made unique right away (no larger town than Paris)
+    rename_place(db, towns, _place_of(db, berlin).id, "Paris, France")
+    rename_place(db, towns, _place_of(db, paris).id, "")
+    assert _place_of(db, paris).name == "Paris, France (2)"
 
 
 def test_places_without_name_data_use_coordinates(db, settings):

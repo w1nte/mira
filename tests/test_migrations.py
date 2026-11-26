@@ -239,6 +239,34 @@ def test_0003_replaces_indexes_and_keeps_data(tmp_path):
     )
 
 
+def test_0006_keeps_the_automatic_place_names(tmp_path):
+    from vision_tagger.db.migrate import downgrade
+
+    path = tmp_path / "v5.sqlite3"
+    build_at(path, "0005")
+    con = sqlite3.connect(path)
+    con.execute(
+        "INSERT INTO places (id, name, lat, lon, source, user_named, created_at)"
+        " VALUES (1, 'Berlin, Germany', 52.5, 13.4, 'geonames', 0, '2024-01-01 00:00:00')"
+    )
+    con.execute(
+        "INSERT INTO places (id, name, lat, lon, source, user_named, created_at)"
+        " VALUES (2, 'Home', 48.8, 2.3, 'user', 1, '2024-01-01 00:00:00')"
+    )
+    con.commit()
+    con.close()
+    upgrade(url_of(path), backup=False)
+    con = sqlite3.connect(path)
+    rows = dict(con.execute("SELECT name, auto_name FROM places").fetchall())
+    assert rows == {"Berlin, Germany": "Berlin, Germany", "Home": None}  # user names: unknown
+    con.close()
+    downgrade(url_of(path), "0005", backup=False)
+    con = sqlite3.connect(path)
+    assert "auto_name" not in {r[1] for r in con.execute("PRAGMA table_info(places)")}
+    assert con.execute("SELECT count(*) FROM places").fetchone() == (2,)
+    con.close()
+
+
 def test_0005_backfills_gps_columns_and_downgrades(tmp_path):
     """0005 copies the GPS position from the metadata JSON into images.lat / images.lon."""
     from vision_tagger.db.migrate import downgrade

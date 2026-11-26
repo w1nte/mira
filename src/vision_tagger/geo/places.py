@@ -10,6 +10,10 @@
    ``/images?place=12`` stay valid; places left without photos are removed.
 4. Names come from the offline GeoNames towns (``geo.gazetteer``) and, if enabled, from
    OpenStreetMap (``geo.nominatim``). A place keeps its name while its centre stays put.
+   Groups with the same automatic name within ``geo.merge_km`` of each other are one place
+   (the same town never shows up twice); names that still clash are made unique with the
+   region or the nearest larger town ("Neustadt (Coburg), Germany"), the plain automatic name
+   is kept in ``places.auto_name``.
 5. Every photo gets ``images.place_id`` and the properties ``place``, ``city`` and ``country``
    (source ``place``), so the usual property filters, facets and search documents work;
    the search index is re-queued for photos whose place changed.
@@ -22,7 +26,7 @@ from __future__ import annotations
 import logging
 from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -86,6 +90,7 @@ class _Group:
     locked: bool = False
     name: PlaceName | None = None
     index: np.ndarray | None = None  # positions of the photos in find_places' arrays
+    auto: str | None = None  # the automatic name before it was made unique
 
 
 # --------------------------------------------------------------------------- geometry
@@ -178,11 +183,21 @@ def _group(ids: np.ndarray, lat: np.ndarray, lon: np.ndarray, index: np.ndarray)
     return _Group([int(i) for i in ids[index]], glat, glon, round(radius, 1), index=index)
 
 
+def _root(parent: list[int], i: int) -> int:
+    """Union-find: the representative of ``i`` (with path halving)."""
+    while parent[i] != i:
+        parent[i] = parent[parent[i]]
+        i = parent[i]
+    return i
+
+
 def _merge_same_names(
-    groups: list[_Group], ids: np.ndarray, lat: np.ndarray, lon: np.ndarray, max_km: float
+    groups: list[_Group], ids: np.ndarray, lat: np.ndarray, lon: np.ndarray, merge_km: float
 ) -> list[_Group]:
-    """Neighbouring groups with the same automatic name become one place, as long as it stays
-    within ``max_km``: a walk through a town with a photo every kilometre is one place, not ten.
+    """Groups with the same automatic name whose centres are within ``merge_km`` of each other
+    (a town and its outskirts; single linkage) become one place, so the same town never shows up
+    twice. Same-named towns farther apart stay separate (:func:`_make_unique` names them).
+    The merged place keeps the id of its biggest part that had one.
     """
     out = [g for g in groups if g.locked or g.name is None or g.index is None]
     by_name: dict[tuple[str, str], list[_Group]] = defaultdict(list)
@@ -190,28 +205,60 @@ def _merge_same_names(
         if not (g.locked or g.name is None or g.index is None):
             by_name[(g.name.name, g.name.source)].append(g)
     for same in by_name.values():
-        todo = sorted(same, key=lambda g: (-len(g.image_ids), g.lat, g.lon))
-        while todo:
-            base = todo.pop(0)
-            grown = True
-            while grown and todo:
-                grown = False
-                todo.sort(key=lambda o: haversine_km(base.lat, base.lon, o.lat, o.lon))
-                for other in todo:
-                    if haversine_km(base.lat, base.lon, other.lat, other.lon) > 2 * max_km:
-                        break
-                    assert base.index is not None and other.index is not None
-                    merged = _group(ids, lat, lon, np.concatenate([base.index, other.index]))
-                    if merged.radius_m > max_km * 1000:
-                        continue
-                    merged.name = base.name
-                    merged.place_id = base.place_id if base.place_id is not None else other.place_id
-                    base = merged
-                    todo.remove(other)
-                    grown = True
-                    break
-            out.append(base)
+        parent = list(range(len(same)))
+        for i, a in enumerate(same):
+            for j in range(i + 1, len(same)):
+                if haversine_km(a.lat, a.lon, same[j].lat, same[j].lon) <= merge_km:
+                    parent[_root(parent, i)] = _root(parent, j)
+        towns: dict[int, list[_Group]] = defaultdict(list)
+        for i, g in enumerate(same):
+            towns[_root(parent, i)].append(g)
+        for parts in towns.values():
+            if len(parts) == 1:
+                out.append(parts[0])
+                continue
+            parts.sort(key=lambda g: (-len(g.image_ids), g.lat, g.lon))
+            merged = _group(ids, lat, lon, np.concatenate([g.index for g in parts]))
+            merged.name = parts[0].name
+            merged.place_id = next((g.place_id for g in parts if g.place_id is not None), None)
+            out.append(merged)
     return out
+
+
+def _clarified(name: str, extra: str) -> str:
+    """``"Neustadt, Germany"`` + ``"Coburg"`` -> ``"Neustadt (Coburg), Germany"``."""
+    first, sep, rest = name.partition(", ")
+    return f"{first} ({extra}){sep}{rest}"
+
+
+def _make_unique(groups: list[_Group], reserved: set[str], namer: Namer) -> None:
+    """Automatic display names that clash with each other or with a name the user gave get the
+    region, else the nearest larger town, else a number. Only clashing names change."""
+    auto = [g for g in groups if not g.locked and g.name is not None]
+    count = Counter(g.name.name for g in auto if g.name is not None)
+    for name in sorted(n for n, c in count.items() if c > 1 or n in reserved):
+        same = sorted(
+            (g for g in auto if g.name is not None and g.name.name == name),
+            key=lambda g: (-len(g.image_ids), g.lat, g.lon),
+        )
+        taken = reserved | {g.name.name for g in auto if g.name is not None and g.name.name != name}
+        options = [namer.clarifiers(g.name, g.lat, g.lon) for g in same if g.name is not None]
+        labels: list[str] | None = None
+        for how in ("region", "landmark"):
+            extras = [o[how] for o in options]
+            if all(extras):
+                names = [_clarified(name, str(e)) for e in extras]
+                if len(set(names)) == len(names) and not taken & set(names):
+                    labels = names
+                    break
+        if labels is None:  # last resort: "Name (2)", "Name (3)"
+            offset = 1 if name in reserved else 0
+            labels = [
+                name if i + offset == 0 else f"{name} ({i + offset + 1})" for i in range(len(same))
+            ]
+        for g, label in zip(same, labels, strict=True):
+            assert g.name is not None
+            g.name = replace(g.name, name=label)
 
 
 # --------------------------------------------------------------------------- naming
@@ -276,6 +323,37 @@ class Namer:
         if named is not None:
             return named
         return PlaceName(coords_name(lat, lon), None, None, None, PlaceSource.COORDS)
+
+    def clarifiers(self, base: PlaceName, lat: float, lon: float) -> dict[str, str | None]:
+        """Ways to tell this place from others with the same name: its region (if the name does
+        not show it already) and the nearest larger town (offline data)."""
+        region = base.admin
+        if not region or region == base.locality or region in base.name:
+            region = None
+        landmark = None
+        gaz = self.gazetteer
+        if gaz is not None:
+            own = gaz.town(lat, lon)
+            near = gaz.larger_town(
+                lat,
+                lon,
+                population=own.population if own else 0,
+                exclude=(base.locality, own.name if own else None),
+            )
+            landmark = near.name if near is not None else None
+        return {"region": region, "landmark": landmark}
+
+    def unique(self, base: PlaceName, lat: float, lon: float, taken: set[str]) -> str:
+        """``base.name``, made unique among ``taken`` like :func:`_make_unique` does."""
+        if base.name not in taken:
+            return base.name
+        for extra in self.clarifiers(base, lat, lon).values():
+            if extra and _clarified(base.name, extra) not in taken:
+                return _clarified(base.name, extra)
+        n = 2
+        while f"{base.name} ({n})" in taken:
+            n += 1
+        return f"{base.name} ({n})"
 
     @property
     def osm_requests(self) -> int:
@@ -342,6 +420,7 @@ def find_places(
     cfg = settings.geo
     eps_km = max(0.01, cfg.cluster_km)
     max_km = max(eps_km, cfg.max_place_km)
+    merge_km = max(0.0, cfg.merge_km)
 
     # ---------------------------------------------------------------- read (no write lock)
     with db.session() as s:
@@ -416,7 +495,8 @@ def find_places(
             if g.locked:
                 continue
             if old is not None and _keeps_name(old, g, namer):
-                g.name = PlaceName(old.name, old.locality, old.admin, old.country, old.source)
+                plain = old.auto_name or old.name
+                g.name = PlaceName(plain, old.locality, old.admin, old.country, old.source)
                 continue
             todo.append(g)
         stopped = False
@@ -433,9 +513,14 @@ def find_places(
             result.notes.append(
                 _("OpenStreetMap names unavailable (%(error)s)", error=namer.osm_error)
             )
+        groups = _merge_same_names(groups, ids, lat, lon, merge_km)
+        for g in groups:
+            if not g.locked and g.name is not None:
+                g.auto = g.name.name
+        reserved = {p.name for p in old_places.values() if p.user_named}
+        _make_unique(groups, reserved, namer)
     finally:
         namer.close()
-    groups = _merge_same_names(groups, ids, lat, lon, max_km)
 
     # ---------------------------------------------------------------- write places
     progress(_("Saving places…"))
@@ -452,6 +537,7 @@ def find_places(
                 result.new += 1
             place.lat, place.lon, place.radius_m = g.lat, g.lon, g.radius_m
             place.name = name.name
+            place.auto_name = g.auto or name.name
             place.locality = name.locality
             place.admin = name.admin
             place.country = name.country
@@ -572,10 +658,14 @@ def rename_place(db: Database, settings: Settings, place_id: int, name: str) -> 
             raise LookupError(f"place {place_id} not found")
         lat, lon = place.lat, place.lon
     auto: PlaceName | None = None
+    display = ""
     if not name:  # naming happens before the write transaction (it may load data)
+        with db.session() as s:
+            taken = set(s.scalars(select(Place.name).where(Place.id != place_id)))
         namer = Namer(db, settings)
         try:
             auto = namer.name(lat, lon, offline_only=True)
+            display = namer.unique(auto, lat, lon, taken)
         finally:
             namer.close()
     with db.write() as s:
@@ -583,7 +673,8 @@ def rename_place(db: Database, settings: Settings, place_id: int, name: str) -> 
         if place is None:
             raise LookupError(f"place {place_id} not found")
         if auto is not None:
-            place.name, place.source, place.user_named = auto.name, auto.source, False
+            place.name, place.source, place.user_named = display, auto.source, False
+            place.auto_name = auto.name
             place.locality, place.admin, place.country = auto.locality, auto.admin, auto.country
         else:
             place.name, place.source, place.user_named = name, PlaceSource.USER, True

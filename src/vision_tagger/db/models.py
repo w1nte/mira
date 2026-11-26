@@ -206,6 +206,9 @@ class Place(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(Text)
+    # the automatic name before it was made unique ("Neustadt, Germany" for a place shown as
+    # "Neustadt (Coburg), Germany"); places with the same automatic name nearby are joined
+    auto_name: Mapped[str | None] = mapped_column(Text)
     lat: Mapped[float] = mapped_column(Float)
     lon: Mapped[float] = mapped_column(Float)
     radius_m: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")

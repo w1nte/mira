@@ -70,6 +70,7 @@ mode = "copy"                       # copy | hardlink | symlink (symlinks need D
 auto = true                         # find places at the end of every scan
 cluster_km = 0.75                   # photos closer than this form one place
 max_place_km = 5.0                  # larger groups are split
+merge_km = 25.0                     # same-named groups this close are one place (a town)
 download_gazetteer = true           # offline place names (GeoNames, 3 MB, downloaded once)
 # cities_file = 'D:\GeoNames\cities500.zip'   # or an official GeoNames dump
 nominatim = false                   # OpenStreetMap names; sends place positions to the server

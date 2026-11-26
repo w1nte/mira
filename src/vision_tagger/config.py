@@ -173,6 +173,9 @@ class GeoConfig(BaseModel):
     # photos closer than this (km) end up in the same place; larger groups are split
     cluster_km: float = 0.75
     max_place_km: float = 5.0
+    # groups with the same automatic name this close (km, centre to centre) are one place: a
+    # town and its outskirts; same-named towns farther apart get unique names instead
+    merge_km: float = 25.0
     # offline names come from GeoNames; the data (3 MB) is downloaded once into
     # <data_dir>/models/geo. A local GeoNames dump (cities500.zip, cities1000.txt, ...) can be
     # used instead.

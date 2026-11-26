@@ -219,8 +219,12 @@ Phones and many cameras store where a photo was taken (EXIF GPS). vision-tagger 
 position in `images.lat` / `images.lon` and groups the photos into **places**:
 
 - Photos closer than `geo.cluster_km` (750 m) to each other form a place (DBSCAN with
-  haversine distance). Groups wider than `geo.max_place_km` (5 km) are split, and neighbouring
-  groups that get the same name are joined, so a walk through a town is one place.
+  haversine distance). Groups wider than `geo.max_place_km` (5 km) are split.
+- **One town, one place.** Groups with the same automatic name within `geo.merge_km` (25 km) of
+  each other are joined, so a town and its outskirts never show up twice. Same-named towns
+  farther apart stay separate, and if their names would still be identical, they are told apart
+  by the region or the nearest larger town ("Neustadt (Coburg), Germany" and "Neustadt
+  (Mannheim), Germany"; "Springfield, IL" and "Springfield, MO" differ already).
 - Every photo gets the place as `images.place_id` and as the properties **place**, **city** and
   **country**. They work everywhere other properties work: gallery facets and filters, the
   properties page, XMP export and the search index. `/images?place=12` shows one place,
