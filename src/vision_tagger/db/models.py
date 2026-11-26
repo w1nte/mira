@@ -49,6 +49,8 @@ class Assignment:
 # --------------------------------------------------------------------------- index
 class Image(Base):
     __tablename__ = "images"
+    # area (bounding box) filters and the map's heatmap read only this index
+    __table_args__ = (Index("ix_images_lat_lon", "lat", "lon"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     path: Mapped[str] = mapped_column(Text)
@@ -73,6 +75,13 @@ class Image(Base):
     camera: Mapped[str | None] = mapped_column(Text, index=True)
     indexed_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     missing: Mapped[bool] = mapped_column(Boolean, default=False)
+    # GPS position in decimal degrees (copied from meta["gps"]) for the map and area filters;
+    # place_id is the named place the photo belongs to (see geo.places).
+    lat: Mapped[float | None] = mapped_column(Float)
+    lon: Mapped[float | None] = mapped_column(Float)
+    place_id: Mapped[int | None] = mapped_column(
+        ForeignKey("places.id", ondelete="SET NULL"), index=True
+    )
 
     stages: Mapped[list[StageStatus]] = relationship(
         back_populates="image", cascade="all, delete-orphan", passive_deletes=True
@@ -175,6 +184,51 @@ class Collection(Base):
     name: Mapped[str] = mapped_column(Text)
     query: Mapped[str] = mapped_column(Text, default="", server_default="")
     position: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+# --------------------------------------------------------------------------- places
+class PlaceSource:
+    GEONAMES = "geonames"  # nearest town of the offline GeoNames gazetteer
+    OSM = "osm"  # OpenStreetMap reverse geocoding (Nominatim, opt-in)
+    USER = "user"  # named by the user
+    COORDS = "coords"  # no gazetteer available: the coordinates as name
+
+
+class Place(Base):
+    """GPS-tagged photos grouped by distance, with a name (see ``geo.places``).
+
+    ``user_named`` places keep their name, centre and photos when places are found again, like
+    locked face clusters.
+    """
+
+    __tablename__ = "places"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(Text)
+    # the automatic name before it was made unique ("Neustadt, Germany" for a place shown as
+    # "Neustadt (Coburg), Germany"); places with the same automatic name nearby are joined
+    auto_name: Mapped[str | None] = mapped_column(Text)
+    lat: Mapped[float] = mapped_column(Float)
+    lon: Mapped[float] = mapped_column(Float)
+    radius_m: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
+    country: Mapped[str | None] = mapped_column(Text)
+    admin: Mapped[str | None] = mapped_column(Text)
+    locality: Mapped[str | None] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(
+        String(16), default=PlaceSource.GEONAMES, server_default=PlaceSource.GEONAMES
+    )
+    user_named: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class GeocodeCache(Base):
+    """Answers of the online reverse geocoder, so every location is asked for only once."""
+
+    __tablename__ = "geocode_cache"
+
+    key: Mapped[str] = mapped_column(String(96), primary_key=True)
+    result: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 

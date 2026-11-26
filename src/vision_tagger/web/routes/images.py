@@ -7,7 +7,7 @@ from fastapi.responses import Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
-from ...db.models import Cluster, Face, Image, ImageProperty, Person, VlmResult
+from ...db.models import Cluster, Face, Image, ImageProperty, Person, Place, VlmResult
 from ...export import METADATA, ExportStats, export_images, write_sidecars_in_place
 from ...faces.ages import age_label, check_image_date, correct_image_date
 from ...i18n import Lazy, LazyJoin, _
@@ -29,6 +29,7 @@ router = APIRouter()
 
 FACET_KEYS = [
     "work_image",
+    "place",
     "location_type",
     "image_type",
     "event_type",
@@ -55,7 +56,10 @@ def _chips(s, f: ImageFilter) -> dict[str, object]:
             .where(Cluster.id.in_(f.clusters))
         ):
             cluster_names[cid] = name or _("Cluster #%(id)s", id=cid)
-    return {"person_names": names, "cluster_names": cluster_names}
+    place_name = None
+    if f.place is not None:
+        place_name = s.scalar(select(Place.name).where(Place.id == f.place))
+    return {"person_names": names, "cluster_names": cluster_names, "place_name": place_name}
 
 
 MAX_TIMELINE_MONTHS = 1200  # 100 years; older dates are almost always wrong camera clocks
@@ -227,6 +231,7 @@ def image_detail(request: Request, image_id: int) -> Response:
         # neighbours inside the current filter and sort order (keyset queries)
         prev_id, next_id = neighbours(s, f, image_id)
         date_check = check_image_date(s, image_id)
+        place = s.get(Place, img.place_id) if img.place_id is not None else None
     face_ages = {}
     if date_check is not None:
         face_ages = {
@@ -243,6 +248,7 @@ def image_detail(request: Request, image_id: int) -> Response:
         next_id=next_id,
         date_check=date_check,
         face_ages=face_ages,
+        place=place,
     )
 
 

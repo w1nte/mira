@@ -92,7 +92,7 @@
         <dt>{{ _('Size') }}</dt><dd>{{ img.width }} × {{ img.height }} · {{ img.size_bytes | bytes }} · {{ img.ext }}</dd>
         {% if img.camera %}<dt>{{ _('Camera') }}</dt><dd><a href="/images?camera={{ img.camera | urlencode }}">{{ icon('camera', 'sm') }} {{ img.camera }}</a></dd>{% endif %}
         {% if img.meta.get('lens') %}<dt>{{ _('Lens') }}</dt><dd>{{ img.meta.lens }}</dd>{% endif %}
-        {% if img.meta.get('gps') %}<dt>GPS</dt><dd>{{ img.meta.gps.lat }}, {{ img.meta.gps.lon }}</dd>{% endif %}
+        {% if img.lat is not none %}{% include "partials/photo_place.html" %}{% elif img.meta.get('gps') %}<dt>GPS</dt><dd>{{ img.meta.gps.lat }}, {{ img.meta.gps.lon }}</dd>{% endif %}
         <dt>pHash</dt><dd class="mono">{{ img.phash }}</dd>
       </dl>
       {% if img.duplicates %}

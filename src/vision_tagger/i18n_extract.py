@@ -188,6 +188,7 @@ def python_messages() -> Iterator[tuple[str, str | None, str]]:
 def vocabulary_messages() -> Iterator[str]:
     """Display texts of the property keys and fixed values (vocabulary, derived, file)."""
     from .derived import VALUES as DERIVED
+    from .geo.places import PLACE_KEYS
     from .vlm.schema import Vocabulary
     from .web.common import VALUE_CONTEXTS, label_text, pretty_text
 
@@ -203,6 +204,8 @@ def vocabulary_messages() -> Iterator[str]:
             keys[spec.name] = []
     for key, values in DERIVED.items():
         keys.setdefault(key, []).extend(v for v in values if v not in keys.get(key, []))
+    for key in PLACE_KEYS:  # place names themselves are not translated
+        keys.setdefault(key, [])
     for key, values in keys.items():
         yield label_text(key)
         for value in values:
@@ -219,6 +222,8 @@ def collect() -> dict[str, Message]:
         _add(messages, msgid, plural, "python", where)
     for msgid in i18n.JS_KEYS:
         _add(messages, msgid, None, "js", "i18n.JS_KEYS")
+    for msgid in i18n.MAP_JS_KEYS:
+        _add(messages, msgid, None, "js", "i18n.MAP_JS_KEYS")
     for msgid in vocabulary_messages():
         _add(messages, msgid, None, "vocabulary", "vocabulary")
     return messages

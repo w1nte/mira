@@ -35,6 +35,7 @@ from .routes import (
     dashboard,
     faces,
     generations,
+    geo,
     home,
     images,
     importing,
@@ -110,6 +111,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         search,
         quiz,
         generations,
+        geo,
     ):
         app.include_router(module.router)
 

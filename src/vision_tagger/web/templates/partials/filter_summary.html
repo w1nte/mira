@@ -17,6 +17,8 @@
   {% if f.date_from or f.date_to %}<span class="chip active">{{ icon('calendar') }}{{ f.date_from or '…' }} – {{ f.date_to or '…' }}{{ x(f.query_string(date_from=None, date_to=None)) }}</span>{% endif %}
   {% if f.folder %}<span class="chip active">{{ icon('folder') }}{{ f.folder }}{{ x(f.query_string(folder=None)) }}</span>{% endif %}
   {% if f.camera %}<span class="chip active">{{ icon('camera') }}{{ f.camera }}{{ x(f.query_string(camera=None)) }}</span>{% endif %}
+  {% if f.place is not none %}<span class="chip active">{{ icon('pin') }}{{ place_name or _('Place #%(id)s', id=f.place) }}{{ x(f.query_string(place=None)) }}</span>{% endif %}
+  {% if f.bbox %}<span class="chip active">{{ icon('map') }}{{ _('Map area') }}{{ x(f.query_string(bbox=None)) }}</span>{% endif %}
   {% if f.has_faces is not none %}<span class="chip active">{{ icon('scan-face') }}{{ _('with faces') if f.has_faces else _('without faces') }}{{ x(f.query_string(has_faces=None)) }}</span>{% endif %}
   {% if f.stage %}<span class="chip active">{{ f.stage }}{% if f.status %} = {{ status_title(f.status) }}{% endif %}{{ x(f.query_string(stage=None, status=None)) }}</span>{% endif %}
   {% if f.text %}<span class="chip active">{{ icon('search') }}“{{ f.text }}”{{ x(f.query_string(text=None)) }}</span>{% endif %}
