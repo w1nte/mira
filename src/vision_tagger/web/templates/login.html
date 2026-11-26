@@ -1,0 +1,27 @@
+{%- set theme = request.cookies.get('vt_theme') -%}
+{%- if theme not in ('light', 'dark') %}{% set theme = 'system' %}{% endif -%}
+<!doctype html>
+<html lang="{{ current_lang() }}" data-theme="{{ theme }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>{{ _('Log in') }} · vision-tagger</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="login-body">
+  <main class="login-card card">
+    <div class="brand"><span class="mark" aria-hidden="true"></span>vision-tagger</div>
+    <h1>{{ _('Log in') }}</h1>
+    {% if error %}<div class="flash err" role="alert"><span>{{ error }}</span></div>{% endif %}
+    <form method="post" action="/login" class="stack">
+      <input type="hidden" name="next" value="{{ next }}">
+      <label class="field"><span>{{ _('Password') }}</span>
+        <input type="password" name="password" autocomplete="current-password" required autofocus></label>
+      <button class="primary">{{ _('Log in') }}</button>
+    </form>
+  </main>
+</body>
+</html>

@@ -54,11 +54,16 @@ ROOTS_KEY = "image_roots"
 
 
 def stored_roots(db: Database, settings: Settings) -> list[str]:
-    """Image roots last used in the web UI, falling back to ``paths.image_roots``."""
+    """Image roots last used in the web UI, falling back to ``paths.image_roots``.
+
+    In remote mode the library is the upload folder.
+    """
+    if settings.remote_mode:
+        return [str(settings.upload_dir)]
     with db.session() as s:
         stored = s.get(AppSetting, ROOTS_KEY)
-        if stored and stored.value:
-            return [str(r) for r in stored.value]
+        if stored is not None and stored.value is not None:
+            return [str(r) for r in stored.value]  # an emptied list stays empty
     return [str(p) for p in settings.paths.image_roots]
 
 

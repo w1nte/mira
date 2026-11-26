@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Home') }}{% endblock %}
+{% block content %}
+{% set st = d.stats %}
+<div class="page-head">
+  <div>
+    <h1>{{ _('Your photos') }}</h1>
+    {% if st.photos %}
+      <small>{% if st.first_year and st.last_year and st.first_year != st.last_year %}{{ ngettext('%(num)d photo from %(first)s to %(last)s', '%(num)d photos from %(first)s to %(last)s', st.photos, first=st.first_year, last=st.last_year) }}{% else %}{{ ngettext('%(num)d photo', '%(num)d photos', st.photos) }}{% endif %}</small>
+    {% endif %}
+  </div>
+  <div class="row">
+    <a class="btn" href="/import">{{ icon('upload', 'sm') }}{{ _('Import photos') }}</a>
+    <a class="btn primary" href="/images">{{ icon('image', 'sm') }}{{ _('Browse all') }}</a>
+  </div>
+</div>
+
+{% if not st.photos %}
+  <section class="hero card">
+    {{ icon('folder-plus', 'lg') }}
+    <h2>{{ _('Let’s add your photos') }}</h2>
+    <p class="muted">{{ _('Import a folder or upload photos. vision-tagger then finds the people, places and moments in them – everything stays on this computer.') }}</p>
+    <a class="btn primary" href="/import">{{ _('Import photos') }}</a>
+  </section>
+{% else %}
+  <div class="stats home-stats">
+    <div class="stat"><div class="v">{{ '{:,}'.format(st.photos) }}</div><div class="l">{{ _('Photos') }}</div></div>
+    {% if st.first_year %}<div class="stat"><div class="v">{{ (st.last_year - st.first_year + 1) if st.last_year else 1 }}</div><div class="l">{{ _('Years') }}</div></div>{% endif %}
+    <div class="stat"><div class="v">{{ st.people }}</div><div class="l">{{ _('People') }}</div></div>
+    {% if st.places %}<div class="stat"><div class="v">{{ st.places }}</div><div class="l">{{ _('Kinds of places') }}</div></div>{% endif %}
+    <div class="stat"><div class="v">{{ '{:,}'.format(st.with_faces) }}</div><div class="l">{{ _('With people') }}</div></div>
+    <div class="stat"><div class="v">{{ st.size_bytes | bytes }}</div><div class="l">{{ _('On disk') }}</div></div>
+  </div>
+
+  {% if st.unnamed_clusters or d.pending %}
+  <div class="nudges">
+    {% if st.unnamed_clusters %}
+    <a class="nudge" href="/quiz?mode=name">{{ icon('scan-face') }}
+      <span><b>{{ ngettext('%(num)d face group has no name yet', '%(num)d face groups have no name yet', st.unnamed_clusters) }}</b>
+      <small>{{ _('Name them in a quick game – every name helps to find more photos.') }}</small></span>{{ icon('arrow-right', 'sm') }}</a>
+    {% endif %}
+    {% if d.pending %}
+    <a class="nudge" href="/pipeline">{{ icon('gauge') }}
+      <span><b>{{ ngettext('%(num)d photo is still being analysed', '%(num)d photos are still being analysed', d.pending) }}</b>
+      <small>{{ _('People, places and search get better as the analysis goes on.') }}</small></span>{{ icon('arrow-right', 'sm') }}</a>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if d.memories %}
+  <div class="section-title"><h2>{{ _('On this day') }}</h2><small class="muted">{{ today.strftime('%d.%m.') }}</small></div>
+  <div class="memories">
+    {% for m in d.memories %}
+    <a class="memory" href="/images?from={{ m.year }}-{{ '%02d' % today.month }}-{{ '%02d' % today.day }}&to={{ m.year }}-{{ '%02d' % today.month }}-{{ '%02d' % today.day }}">
+      <img loading="lazy" src="/media/thumb/{{ m.image_ids[0] }}" alt="">
+      <span class="memory-cap"><b>{{ ngettext('%(num)d year ago', '%(num)d years ago', m.years_ago) }}</b><small>{{ m.year }} · {{ ngettext('%(num)d photo', '%(num)d photos', m.image_ids | length) }}</small></span>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="section-title"><h2>{{ _('Collections') }}</h2><a class="btn ghost small" href="/collections">{{ _('Manage') }}</a></div>
+  {% set shown = (d.saved + d.suggested)[:12] %}
+  {% if shown %}
+  <div class="coll-grid">
+    {% for c in shown %}{% include "partials/collection_card.html" %}{% endfor %}
+  </div>
+  {% else %}
+  <p class="muted">{{ _('Collections appear here once the analysis has found people, places and events. You can also save any gallery filter as a collection.') }}</p>
+  {% endif %}
+
+  {% if d.recent %}
+  <div class="section-title"><h2>{{ _('Recently added') }}</h2><a class="btn ghost small" href="/images?sort=date_desc">{{ _('Show all') }}</a></div>
+  <div class="thumbs recent">
+    {% for image_id in d.recent %}<a class="thumb" href="/images/{{ image_id }}"><img loading="lazy" src="/media/thumb/{{ image_id }}" alt=""></a>{% endfor %}
+  </div>
+  {% endif %}
+{% endif %}
+{% endblock %}

@@ -1,4 +1,4 @@
-"""Dashboard: indexing, pipeline control and status."""
+"""Pipeline page: run control, stage status, runs, errors, environment; indexing actions."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from fastapi.responses import Response
 from sqlalchemy import func, select
 
 from ...db.models import AppSetting, Cluster, DuplicateFile, Face, Image, Person, Run, utcnow
+from ...i18n import _
 from ...indexer import ROOTS_KEY, Indexer, stored_roots
 from ...pipeline import control
 from ...pipeline.stages import STAGE_NAMES
@@ -71,12 +72,12 @@ def status_context(request: Request) -> dict[str, Any]:
     }
 
 
-@router.get("/")
-def dashboard(request: Request) -> Response:
+@router.get("/pipeline")
+def pipeline_page(request: Request) -> Response:
     c = ctx(request)
     return render(
         request,
-        "dashboard.html",
+        "pipeline.html",
         roots=_roots(request),
         settings=c.settings,
         vlm_health=c.vlm_health(),
@@ -130,13 +131,19 @@ def health_partial(request: Request) -> Response:
 
 # --------------------------------------------------------------------------- actions
 @router.post("/actions/index")
-def start_index(request: Request, roots: str = Form("")) -> Response:
+def start_index(request: Request, roots: str = Form(""), analyse: str = Form("")) -> Response:
+    """Scan the library folders (given, or the saved ones); ``analyse`` runs the pipeline after."""
     c = ctx(request)
     root_list = [r.strip().strip('"') for r in roots.splitlines() if r.strip()]
+    if c.settings.remote_mode:
+        root_list = stored_roots(c.db, c.settings)  # the upload folder, nothing else
+    elif root_list:
+        with c.db.write() as s:
+            s.merge(AppSetting(key=ROOTS_KEY, value=root_list))
+    else:
+        root_list = stored_roots(c.db, c.settings)
     if not root_list:
-        return redirect(request, "/", err="Please enter at least one folder.")
-    with c.db.write() as s:
-        s.merge(AppSetting(key=ROOTS_KEY, value=root_list))
+        return redirect(request, "/import", err=_("Add at least one folder first."))
 
     def job(j: Job) -> str:
         def progress(stats: Any) -> None:
@@ -151,14 +158,22 @@ def start_index(request: Request, roots: str = Form("")) -> Response:
         stats = Indexer(
             c.db, c.settings, progress=progress, should_stop=lambda: j.stop_requested
         ).run(root_list)
-        return (
-            f"Index: {stats.new} new, {stats.duplicates} duplicates, {stats.moved} moved, "
-            f"{stats.updated} updated, {stats.unchanged} unchanged, {stats.errors} errors"
+        if analyse and not j.stop_requested and not c.runner.running:
+            c.runner.start(None)
+        return _(
+            "Index: %(new)s new, %(dup)s duplicates, %(moved)s moved, %(updated)s updated, "
+            "%(unchanged)s unchanged, %(errors)s errors",
+            new=stats.new,
+            dup=stats.duplicates,
+            moved=stats.moved,
+            updated=stats.updated,
+            unchanged=stats.unchanged,
+            errors=stats.errors,
         )
 
     if not c.jobs.start("index", job):
-        return redirect(request, "/", err="Another job is running.")
-    return redirect(request, "/", msg="Indexing started.")
+        return redirect(request, "/import", err=_("Another job is running."))
+    return redirect(request, "/import", msg=_("Scanning started."))
 
 
 @router.post("/actions/run")
@@ -171,12 +186,12 @@ def start_run(
     c = ctx(request)
     stages = [st for st in STAGE_NAMES if st in stages]
     if not stages:
-        return redirect(request, "/", err="Select at least one stage.")
+        return redirect(request, "/pipeline", err="Select at least one stage.")
     if control.is_runner_alive(c.db) or c.runner.running:
-        return redirect(request, "/", err="A run is already active.")
+        return redirect(request, "/pipeline", err="A run is already active.")
     lim = int(limit) if limit.strip().isdigit() and int(limit) > 0 else None
     c.runner.start(stages, batch_size=batch_size or None, limit=lim)
-    return redirect(request, "/", msg=f"Run started: {', '.join(stages)}.")
+    return redirect(request, "/pipeline", msg=f"Run started: {', '.join(stages)}.")
 
 
 @router.post("/actions/{state}")
@@ -187,20 +202,20 @@ def change_state(request: Request, state: str) -> Response:
         control.request_state(c.db, mapping[state])
         if state == "stop":
             c.jobs.request_stop()
-        return redirect(request, "/", msg=f"{state.capitalize()} requested.")
+        return redirect(request, "/pipeline", msg=f"{state.capitalize()} requested.")
     if state == "retry-errors":
         n = control.retry_errors(c.db, request.query_params.get("stage"))
-        return redirect(request, "/", msg=f"{n} items re-queued.")
+        return redirect(request, "/pipeline", msg=f"{n} items re-queued.")
     if state == "skip-errors":
         n = control.skip_errors(c.db, request.query_params.get("stage"))
-        return redirect(request, "/", msg=f"{n} items skipped.")
+        return redirect(request, "/pipeline", msg=f"{n} items skipped.")
     if state == "requeue-outdated":
         stage = request.query_params.get("stage", "")
         versions = c.stage_versions()
         if stage not in versions:
-            return redirect(request, "/", err="Unknown stage.")
+            return redirect(request, "/pipeline", err="Unknown stage.")
         n = control.requeue_outdated(c.db, stage, versions[stage])
-        return redirect(request, "/", msg=f"{n} outdated {stage} results re-queued.")
+        return redirect(request, "/pipeline", msg=f"{n} outdated {stage} results re-queued.")
     if state == "recluster":
         full = request.query_params.get("full") == "1"
 
@@ -212,7 +227,7 @@ def change_state(request: Request, state: str) -> Response:
         ok = c.jobs.start("recluster", job)
         return redirect(
             request,
-            "/",
+            "/pipeline",
             msg="Clustering started." if ok else None,
             err=None if ok else "Another job is running.",
         )
@@ -232,11 +247,11 @@ def change_state(request: Request, state: str) -> Response:
         ok = c.jobs.start("references", job)
         return redirect(
             request,
-            "/",
+            "/pipeline",
             msg="Reference import started." if ok else None,
             err=None if ok else "Another job is running.",
         )
-    return redirect(request, "/", err=f"Unknown action {state}.")
+    return redirect(request, "/pipeline", err=f"Unknown action {state}.")
 
 
 @router.get("/api/status")

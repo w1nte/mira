@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Collections') }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ _('Collections') }}</h1>
+    <small>{{ _('A collection is a saved gallery filter – people, places, dates, anything. Set a filter on the Images page and choose “Save as collection”.') }}</small>
+  </div>
+  <a class="btn primary" href="/images">{{ icon('plus', 'sm') }}{{ _('New collection') }}</a>
+</div>
+
+<div class="section-title"><h2>{{ _('Your collections') }}</h2></div>
+{% if saved %}
+<div class="coll-list">
+  {% for c in saved %}
+  <div class="coll-row">
+    {% include "partials/collection_card.html" %}
+    <div class="coll-actions">
+      <form method="post" action="/collections/{{ c.saved_id }}/rename" class="row nowrap">
+        <input type="text" name="name" value="{{ c.name }}" aria-label="{{ _('Name') }}" required>
+        <button class="small">{{ _('Rename') }}</button>
+      </form>
+      <div class="row nowrap">
+        <form method="post" action="/collections/{{ c.saved_id }}/move"><input type="hidden" name="delta" value="-1"><button class="small icon-btn" title="{{ _('Move up') }}" aria-label="{{ _('Move up') }}" {{ 'disabled' if loop.first }}>{{ icon('arrow-up', 'sm') }}</button></form>
+        <form method="post" action="/collections/{{ c.saved_id }}/delete" data-confirm="{{ _('Delete the collection “%(name)s”? The photos stay.', name=c.name) }}"><button class="small danger">{{ icon('trash', 'sm') }}{{ _('Delete') }}</button></form>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<p class="muted">{{ _('No saved collections yet.') }}</p>
+{% endif %}
+
+{% if suggested %}
+<div class="section-title"><h2>{{ _('Suggested') }}</h2><small class="muted">{{ _('Found in your photos') }}</small></div>
+<div class="coll-grid">
+  {% for c in suggested %}
+  <div class="coll-suggestion">
+    {% include "partials/collection_card.html" %}
+    <form method="post" action="/collections"><input type="hidden" name="name" value="{{ c.name }}"><input type="hidden" name="query" value="{{ c.query }}"><button class="small ghost">{{ icon('plus', 'sm') }}{{ _('Keep') }}</button></form>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

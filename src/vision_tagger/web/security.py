@@ -53,8 +53,11 @@ CallNext = Callable[[Request], Awaitable[Response]]
 
 
 def guard(allowed: set[str]) -> Callable[[Request, CallNext], Awaitable[Response]]:
+    """``allowed`` may contain ``"*"`` (remote mode behind a login: any host name)."""
+    any_host = "*" in allowed
+
     async def middleware(request: Request, call_next: CallNext) -> Response:
-        if _hostname(request.headers.get("host", "")) not in allowed:
+        if not any_host and _hostname(request.headers.get("host", "")) not in allowed:
             return PlainTextResponse("invalid Host header", status_code=400)
         if request.method not in SAFE_METHODS and not same_origin(request):
             return PlainTextResponse("cross-site request blocked", status_code=403)

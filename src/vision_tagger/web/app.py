@@ -14,6 +14,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
+from .. import i18n
 from ..config import Settings, load_settings
 from ..db.models import Face, Image, PersonReference
 from ..imaging import (
@@ -24,13 +25,19 @@ from ..imaging import (
     thumbnail_is_fresh,
     thumbnail_path,
 )
+from .auth import Auth, load_secret
 from .common import STATIC_DIR, ctx
 from .context import AppContext
+from .routes import (
+    auth as auth_routes,
+)
 from .routes import (
     dashboard,
     faces,
     generations,
+    home,
     images,
+    importing,
     overview,
     persons,
     properties,
@@ -65,10 +72,38 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         context.close()
 
     app = FastAPI(title="vision-tagger", lifespan=lifespan, docs_url="/api/docs")
-    app.middleware("http")(guard(allowed_hostnames(settings.web.host, settings.web.allowed_hosts)))
+    settings.ensure_dirs()
+    auth = Auth(settings.web.password, load_secret(settings.data_dir))
+    app.state.auth = auth
+    hosts = allowed_hostnames(settings.web.host, settings.web.allowed_hosts)
+    if settings.remote_mode and not settings.web.allowed_hosts:
+        hosts.add("*")  # reached under any name; the login (and Origin check) protects it
+    if settings.remote_mode and not auth.enabled:
+        log.warning(
+            "remote mode without a password: anyone who can reach this server sees all "
+            "photos. Set VT_WEB__PASSWORD."
+        )
+    # Starlette runs the middleware added last first: language -> host/CSRF guard -> login
+    app.middleware("http")(auth.middleware())
+    app.middleware("http")(guard(hosts))
+
+    @app.middleware("http")
+    async def language(request: Request, call_next):  # type: ignore[no-untyped-def]
+        lang = i18n.negotiate(
+            request.headers.get("accept-language"), request.cookies.get(i18n.COOKIE)
+        )
+        token = i18n.activate(lang)
+        try:
+            return await call_next(request)
+        finally:
+            i18n.reset(token)
+
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
     for module in (
+        auth_routes,
+        home,
         dashboard,
+        importing,
         faces,
         persons,
         properties,

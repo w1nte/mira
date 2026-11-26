@@ -192,3 +192,58 @@ def write_sidecars_in_place(
             except OSError as exc:
                 stats.errors.append(f"{src}: {exc}")
     return stats
+
+
+class _Sink:
+    """Write-only buffer that a streaming ZIP is written into (handed out in pieces)."""
+
+    def __init__(self) -> None:
+        self.buf = bytearray()
+
+    def write(self, data: bytes) -> int:
+        self.buf += data
+        return len(data)
+
+    def flush(self) -> None:
+        pass
+
+    def take(self) -> bytes:
+        out = bytes(self.buf)
+        self.buf.clear()
+        return out
+
+
+def stream_zip(db: Database, ids: list[int], *, metadata: bool = True) -> Iterator[bytes]:
+    """A ZIP of the photos (stored, not recompressed) with XMP sidecars and index files,
+    produced piece by piece so it can be downloaded while it is written (remote mode)."""
+    import json
+    import zipfile
+
+    sink = _Sink()
+    records: list[dict] = []
+    used: set[str] = set()
+    with zipfile.ZipFile(sink, "w", compression=zipfile.ZIP_STORED, allowZip64=True) as zf:  # type: ignore[arg-type]
+        for chunk in _iter_chunks(db, ids):
+            metas = _metadata(db, chunk) if metadata else {}
+            for img in chunk:
+                src = Path(img.path)
+                if not src.exists():
+                    continue
+                name = img.filename
+                if name in used:
+                    name = f"{Path(name).stem}_{img.id}{Path(name).suffix}"
+                used.add(name)
+                with src.open("rb") as fh, zf.open(name, "w", force_zip64=True) as out:
+                    while data := fh.read(1024 * 1024):
+                        out.write(data)
+                        if len(sink.buf) > 4 * 1024 * 1024:
+                            yield sink.take()
+                meta = metas.get(img.id)
+                if meta is not None:
+                    zf.writestr(name + ".xmp", X.to_xmp(meta))
+                    records.append(meta.record(name))
+                yield sink.take()
+        if records:
+            doc = {"generator": X.MARKER, "photos": records}
+            zf.writestr(X.INDEX_JSON, json.dumps(doc, ensure_ascii=False, indent=1))
+    yield sink.take()

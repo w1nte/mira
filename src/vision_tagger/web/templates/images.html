@@ -10,10 +10,27 @@
     <a class="btn" href="/overview?{{ f.query_string() }}">{{ icon('chart', 'sm') }}Timeline</a>
     <a class="btn" href="/overview/table?{{ f.query_string() }}">Table</a>
     <a class="btn" href="/properties?{{ f.query_string() }}">{{ icon('tag', 'sm') }}Properties</a>
+    {% if not f.is_empty %}
+    <details class="dropdown">
+      <summary class="btn">{{ icon('layers', 'sm') }}{{ _('Save as collection') }}</summary>
+      <div class="dropdown-panel">
+        <h3>{{ _('Save this filter as a collection') }}</h3>
+        <form method="post" action="/collections">
+          <input type="hidden" name="query" value="{{ f.query_string() }}">
+          <label class="field"><span>{{ _('Name') }}</span><input type="text" name="name" required maxlength="200" placeholder="{{ _('e.g. Summer holidays with Anna') }}"></label>
+          <div class="form-foot"><small class="muted">{{ _('It appears on the home page and always shows the photos matching this filter, including new ones.') }}</small><button class="primary">{{ _('Save') }}</button></div>
+        </form>
+      </div>
+    </details>
+    {% endif %}
     <details class="dropdown">
       <summary class="btn primary">{{ icon('download', 'sm') }}Export</summary>
       <div class="dropdown-panel">
-        <h3>Export {{ total }} images</h3>
+        <h3>{{ _('Export %(n)s images', n=total) }}</h3>
+        {% if request.app.state.ctx.settings.remote_mode %}
+        <p class="muted">{{ _('Downloads the photos as a ZIP file, with XMP files (keywords, caption, people, dates) for other photo apps and an index file.') }}</p>
+        <a class="btn primary" href="/images/download.zip{{ '?' ~ f.query_string() if f.query_string() }}">{{ icon('download', 'sm') }}{{ _('Download ZIP') }}</a>
+        {% else %}
         <form method="post" action="/images/export">
           <input type="hidden" name="query" value="{{ f.query_string() }}">
           <label class="field"><span>Target folder</span><input type="text" name="target" placeholder="D:\Export\Beach 2021" required></label>
@@ -37,6 +54,7 @@
           <small class="muted">Library managed in place (digiKam, Immich, PhotoPrism)?</small>
           <button class="ghost small">Write XMP next to the originals</button>
         </form>
+        {% endif %}
       </div>
     </details>
   </div>

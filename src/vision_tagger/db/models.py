@@ -166,6 +166,18 @@ class AppSetting(Base):
     value: Mapped[Any] = mapped_column(JSON)
 
 
+class Collection(Base):
+    """A saved view of the library: a name for a gallery filter (``ImageFilter`` query)."""
+
+    __tablename__ = "collections"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(Text)
+    query: Mapped[str] = mapped_column(Text, default="", server_default="")
+    position: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 # --------------------------------------------------------------------------- faces
 class Person(Base):
     __tablename__ = "persons"
