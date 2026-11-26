@@ -188,6 +188,11 @@ def test_desktop_workflow():
     assert "--no-editable" in steps[sync]
     assert jobs["publish"]["permissions"] == {"contents": "write"}
     assert "--clobber" in jobs["publish"]["steps"][-1]["run"]
+    # compiled wheels (insightface) must come from the same runner image: the uv cache key
+    # doesn't name the OS version, and ci.yml runs on a newer Ubuntu with a newer libstdc++
+    setup_uv = next(s for s in jobs["build"]["steps"] if "setup-uv" in s.get("uses", ""))
+    assert "matrix.runner" in setup_uv["with"]["cache-suffix"]
+    assert "release" in str(setup_uv["with"]["enable-cache"])  # releases build from scratch
 
 
 def test_inno_setup_messages_exist_in_every_language():

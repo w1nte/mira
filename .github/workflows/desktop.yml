@@ -95,7 +95,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
         with:
-          enable-cache: true
+          # insightface is compiled from source and its wheel lands in uv's cache. The cache key
+          # names the OS family but not its version, so without the suffix a wheel built by
+          # ci.yml on ubuntu-latest (newer libstdc++) was bundled into the ubuntu-22.04 build,
+          # which then failed: GLIBCXX_3.4.32 not found. Releases build without any cache.
+          enable-cache: ${{ github.event_name != 'release' }}
+          cache-suffix: desktop-${{ matrix.runner }}
           python-version: "3.12"
 
       - name: The lock file is up to date
