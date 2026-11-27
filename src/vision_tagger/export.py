@@ -3,6 +3,10 @@
 With ``metadata`` the export also hands vision-tagger's findings to other applications (see
 :mod:`vision_tagger.xmp`): ``"xmp"`` writes XMP sidecar files, ``"embed"`` puts the XMP into
 exported JPEG/PNG copies, ``"index"`` writes ``vision-tagger.csv`` / ``.json``.
+
+Paths and names come from the database, which may have been imported: only photo files
+``allowed`` accepts are read (:func:`vision_tagger.access.library_checker`), and target and ZIP
+names are made harmless (:func:`export_name`), so nothing is written outside the target folder.
 """
 
 from __future__ import annotations
@@ -11,7 +15,7 @@ import csv
 import logging
 import os
 import shutil
-from collections.abc import Collection, Iterator
+from collections.abc import Callable, Collection, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -23,6 +27,7 @@ from .db.models import Image
 from .db.session import Database
 from .db.util import chunked
 from .query import ImageFilter, all_image_ids
+from .uploads import UploadError, safe_relative_path
 
 log = logging.getLogger(__name__)
 
@@ -43,12 +48,24 @@ class ExportStats:
     kept: int = 0  # sidecars of other applications that were left alone
 
 
+def export_name(img: Image) -> str:
+    """The file name of a photo, harmless as a name in a folder or a ZIP (no folders, ``..``,
+    drive letters or reserved names)."""
+    try:
+        return safe_relative_path(img.filename or "").name
+    except UploadError:
+        return f"photo_{img.id}{Path(img.path or '').suffix}"
+
+
 def _target_name(img: Image, layout: Layout) -> Path:
     if layout == "date" and img.recorded_at:
-        return Path(f"{img.recorded_at:%Y}") / f"{img.recorded_at:%m}" / img.filename
+        return Path(f"{img.recorded_at:%Y}") / f"{img.recorded_at:%m}" / export_name(img)
     if layout == "folder":
-        return Path(img.rel_path)
-    return Path(img.filename)
+        try:
+            return Path(*safe_relative_path(img.rel_path or "", max_parts=64).parts)
+        except UploadError:
+            pass
+    return Path(export_name(img))
 
 
 def _unique(path: Path, image_id: int) -> Path:
@@ -107,6 +124,7 @@ def export_images(
     f: ImageFilter,
     target: str | Path,
     *,
+    allowed: Callable[[str], bool],
     mode: Mode = "copy",
     layout: Layout = "flat",
     image_ids: list[int] | None = None,
@@ -116,6 +134,7 @@ def export_images(
     target = Path(target).expanduser()
     target.mkdir(parents=True, exist_ok=True)
     stats = ExportStats(target=str(target))
+    base = target.resolve()
     with db.session() as s:
         ids = image_ids if image_ids is not None else all_image_ids(s, f)
     records: list[dict] = []
@@ -128,11 +147,15 @@ def export_images(
             metas = _metadata(db, chunk) if metadata else {}
             for img in chunk:
                 src = Path(img.path)
-                if not src.exists():
+                if not allowed(img.path) or not src.exists():
                     stats.skipped += 1
                     stats.errors.append(f"missing: {src}")
                     continue
                 dst = _unique(target / _target_name(img, layout), img.id)
+                if not dst.parent.resolve().is_relative_to(base):  # e.g. a folder link
+                    stats.skipped += 1
+                    stats.errors.append(f"outside the target folder: {dst}")
+                    continue
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 try:
                     fallback = _place(src, dst, mode)
@@ -166,6 +189,7 @@ def write_sidecars_in_place(
     db: Database,
     f: ImageFilter,
     *,
+    allowed: Callable[[str], bool],
     image_ids: list[int] | None = None,
     naming: str = "append",
 ) -> ExportStats:
@@ -181,7 +205,7 @@ def write_sidecars_in_place(
         metas = _metadata(db, chunk)
         for img in chunk:
             src = Path(img.path)
-            if not src.exists():
+            if not allowed(img.path) or not src.exists():
                 stats.skipped += 1
                 continue
             try:
@@ -213,9 +237,18 @@ class _Sink:
         return out
 
 
-def stream_zip(db: Database, ids: list[int], *, metadata: bool = True) -> Iterator[bytes]:
+def stream_zip(
+    db: Database,
+    ids: list[int],
+    *,
+    allowed: Callable[[str], bool],
+    metadata: bool = True,
+) -> Iterator[bytes]:
     """A ZIP of the photos (stored, not recompressed) with XMP sidecars and index files,
-    produced piece by piece so it can be downloaded while it is written (remote mode)."""
+    produced piece by piece so it can be downloaded while it is written (remote mode).
+
+    Only files ``allowed`` accepts are read (:func:`vision_tagger.access.checker`): the paths
+    come from the database, which may have been imported."""
     import json
     import zipfile
 
@@ -227,9 +260,9 @@ def stream_zip(db: Database, ids: list[int], *, metadata: bool = True) -> Iterat
             metas = _metadata(db, chunk) if metadata else {}
             for img in chunk:
                 src = Path(img.path)
-                if not src.exists():
+                if not allowed(img.path) or not src.exists():
                     continue
-                name = img.filename
+                name = export_name(img)
                 if name in used:
                     name = f"{Path(name).stem}_{img.id}{Path(name).suffix}"
                 used.add(name)

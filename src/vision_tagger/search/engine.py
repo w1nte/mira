@@ -28,6 +28,7 @@ import math
 import string
 import time
 from collections import OrderedDict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -334,6 +335,11 @@ class SearchEngine:
             log.warning("visual index unavailable: %s", exc)
             return False
         return self.visual.count > 0
+
+    def visual_lookup(self) -> Callable[[int], np.ndarray | None] | None:
+        """The visual vector of a photo by id (``None`` without one); ``None`` if no photo has
+        one yet. Loads the index once, so it is cheap to call for every photo."""
+        return self.visual.vector if self._visual_ready() else None
 
     def _visual_scores(
         self, it: Interpretation, candidates: list[int], notes: list[str | Lazy]

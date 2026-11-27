@@ -358,8 +358,8 @@ def replace_faces(
     """Replace the faces of an image with fresh detections, keeping the user's work.
 
     Old and new faces are matched by bounding-box IoU; matched new faces inherit cluster,
-    assignment and ignore state, and references move to the new face ids. New faces are
-    inserted before the old ones are deleted, so no cluster becomes empty in between.
+    assignment, ignore state and a manual age, and references move to the new face ids. New
+    faces are inserted before the old ones are deleted, so no cluster becomes empty in between.
     Returns the ids of the removed old faces (for crop cleanup).
     """
     old = list(s.scalars(select(Face).where(Face.image_id == image_id).order_by(Face.id)))
@@ -382,6 +382,7 @@ def replace_faces(
         matched[ni] = oi
         o, n = old[oi], new_faces[ni]
         n.cluster_id, n.assignment, n.ignored = o.cluster_id, o.assignment, o.ignored
+        n.manual_age = o.manual_age
     for n in new_faces:
         n.image_id = image_id
         s.add(n)

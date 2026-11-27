@@ -26,6 +26,11 @@ from .conftest import make_image
 from .helpers import add_face, add_image, person_centers
 
 
+def everything(_path: str) -> bool:
+    """The access check of the export functions: these tests export every photo."""
+    return True
+
+
 @pytest.fixture
 def library(db):
     """5 images: Anna in 1,2,3 ; Ben in 2,3,4 ; properties per image."""
@@ -268,19 +273,20 @@ def test_export_modes(db, settings, photos, tmp_path):
     Indexer(db, settings).run()
 
     out = tmp_path / "export_flat"
-    stats = export_images(db, ImageFilter(), out, mode="copy")
+    stats = export_images(db, ImageFilter(), out, allowed=everything, mode="copy")
     assert stats.exported == 2
     names = sorted(p.name for p in out.iterdir())
     assert "export_manifest.csv" in names and "x.jpg" in names
     assert len([n for n in names if n.startswith("x")]) == 2  # name collision resolved
 
     out = tmp_path / "export_date"
-    export_images(db, ImageFilter(), out, mode="hardlink", layout="date")
+    export_images(db, ImageFilter(), out, allowed=everything, mode="hardlink", layout="date")
     assert (out / "2020" / "05" / "x.jpg").exists()
     assert (out / "2021" / "06" / "x.jpg").exists()
 
     out = tmp_path / "export_folder"
-    stats = export_images(db, ImageFilter(date_from="2021"), out, mode="symlink", layout="folder")
+    f = ImageFilter(date_from="2021")
+    stats = export_images(db, f, out, allowed=everything, mode="symlink", layout="folder")
     assert stats.exported == 1
     exported = out / "b" / "x.jpg"
     assert exported.exists()
@@ -347,7 +353,7 @@ def test_large_id_lists_do_not_hit_sqlite_parameter_limit(db, tmp_path):
                 for i in range(n)
             ],
         )
-    stats = export_images(db, ImageFilter(), tmp_path / "big")
+    stats = export_images(db, ImageFilter(), tmp_path / "big", allowed=everything)
     assert stats.skipped == n  # files don't exist, but no "too many SQL variables"
     with db.write() as s:
         face_ids = list(s.scalars(select(Face.id)))

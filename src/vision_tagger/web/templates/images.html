@@ -10,10 +10,11 @@
   <div><h1>{{ _('Images') }}</h1><small>{% if f.is_empty %}{{ ngettext('%(num)d image', '%(num)d images', total) }}{% else %}{{ ngettext('%(num)d image matches the filter', '%(num)d images match the filter', total) }}{% endif %}</small></div>
   <div class="row">
     <button type="button" class="filters-btn" @click="filtersOpen = !filtersOpen" :aria-expanded="filtersOpen" aria-controls="filters">{{ _('Filters') }}</button>
-    {% if images %}<button type="button" class="btn" @click="selecting = !selecting; if (!selecting) { vt.toggleAll($root, false); n = 0 }" :aria-pressed="selecting ? 'true' : 'false'" title="{{ _('Tick photos to mark them as NSFW or not NSFW') }}">{{ icon('check', 'sm') }}{{ _('Select') }}</button>{% endif %}
+    {% if images %}<button type="button" class="btn" @click="selecting = !selecting; if (!selecting) { vt.toggleAll($root, false); n = 0 }" :aria-pressed="selecting ? 'true' : 'false'" title="{{ _('Tick photos to set their date or mark them as NSFW') }}">{{ icon('check', 'sm') }}{{ _('Select') }}</button>{% endif %}
     <a class="btn" href="/overview?{{ f.query_string() }}">{{ icon('chart', 'sm') }}{{ _('Timeline') }}</a>
     <a class="btn" href="/map{{ '?' ~ f.query_string() if not f.is_empty }}">{{ icon('map', 'sm') }}{{ _('Map') }}</a>
     <a class="btn" href="/overview/table?{{ f.query_string() }}">{{ _('Table') }}</a>
+    <a class="btn" href="/dates{{ '?' ~ f.query_string() if not f.is_empty }}" title="{{ _('Correct the dates of photos that belong together') }}">{{ icon('calendar', 'sm') }}{{ _('Dates') }}</a>
     <a class="btn" href="/properties?{{ f.query_string() }}">{{ icon('tag', 'sm') }}{{ _('Properties') }}</a>
     {% if not f.is_empty %}
     <details class="dropdown">
@@ -84,7 +85,7 @@
             <select name="faces"><option value="">{{ _('any') }}</option><option value="yes" {{ 'selected' if f.has_faces == true }}>{{ _('with') }}</option><option value="no" {{ 'selected' if f.has_faces == false }}>{{ _('without') }}</option></select></label>
         </div>
         <label class="field"><span>{{ _('Sort') }}</span>
-          <select name="sort">{% for v, l in [('date_desc', _('Newest first')), ('date_asc', _('Oldest first')), ('name', _('File name')), ('path', _('Path')), ('faces', _('Most faces')), ('size', _('File size'))] %}<option value="{{ v }}" {{ 'selected' if f.sort == v }}>{{ l }}</option>{% endfor %}</select></label>
+          <select name="sort">{% for v, l in [('date_desc', _('Newest first')), ('date_asc', _('Oldest first')), ('name', _('File name')), ('path', _('Path')), ('faces', _('Most faces')), ('size', _('File size'))] + ([('age_asc', _('Age: youngest first')), ('age_desc', _('Age: oldest first'))] if f.age_subject else []) %}<option value="{{ v }}" {{ 'selected' if f.sort == v }}>{{ l }}</option>{% endfor %}</select></label>
         <button class="primary block">{{ _('Apply') }}</button>
       </form>
     </section>
@@ -216,6 +217,8 @@
         <button name="value" value="yes" class="primary">{{ icon('eye-off', 'sm') }}{{ _('Mark as NSFW') }}</button>
         <button name="value" value="no">{{ icon('eye', 'sm') }}{{ _('Not NSFW') }}</button>
         <button name="value" value="auto" title="{{ _('Forget your choice: the NSFW check and the vision model decide again') }}">{{ _('Automatic') }}</button>
+        <input type="date" name="day" aria-label="{{ _('Date') }}">
+        <button formaction="/dates/apply" name="mode" value="set" title="{{ _('Every selected photo gets this date') }}">{{ icon('calendar', 'sm') }}{{ _('Set date') }}</button>
         <button type="button" class="icon-btn" @click="vt.toggleAll($root, false); n = 0" aria-label="{{ _('Clear selection') }}" title="{{ _('Clear selection') }}">{{ icon('x') }}</button>
       </form>
     {% else %}

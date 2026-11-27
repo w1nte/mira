@@ -7,11 +7,12 @@ from fastapi.responses import Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
+from ...access import library_checker
 from ...db import transfer
 from ...db.models import Animal, Cluster, Face, Image, ImageProperty, Person, Pet, Place, VlmResult
 from ...db.util import chunked
 from ...export import METADATA, ExportStats, export_images, write_sidecars_in_place
-from ...faces.ages import age_label, check_image_date, correct_image_date
+from ...faces.ages import age_label, check_image_date, correct_image_date, set_face_age
 from ...i18n import Lazy, LazyJoin, _
 from ...nsfw import KEY as NSFW_KEY
 from ...nsfw import YES
@@ -27,6 +28,7 @@ from ...query import (
     person_counts,
     pet_counts,
     property_keys,
+    sort_ages,
 )
 from ..common import back, cached_property_counts, ctx, pet_label, redirect, render
 from ..context import Job
@@ -199,7 +201,8 @@ def gallery(request: Request) -> Response:
     size = c.settings.web.page_size
     with c.db.session() as s:
         total = count_images(s, f)
-        images = page_images(s, f, 0, size)
+        ages = sort_ages(s, f)
+        images = page_images(s, f, 0, size, ages=ages)
         people_on = _people(s, images)
         facets_all = cached_property_counts(c, s, f, keys=FACET_KEYS)
         facets = {k: facets_all[k][:12] for k in FACET_KEYS if k in facets_all}
@@ -230,6 +233,7 @@ def gallery(request: Request) -> Response:
         timeline=timeline,
         images=images,
         people_on=people_on,
+        ages=ages,
         next_page=2 if total > size else None,
         facets=facets,
         facet_keys=[k for k in FACET_KEYS if k in facets or k in alternatives["facets"]],
@@ -253,13 +257,15 @@ def gallery_page(request: Request, page: int = 2) -> Response:
     size = c.settings.web.page_size
     with c.db.session() as s:
         total = count_images(s, f)
-        images = page_images(s, f, (page - 1) * size, size)
+        ages = sort_ages(s, f)
+        images = page_images(s, f, (page - 1) * size, size, ages=ages)
         people_on = _people(s, images)
     return render(
         request,
         "partials/image_grid.html",
         images=images,
         people_on=people_on,
+        ages=ages,
         f=f,
         next_page=page + 1 if page * size < total else None,
     )
@@ -311,7 +317,7 @@ def download_zip(request: Request) -> Response:
     with c.db.session() as s:
         ids = all_image_ids(s, f)
     return StreamingResponse(
-        stream_zip(c.db, ids),
+        stream_zip(c.db, ids, allowed=library_checker(c.db, c.settings)),
         media_type="application/zip",
         headers={"Content-Disposition": 'attachment; filename="mira-photos.zip"'},
     )
@@ -347,7 +353,8 @@ def image_detail(request: Request, image_id: int) -> Response:
     face_ages = {}
     if date_check is not None:
         face_ages = {
-            fid: age_label(info, date_check.suspicious) for fid, info in date_check.faces.items()
+            fid: age_label(info, date_check.suspicious, date_check.date_trusted)
+            for fid, info in date_check.faces.items()
         }
     busy = None
     if img.missing:  # why "Remove from library" has to wait (like the Missing files page)
@@ -385,6 +392,32 @@ def set_date(
     except ValueError:
         return redirect(request, url, err=_("Implausible year: %(year)s", year=year))
     return redirect(request, url, msg=_("Date set to %(year)s.", year=year))
+
+
+@router.post("/images/{image_id}/faces/{face_id}/age")
+def set_age(
+    request: Request, image_id: int, face_id: int, age: str = Form(""), reset: str = Form("")
+) -> Response:
+    """The person's age in this photo, set by hand (the date stays); empty or ``reset``: the
+    face estimate again."""
+    c = ctx(request)
+    url = back(request, f"/images/{image_id}")
+    value = "" if reset else age.strip()
+    if value and not value.isdigit():
+        return redirect(request, url, err=_("Implausible age: %(age)s", age=value))
+    try:
+        with c.db.write() as s:
+            face = s.get(Face, face_id)
+            if face is None or face.image_id != image_id:
+                raise LookupError(face_id)
+            set_face_age(s, face_id, int(value) if value else None)
+    except LookupError:
+        return redirect(request, url, err=_("Face not found."))
+    except ValueError:
+        return redirect(request, url, err=_("Implausible age: %(age)s", age=value))
+    if not value:
+        return redirect(request, url, msg=_("The age is estimated from the face again."))
+    return redirect(request, url, msg=_("Age set to %(age)s.", age=value))
 
 
 @router.post("/images/{image_id}/requeue")
@@ -426,6 +459,7 @@ def export(
             c.db,
             f,
             target.strip(),
+            allowed=library_checker(c.db, c.settings),
             mode=mode,  # type: ignore[arg-type]
             layout=layout,  # type: ignore[arg-type]
             metadata=[m for m in metadata if m in METADATA],
@@ -475,7 +509,12 @@ def sidecars(request: Request, query: str = Form("")) -> Response:
 
     def job(j: Job) -> Lazy:
         j.message = Lazy("writing XMP sidecars next to the originals")
-        stats = write_sidecars_in_place(c.db, f, naming=c.settings.export.sidecar_naming)
+        stats = write_sidecars_in_place(
+            c.db,
+            f,
+            allowed=library_checker(c.db, c.settings),
+            naming=c.settings.export.sidecar_naming,
+        )
         variables = {
             "written": stats.sidecars,
             "kept": stats.kept,

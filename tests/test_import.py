@@ -106,6 +106,23 @@ def test_upload_protocol_resume_and_placement(remote):
         store.get("../../secret")
 
 
+def test_oversized_chunks_are_refused_before_they_are_read(remote):
+    remote.remote.chunk_mb = 1
+    remote.remote.auto_process = False
+    limit = 1024 * 1024 + 64 * 1024
+    with TestClient(create_app(remote)) as c:
+        up = c.post("/api/uploads", json={"name": "big.jpg", "size": 3 * 1024 * 1024}).json()
+        url = f"/api/uploads/{up['id']}?offset=0"
+        assert c.put(url, content=b"x" * (limit + 1)).status_code == 413
+        # without a Content-Length (chunked transfer): refused while it streams in
+        parts = (b"x" * 65536 for _ in range(40))
+        assert c.put(url, content=parts).status_code == 413
+        assert c.put(url, headers={"Content-Length": "abc"}, content=b"x").status_code == 413
+        assert c.get(f"/api/uploads/{up['id']}").json()["received"] == 0
+        r = c.put(url, content=b"x" * limit)  # a chunk of the configured size is fine
+        assert r.status_code == 200 and r.json()["received"] == limit
+
+
 def test_zip_upload_is_unpacked_safely(remote):
     store = UploadStore(remote)
     buf = io.BytesIO()
