@@ -37,3 +37,12 @@ English is written in `index.html` and repeated in the `en` table in `site.js`; 
 languages are only in `site.js`. When you change a text, change it in both places and in every
 language. An element with `data-i18n="key"` gets its text from the table, `data-i18n-alt` its
 `alt` text and `data-i18n-value` its value. Texts are inserted as plain text, never as HTML.
+
+## Differences from the design
+
+The page follows the owner's design canvas, with two deliberate differences. Keep them when
+you bring over a new version of the design:
+
+- Collections are saved *filters*, not searches (`f6_d`, `b5_d`), as on the app's Images page.
+- The desktop card has a macOS note under the download step (`win_mac`): the `.pkg` isn't
+  signed by Apple, so macOS blocks it until you click Open Anyway.

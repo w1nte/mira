@@ -744,6 +744,14 @@ body {
   font-weight: 600;
 }
 
+/* A hint under a step (the macOS Open Anyway note) */
+.step-note {
+  display: block;
+  margin-top: 6px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
 .step-body code {
   padding: 1px 5px;
   border: 1px solid var(--border);
