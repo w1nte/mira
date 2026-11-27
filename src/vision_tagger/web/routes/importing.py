@@ -187,10 +187,28 @@ def upload_status(request: Request, upload_id: str) -> JSONResponse:
         raise HTTPException(404, str(exc)) from exc
 
 
+#: slack on top of ``remote.chunk_mb`` for one chunk (the browser never sends more)
+CHUNK_SLACK = 64 * 1024
+
+
+async def read_limited(request: Request, limit: int) -> bytes:
+    """The request body, refused with 413 as soon as it is larger than ``limit`` bytes (it is
+    held in memory, so its size must be bounded before it is read, not afterwards)."""
+    declared = request.headers.get("content-length")
+    if declared is not None and (not declared.isdigit() or int(declared) > limit):
+        raise HTTPException(413, "chunk too large")
+    data = bytearray()
+    async for part in request.stream():
+        data += part
+        if len(data) > limit:
+            raise HTTPException(413, "chunk too large")
+    return bytes(data)
+
+
 @router.put("/api/uploads/{upload_id}")
 async def upload_chunk(request: Request, upload_id: str, offset: int = 0) -> JSONResponse:
     c = _remote_only(request)
-    data = await request.body()
+    data = await read_limited(request, c.settings.remote.chunk_mb * 1024 * 1024 + CHUNK_SLACK)
     try:
         from starlette.concurrency import run_in_threadpool
 

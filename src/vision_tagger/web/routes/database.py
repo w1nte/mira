@@ -120,12 +120,22 @@ def export_database(request: Request) -> Response:
 
 
 # --------------------------------------------------------------------------- import
-async def receive_file(request: Request, target: Path, field: str = "file") -> str | None:
+class FileTooLarge(Exception):
+    """The upload is larger than allowed (see :func:`receive_file`)."""
+
+
+async def receive_file(
+    request: Request, target: Path, limit: int, field: str = "file"
+) -> str | None:
     """Stream the file of the multipart field ``field`` straight into ``target``.
 
     Starlette's form parser would spool it to the system temp folder first; a library
     database can be gigabytes. Returns the file name the browser sent (``None``: no file).
+    Raises :class:`FileTooLarge` once the request is larger than ``limit`` bytes.
     """
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > limit:
+        raise FileTooLarge
     content_type, params = parse_options_header(request.headers.get("content-type", ""))
     boundary = params.get(b"boundary")
     if content_type != b"multipart/form-data" or not boundary:
@@ -180,8 +190,12 @@ async def receive_file(request: Request, target: Path, field: str = "file") -> s
             pending.clear()
             await run_in_threadpool(fh.write, data)
 
+    received = 0
     with target.open("wb") as fh:
         async for chunk in request.stream():
+            received += len(chunk)
+            if received > limit:
+                raise FileTooLarge
             parser.write(chunk)
             await flush(fh)
         parser.finalize()
@@ -208,11 +222,19 @@ def _import_job(c: AppContext, source: Path) -> Callable[[Job], Lazy]:
             transfer.remove_file(source)
         c.forget_library()
         missing = _check_locations(c, j)
-        return Lazy(
+        done = Lazy(
             "Database imported: %(images)s photos, %(missing)s of them not found on this computer.",
             images=result.images,
             missing=missing,
         )
+        if not result.skipped_roots:
+            return done
+        skipped = Lazy(
+            "Network folders of the file were not added (add them on the Import page if you "
+            "trust them): %(folders)s",
+            folders=", ".join(result.skipped_roots),
+        )
+        return LazyJoin(" ", [done, skipped])
 
     return job
 
@@ -233,8 +255,9 @@ async def import_database(request: Request) -> Response:
     if busy is not None:
         return redirect(request, "/database", err=str(busy))
     target = transfer.temp_file(c.settings, "import")
+    max_gb = c.settings.remote.max_file_gb
     try:
-        name = await receive_file(request, target)
+        name = await receive_file(request, target, limit=int(max_gb * 1024**3))
         if not name or target.stat().st_size == 0:
             transfer.remove_file(target)
             return redirect(request, "/database", err=_("Choose a database file first."))
@@ -242,6 +265,10 @@ async def import_database(request: Request) -> Response:
     except transfer.TransferError as exc:
         transfer.remove_file(target)
         return redirect(request, "/database", err=str(exc))
+    except FileTooLarge:
+        transfer.remove_file(target)
+        message = _("The file is larger than %(size)s GB (remote.max_file_gb).", size=f"{max_gb:g}")
+        return redirect(request, "/database", err=message)
     except BaseException:
         transfer.remove_file(target)
         raise

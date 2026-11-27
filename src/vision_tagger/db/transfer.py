@@ -90,6 +90,8 @@ class ImportResult:
     revision: str  # schema revision of the imported file before it was migrated
     backup: Path | None
     roots: list[str] = field(default_factory=list)
+    #: library folders of the file on network shares this computer does not use (not added)
+    skipped_roots: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -199,6 +201,8 @@ def inspect_file(path: Path) -> FileInfo:
         raise TransferError(Lazy("The file cannot be read: %(error)s", error=str(exc))) from exc
     try:
         try:
+            # the file comes from elsewhere: SQL in its schema may not call risky functions
+            con.execute("PRAGMA trusted_schema=OFF")
             con.execute("PRAGMA journal_mode=DELETE")
             check = [row[0] for row in con.execute("PRAGMA quick_check")]
         except sqlite3.DatabaseError as exc:
@@ -275,6 +279,7 @@ def prepare_file(path: Path, page_size: int) -> FileInfo:
         ) from exc
     con = sqlite3.connect(path, timeout=60, isolation_level=None)
     try:
+        con.execute("PRAGMA trusted_schema=OFF")
         con.execute("PRAGMA journal_mode=DELETE")
         if int(con.execute("PRAGMA page_size").fetchone()[0]) != page_size:
             con.execute(f"PRAGMA page_size={int(page_size)}")
@@ -301,6 +306,25 @@ def _read_setting(path: Path, key: str) -> Any:
         return json.loads(row[0])
     except (TypeError, ValueError):
         return None
+
+
+def unknown_share_roots(imported: Any, previous: list[str]) -> tuple[list[str], list[str]]:
+    """``(kept, skipped)``: the imported library folders without those on a network share that
+    none of the ``previous`` folders is on.
+
+    Merely checking such a folder makes Windows connect to its host and sign in with the user's
+    account, so a library file must not name hosts by itself; the user adds a share on the
+    Import page if they trust it. Runs before anything looks at the folders.
+    """
+    from ..access import known_shares, network_share
+
+    known = known_shares(previous)
+    kept: list[str] = []
+    skipped: list[str] = []
+    for root in [str(r) for r in imported] if isinstance(imported, list) else []:
+        share = network_share(root)
+        (skipped if share is not None and share not in known else kept).append(root)
+    return kept, skipped
 
 
 def merge_roots(imported: Any, previous: list[str]) -> list[str]:
@@ -403,8 +427,10 @@ def import_database(
     report(Lazy("Checking and upgrading the database file…"))
     info = prepare_file(source, _page_size(live))
     log.info("importing a database: %d photos, schema %s", info.images, info.revision)
-    imported_roots = _read_setting(source, ROOTS_KEY)
     previous_roots = [] if settings.remote_mode else stored_roots(db, settings)
+    imported_roots, skipped_roots = unknown_share_roots(
+        _read_setting(source, ROOTS_KEY), previous_roots
+    )
     if before_replace is not None:
         before_replace()
     report(Lazy("Replacing the library…"))
@@ -419,9 +445,35 @@ def import_database(
             if stored is not None:
                 s.delete(stored)
         s.merge(AppSetting(key=LIBRARY_ID_KEY, value=uuid.uuid4().hex))
+    _flag_refused_paths(db, settings)
     report(Lazy("Clearing thumbnails…"))
     _clear_caches(settings)
-    return ImportResult(images=info.images, revision=info.revision, backup=backup_path, roots=roots)
+    return ImportResult(
+        images=info.images,
+        revision=info.revision,
+        backup=backup_path,
+        roots=roots,
+        skipped_roots=skipped_roots,
+    )
+
+
+def _flag_refused_paths(db: Database, settings: Settings) -> None:
+    """Flag the photos whose path Mira may not open (:func:`vision_tagger.access.photo_file`)
+    as missing right away, without looking at the disk: nothing reads them, even if the location
+    check after the import is stopped early."""
+    from sqlalchemy import select, update
+
+    from ..access import library_checker
+    from .models import Image
+    from .util import chunked
+
+    allowed = library_checker(db, settings)
+    with db.session() as s:
+        rows = s.execute(select(Image.id, Image.path).where(Image.missing.is_(False))).all()
+    refused = [image_id for image_id, path in rows if not allowed(path)]
+    for part in chunked(refused):
+        with db.write() as s:
+            s.execute(update(Image).where(Image.id.in_(part)).values(missing=True))
 
 
 def _reset_pipeline_state(db: Database, settings: Settings) -> None:

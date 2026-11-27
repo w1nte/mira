@@ -9,7 +9,8 @@ it; the photos themselves are not part of it, copy them separately.
 - **Export** downloads `vision-tagger-YYYY-MM-DD.sqlite3`: a consistent snapshot, made while
   Mira keeps running, also while the pipeline works (`VACUUM INTO`, so it is compact and one
   self-contained file).
-- **Import** replaces the current library with such a file.
+- **Import** replaces the current library with such a file (at most `remote.max_file_gb`,
+  50 GB by default).
   - It is refused while the pipeline runs or is paused, or while another job runs: stop the
     pipeline first.
   - The file is checked first (SQLite, not damaged, a Mira database, a schema this version
@@ -18,7 +19,9 @@ it; the photos themselves are not part of it, copy them separately.
   - Thumbnails and face crops are cleared (image ids now mean other photos) and made again on
     demand. The pipeline state of the other computer (a run that was active there) is reset.
   - The library folders become the imported folders that exist on this computer plus the ones
-    configured before; remote mode keeps its upload folder.
+    configured before; remote mode keeps its upload folder. Imported folders on a network share
+    (`\\server\share`) none of your folders is on are not added (the import message lists them):
+    add them on the **Import** page if you trust them, then scan.
 - **Missing files.** After an import Mira checks where every photo is, not only those below
   the current folders. Photos that are not where the other computer had them are flagged as
   missing and listed under **Database → Missing files** (with their faces and names), with a

@@ -14,6 +14,12 @@ import yaml
 
 BASE_TYPES = {"enum", "enum_list", "list", "boolean", "integer", "text", "short_text"}
 CONFIDENCE_SUFFIX = "_confidence"
+# Free text of a model answer is stored as one line of at most this many characters. The model
+# may copy text it sees in a photo (a sign, a screenshot); that text later reaches other
+# prompts (search), so it must stay short and cannot fake lines of its own.
+MAX_TEXT_CHARS = 400
+MAX_SHORT_TEXT_CHARS = 120
+MAX_ITEM_CHARS = 60
 
 
 def default_vocabulary_path() -> Path:
@@ -165,7 +171,8 @@ class Vocabulary:
                 out[f.name] = _dedup([v for v in vals if v in f.values])[: f.max_items]
             elif base == "list":
                 items = value if isinstance(value, list) else ([value] if value else [])
-                out[f.name] = [str(i).strip() for i in items if str(i).strip()]
+                words = (_one_line(i, MAX_ITEM_CHARS) for i in items)
+                out[f.name] = [w for w in words if w]
             elif base == "boolean":
                 out[f.name] = _to_bool(value)
             elif base == "integer":
@@ -175,7 +182,8 @@ class Vocabulary:
                     n = None
                 out[f.name] = None if n is None else max(f.min, min(f.max, n))
             else:
-                s = "" if value is None else str(value).strip()
+                limit = MAX_SHORT_TEXT_CHARS if base == "short_text" else MAX_TEXT_CHARS
+                s = "" if value is None else _one_line(value, limit)
                 out[f.name] = s if s.lower() not in ("none", "null", "n/a", "unknown") else ""
             if f.inferred:
                 conf = raw.get(f.name + CONFIDENCE_SUFFIX)
@@ -185,6 +193,10 @@ class Vocabulary:
                     c = 0.5
                 out[f.name + CONFIDENCE_SUFFIX] = round(max(0.0, min(1.0, c)), 3)
         return out
+
+
+def _one_line(value: Any, limit: int) -> str:
+    return " ".join(str(value).split())[:limit].strip()
 
 
 def _dedup(items: list[str]) -> list[str]:

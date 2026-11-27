@@ -8,6 +8,13 @@
   UI itself, checked with ``Origin`` / ``Sec-Fetch-Site`` / ``Referer``.
 * **This computer only:** what acts on the server's desktop (opening Explorer or Finder) is
   offered only to requests made on the server's own computer (:func:`from_this_computer`).
+* **Clickjacking:** no other site may show the UI in a frame (:data:`HEADERS`). A framed page
+  sends its forms as the UI itself, so the CSRF check could not tell a click a site tricked out
+  of the user from a real one.
+* **Cross-site reads:** another site may link to the UI, but not load anything from it
+  (photos in ``<img>``, data, searches in the background: :func:`cross_site_load`). The browser
+  would hide the answer anyway (``Cross-Origin-Resource-Policy``), but the request alone makes
+  the server work, and how long it takes tells the other site about the library.
 """
 
 from __future__ import annotations
@@ -52,6 +59,22 @@ def same_origin(request: Request) -> bool:
     return True  # no browser headers at all: CLI tools / scripts on this machine
 
 
+#: frames and embeds: a navigation into one of them is a cross-site load, not a link
+EMBEDDING_DESTINATIONS = {"iframe", "frame", "embed", "object", "fencedframe"}
+
+
+def cross_site_load(request: Request) -> bool:
+    """Another site (or a sibling subdomain) loads something from the UI instead of linking to
+    it, judged by the browser's ``Sec-Fetch-*`` headers. Browsers without them are left to the
+    ``Cross-Origin-Resource-Policy`` header."""
+    site = request.headers.get("sec-fetch-site")
+    if site in (None, "same-origin", "none"):
+        return False
+    if request.headers.get("sec-fetch-mode") != "navigate":
+        return True
+    return request.headers.get("sec-fetch-dest", "") in EMBEDDING_DESTINATIONS
+
+
 #: headers a reverse proxy adds: the request was not made on this computer, even if the proxy is
 PROXY_HEADERS = ("forwarded", "x-forwarded-for", "x-forwarded-host", "x-real-ip")
 
@@ -63,6 +86,52 @@ def _loopback(address: str) -> bool:
         return False
     mapped = getattr(ip, "ipv4_mapped", None)  # ::ffff:127.0.0.1
     return ip.is_loopback or (mapped is not None and mapped.is_loopback)
+
+
+def is_loopback_host(host: str) -> bool:
+    """A bind address or host name that only accepts connections from this computer."""
+    name = host.strip().strip("[]").lower()
+    return name == "localhost" or _loopback(name)
+
+
+def exposure_problem(remote_mode: bool, host: str, password: str) -> str | None:
+    """Why serving on ``host`` without ``password`` would be unsafe; ``None`` if it is fine.
+
+    Without a password every request is trusted. That is right only on a loopback address in
+    local mode: the Host check below blocks DNS rebinding from browsers, but anyone on the
+    network can send any Host header. So remote mode, and any address that other computers can
+    reach, needs a password (``vision-tagger serve`` refuses to start without one).
+    """
+    if password:
+        return None
+    if remote_mode:
+        return (
+            "remote mode needs a password: without one, anyone who reaches the server sees "
+            "every photo."
+        )
+    if not is_loopback_host(host):
+        return (
+            f"{host} can be reached from other computers: without a password, anyone there "
+            "sees every photo and can browse the folders of this computer."
+        )
+    return None
+
+
+#: example passwords of our own files: whoever runs with one has not chosen a password
+EXAMPLE_PASSWORDS = {"choose-a-good-one"}
+MIN_PASSWORD_LENGTH = 12
+
+
+def password_problem(password: str) -> str | None:
+    """Why ``password`` must not be used; ``None`` if it may (see also :func:`weak_password`)."""
+    if password.strip().lower() in EXAMPLE_PASSWORDS:
+        return "the password is still the example from .env.example: choose your own."
+    return None
+
+
+def weak_password(password: str) -> bool:
+    """Set, but short enough to be guessed (a warning, not a refusal: it worked before)."""
+    return 0 < len(password) < MIN_PASSWORD_LENGTH
 
 
 def from_this_computer(request: Request) -> bool:
@@ -78,6 +147,27 @@ def from_this_computer(request: Request) -> bool:
 
 CallNext = Callable[[Request], Awaitable[Response]]
 
+#: sent with every response (see the module docstring); a route may set its own value
+HEADERS = {
+    "Content-Security-Policy": "frame-ancestors 'none'; object-src 'none'; base-uri 'none'",
+    "X-Frame-Options": "DENY",  # the same for older browsers
+    "X-Content-Type-Options": "nosniff",  # a file is never run as another type than it is sent
+    "Referrer-Policy": "strict-origin-when-cross-origin",  # tile servers get the origin only
+    "Cross-Origin-Resource-Policy": "same-origin",  # other sites cannot embed photos or data
+}
+
+
+def security_headers() -> Callable[[Request, CallNext], Awaitable[Response]]:
+    """Adds :data:`HEADERS`; registered last, so it also covers the guard's own answers."""
+
+    async def middleware(request: Request, call_next: CallNext) -> Response:
+        response = await call_next(request)
+        for name, value in HEADERS.items():
+            response.headers.setdefault(name, value)
+        return response
+
+    return middleware
+
 
 def guard(allowed: set[str]) -> Callable[[Request, CallNext], Awaitable[Response]]:
     """``allowed`` may contain ``"*"`` (remote mode behind a login: any host name)."""
@@ -87,6 +177,8 @@ def guard(allowed: set[str]) -> Callable[[Request, CallNext], Awaitable[Response
         if not any_host and _hostname(request.headers.get("host", "")) not in allowed:
             return PlainTextResponse("invalid Host header", status_code=400)
         if request.method not in SAFE_METHODS and not same_origin(request):
+            return PlainTextResponse("cross-site request blocked", status_code=403)
+        if cross_site_load(request):
             return PlainTextResponse("cross-site request blocked", status_code=403)
         return await call_next(request)
 

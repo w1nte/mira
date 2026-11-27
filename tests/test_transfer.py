@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import io
+import json
+import os
 import re
 import shutil
 import sqlite3
@@ -351,6 +353,100 @@ def test_import_refuses_files_that_are_not_mira_libraries(library, tmp_path):
     damaged[100:] = b"\xff" * (len(damaged) - 100)  # header intact, pages destroyed
     refused(bytes(damaged), "The database file is damaged")
     assert not list(transfer.transfer_dir(c.ctx.settings).iterdir())
+
+
+def test_import_refuses_files_larger_than_allowed(library, settings):
+    c, db = library, library.ctx.db
+    data = exported(c)
+    before = snapshot(db)
+    settings.remote.max_file_gb = (len(data) - 1) / 1024**3
+    page = ok(import_file(c, data)).text
+    assert "The file is larger than" in page and "remote.max_file_gb" in page
+    assert not c.ctx.jobs.busy and snapshot(db) == before
+    assert not list(transfer.transfer_dir(settings).iterdir())  # nothing left behind
+    # without a Content-Length: stopped while it streams in
+    r = c.post(
+        "/database/import",
+        content=(data[i : i + 4096] for i in range(0, len(data), 4096)),
+        headers={"Content-Type": "multipart/form-data; boundary=x"},
+    )
+    assert "The file is larger than" in ok(r).text
+    assert not list(transfer.transfer_dir(settings).iterdir())
+
+
+def test_imported_paths_cannot_read_other_files(library, settings, tmp_path):
+    """A crafted library file names the server's own files as photos: never served."""
+    c, db = library, library.ctx.db
+    crafted = tmp_path / "crafted.sqlite3"
+    transfer.export_database(db, crafted)
+    key = settings.data_dir / "secret.key"
+    assert key.exists()
+    con = sqlite3.connect(crafted)
+    con.execute("UPDATE images SET path = ?, ext = '.jpg' WHERE id = 1", (str(key),))
+    con.execute("UPDATE images SET path = ?, ext = '.jpg' WHERE id = 2", (str(settings.db_path),))
+    con.commit()
+    con.close()
+    import_file(c, crafted.read_bytes())
+    wait_jobs(library.ctx)
+    assert library.ctx.jobs.history[0].status == "done"
+    assert missing_ids(db) == {1, 2}  # the location check does not accept them either
+    for image_id in (1, 2):
+        r = c.get(f"/media/image/{image_id}")
+        assert r.status_code == 404 and key.read_bytes() not in r.content
+        assert c.get(f"/media/thumb/{image_id}").status_code == 404
+    ok(c.get("/media/image/3"))  # the other photos are fine
+
+
+def test_import_never_contacts_unknown_network_shares(
+    library, settings, photos, tmp_path, monkeypatch
+):
+    """A library file that names a network share (\\\\host\\share): looking at it would make
+    Windows sign in there with the user's account. Mira does not add it or look at it."""
+    c, db = library, library.ctx.db
+    share = "//attacker.example/share"
+    looked: list[str] = []
+    real_stat = os.stat
+
+    def stat(path, *args, **kwargs):
+        if "attacker" in os.fspath(path):
+            looked.append(os.fspath(path))
+        return real_stat(path, *args, **kwargs)
+
+    crafted = tmp_path / "crafted.sqlite3"
+    transfer.export_database(db, crafted)
+    con = sqlite3.connect(crafted)
+    con.execute("UPDATE images SET path = ?, root = ? WHERE id = 1", (f"{share}/a.jpg", share))
+    roots = json.dumps([f"{share}/photos", str(photos)])
+    con.execute(
+        "INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)", (ROOTS_KEY, roots)
+    )
+    con.commit()
+    con.close()
+    monkeypatch.setattr(os, "stat", stat)
+    import_file(c, crafted.read_bytes())
+    wait_jobs(library.ctx)
+    for image_id in (1, 2):
+        c.get(f"/media/thumb/{image_id}")
+        c.get(f"/media/image/{image_id}")
+    monkeypatch.setattr(os, "stat", real_stat)
+    assert looked == []
+    job = library.ctx.jobs.history[0]
+    assert job.status == "done"
+    assert "Network folders of the file were not added" in str(job.message)
+    assert str(job.message).endswith(f"trust them): {share}/photos")
+    assert stored_roots(db, settings) == [str(photos)]
+    assert 1 in missing_ids(db) and 2 not in missing_ids(db)
+    # flagged by the import itself, also when the location check afterwards is stopped
+    monkeypatch.setattr(Indexer, "check_locations", lambda self, progress=None: 0)
+    with db.write() as s:
+        s.get(Image, 1).missing = False
+    again = tmp_path / "again.sqlite3"
+    transfer.export_database(db, again)
+    import_file(c, again.read_bytes())
+    wait_jobs(library.ctx)
+    assert 1 in missing_ids(db)
+    # the user trusts the share: added as a library folder, Mira may use it
+    assert transfer.unknown_share_roots([f"{share}/x"], [f"{share}/photos"]) == ([f"{share}/x"], [])
 
 
 @pytest.mark.parametrize("versioned", [True, False])

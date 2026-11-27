@@ -236,3 +236,75 @@ def test_ages_stage_is_added_with_faces():
     assert PipelineConfig(stages=["vlm"]).stages == ["vlm"]
     assert "ages" in STAGE_NAMES and STAGE_NAMES.index("ages") == STAGE_NAMES.index("faces") + 1
     assert "ages" in stage_versions(Settings())
+
+
+# --------------------------------------------------------------------------- verified models
+def _fake_pack(tmp_path, monkeypatch, payload: bytes | None = None):
+    """A small stand-in for buffalo_l, served by a fake download; returns (cfg, requests)."""
+    import hashlib
+    import io
+    import zipfile
+
+    import httpx
+
+    from vision_tagger.animals.models import ModelFile
+    from vision_tagger.config import FacesConfig
+    from vision_tagger.faces import analyzer as A
+
+    files = ("det_10g.onnx", "w600k_r50.onnx")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        for name in files:
+            zf.writestr(name, name.encode())
+        zf.writestr("../../evil.onnx", b"evil")  # never extracted
+        zf.writestr("notes.txt", b"ignored")
+    data = buf.getvalue()
+    spec = ModelFile(
+        name="buffalo_l.zip",
+        url="https://example.invalid/buffalo_l.zip",
+        sha256=hashlib.sha256(data).hexdigest(),
+        size=len(data),
+        license="test",
+        title="test pack",
+    )
+    monkeypatch.setitem(A.PINNED_PACKS, "buffalo_l", (spec, files))
+    requests: list[str] = []
+
+    def handler(request):
+        requests.append(str(request.url))
+        return httpx.Response(200, content=data if payload is None else payload)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    return FacesConfig(model_root=tmp_path / "root"), client, requests
+
+
+def test_face_models_are_verified_before_insightface_sees_them(tmp_path, monkeypatch):
+    from vision_tagger.faces.analyzer import ensure_face_models
+
+    cfg, client, requests = _fake_pack(tmp_path, monkeypatch)
+    ensure_face_models(cfg, client=client)
+    folder = tmp_path / "root" / "models" / "buffalo_l"
+    assert sorted(p.name for p in folder.iterdir()) == ["det_10g.onnx", "w600k_r50.onnx"]
+    assert not list(tmp_path.rglob("evil.onnx")) and not list(tmp_path.rglob("notes.txt"))
+    ensure_face_models(cfg, client=client)  # complete: nothing downloaded again
+    assert len(requests) == 1
+
+
+def test_tampered_face_models_are_not_used(tmp_path, monkeypatch):
+    from vision_tagger.animals.models import ModelUnavailable
+    from vision_tagger.faces.analyzer import ensure_face_models
+
+    cfg, client, _requests = _fake_pack(tmp_path, monkeypatch, payload=b"PK not the pack")
+    with pytest.raises(ModelUnavailable, match="not the expected file"):
+        ensure_face_models(cfg, client=client)
+    assert not (tmp_path / "root" / "models" / "buffalo_l").exists()
+    assert not list((tmp_path / "root" / "models").glob("*.zip"))
+
+
+def test_other_face_model_packs_are_left_to_insightface(tmp_path, monkeypatch):
+    from vision_tagger.faces.analyzer import ensure_face_models
+
+    cfg, client, requests = _fake_pack(tmp_path, monkeypatch)
+    cfg.model = "antelopev2"
+    ensure_face_models(cfg, client=client)
+    assert requests == []
