@@ -8,6 +8,11 @@ Mira shows them on its "What's new" page, and each GitHub release uses its secti
 ### New
 - Docker: `docker-compose.traefik.yml` serves Mira over HTTPS on your own domain with a free Let's Encrypt certificate, set up in `.env`.
 - The notes of each release on GitHub list the SHA-256 checksum of every download and a link to its VirusTotal scan.
+- System → Log shows what Mira did, with every warning and error; filter it, download it, or open the log file in your text editor.
+- Report a bug (sidebar, System → Log) opens a GitHub bug report form with your Mira version and system already filled in.
+
+### Changed
+- The desktop app, `vision-tagger serve` (also in Docker) and the command line all log to `data/logs/vision-tagger.log`, up to 20 MB.
 
 ## 1.7 - 2026-11-26
 

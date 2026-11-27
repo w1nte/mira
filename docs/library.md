@@ -110,6 +110,8 @@ Everything lives in `data/`:
   library. Delete old ones when you no longer need them.
 - `secret.key`: the key that signs login cookies. Delete it to log everyone out.
 - `update-check.json`: the last update check and the version you dismissed on Home.
+- `logs/`: the log (`vision-tagger.log` and its older parts `.1`, `.2`, …; see
+  [The log](usage.md#the-log-and-bug-reports)) and, from installers, `migrate.log`.
 
 Main tables: `images` (+ `metadata` JSON), `duplicate_files`, `stage_status`, `runs`, `faces`,
 `clusters`, `persons`, `person_references`, `image_properties`, `property_aliases`,

@@ -2,10 +2,10 @@
    {% from "partials/reveal.html" import reveal_button with context %}. Rendered only when
    can_reveal(request): local mode, a request from this computer. The server looks the path up
    from kind and id; the page never sends a path. #}
-{% macro reveal_button(kind, id, text, cls='', disabled_title=none) -%}
+{% macro reveal_button(kind, id, text, cls='', disabled_title=none, icon_name='folder') -%}
 {% if can_reveal(request) -%}
-{% if disabled_title %}<button type="button" class="{{ cls }}" disabled title="{{ disabled_title }}">{{ icon('folder', 'sm') }}{{ text }}</button>
-{%- else %}<form method="post" action="/reveal" hx-post="/reveal" hx-swap="none" class="reveal-form"><input type="hidden" name="kind" value="{{ kind }}"><input type="hidden" name="id" value="{{ id }}"><button class="{{ cls }}">{{ icon('folder', 'sm') }}{{ text }}</button></form>
+{% if disabled_title %}<button type="button" class="{{ cls }}" disabled title="{{ disabled_title }}">{{ icon(icon_name, 'sm') }}{{ text }}</button>
+{%- else %}<form method="post" action="/reveal" hx-post="/reveal" hx-swap="none" class="reveal-form"><input type="hidden" name="kind" value="{{ kind }}"><input type="hidden" name="id" value="{{ id }}"><button class="{{ cls }}">{{ icon(icon_name, 'sm') }}{{ text }}</button></form>
 {%- endif %}
 {%- endif %}
 {%- endmacro %}

@@ -72,7 +72,7 @@ Where things are:
 | --- | --- | --- | --- |
 | Library (`config.toml`, `data/`) | `%LOCALAPPDATA%\vision-tagger` | `~/Library/Application Support/vision-tagger` | `~/.local/share/vision-tagger` |
 | Command line | `vision-tagger-cli.exe` in the install folder | `/Applications/Mira.app/Contents/MacOS/vision-tagger-cli` | `vision-tagger-cli` |
-| Logs | `data\logs\desktop.log` in the library | `data/logs/desktop.log` in the library | `data/logs/desktop.log` in the library |
+| Logs (also under *System → Log* in the app) | `data\logs\vision-tagger.log` in the library | `data/logs/vision-tagger.log` in the library | `data/logs/vision-tagger.log` in the library |
 
 The library (settings, database, thumbnails) stays when you update or uninstall the app;
 settings are in its `config.toml`. The command line works like `vision-tagger` from a source

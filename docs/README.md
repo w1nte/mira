@@ -9,6 +9,7 @@ version is in the [README](../README.md).
 | --- | --- |
 | [Installation](installation.md) | Desktop app for Windows, macOS and Linux, a source checkout, the AI models, the update check and upgrades |
 | [Using Mira](usage.md) | First steps, the command line, and every page of the web UI |
+| [The log and bug reports](usage.md#the-log-and-bug-reports) | What Mira writes down, where the log is, and how to report a bug |
 | [Remote mode and Docker](remote.md) | Run Mira on a server and upload your photos; password, HTTPS with Traefik |
 
 ## Features

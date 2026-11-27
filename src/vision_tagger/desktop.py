@@ -33,7 +33,6 @@ import threading
 import time
 import webbrowser
 from collections.abc import Callable, Iterator
-from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any
 
@@ -433,6 +432,7 @@ class Windows:
                 self.active = backend
                 if self.closing.is_set():  # asked to quit while the backend was set up
                     self._quit(backend)
+                log.info("showing the window: %s", getattr(backend, "name", type(backend).__name__))
                 backend.show(url, idle_seconds)
                 return
             except WindowUnavailable as exc:
@@ -696,28 +696,19 @@ def _has_console() -> bool:
 
 
 def setup_logging(settings: Settings) -> Path:
-    """Log to ``<data>/logs/desktop.log``; without a console, catch stray output as well."""
-    log_dir = settings.data_dir / "logs"
+    """Log to the library's log file (``logs``); without a console, catch stray output as well."""
+    from . import logs
+
+    log_dir = logs.log_dir(settings)
     log_dir.mkdir(parents=True, exist_ok=True)
-    console = _has_console()
-    if not console:  # windowed app: libraries that print must not fail
+    if _has_console():
+        logs.console(logging.INFO)
+    else:  # windowed app: libraries that print must not fail
         stream = (log_dir / "output.log").open("w", encoding="utf-8", buffering=1)
         sys.stdout = sys.stdout or stream
         sys.stderr = sys.stderr or stream
-    path = log_dir / "desktop.log"
-    handlers: list[logging.Handler] = [
-        RotatingFileHandler(path, maxBytes=5_000_000, backupCount=2, encoding="utf-8")
-    ]
-    if console:
-        handlers.append(logging.StreamHandler())
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
-        handlers=handlers,
-        force=True,
-    )
-    for noisy in ("httpx", "alembic"):
-        logging.getLogger(noisy).setLevel(logging.WARNING)
+    path = logs.setup(settings, "desktop app")
+    logging.getLogger("alembic").setLevel(logging.WARNING)
     return path
 
 

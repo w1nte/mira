@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Iterable
 from datetime import datetime
@@ -15,7 +16,7 @@ from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
 from sqlalchemy.orm import Session
 
-from .. import APP_NAME, __version__, i18n, updates
+from .. import APP_NAME, __version__, bugreport, i18n, updates
 from ..i18n import N_, _
 from ..imaging import PREVIEW_SIZE
 from ..query import ImageFilter, property_counts
@@ -25,6 +26,8 @@ from ..vlm.models import phase_text, pull_message
 from .context import AppContext
 from .nsfw import GLOBALS as NSFW_GLOBALS
 from .security import from_this_computer
+
+log = logging.getLogger(__name__)
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 STATIC_DIR = Path(__file__).parent / "static"
@@ -57,6 +60,8 @@ def render(request: Request, name: str, **context: Any) -> Response:
 def redirect(
     request: Request, url: str, msg: str | None = None, err: str | None = None
 ) -> Response:
+    if err:  # what the user saw goes into the log: it is what a bug report quotes
+        log.warning("%s %s: %s", request.method, request.url.path, err)
     if msg or err:
         sep = "&" if "?" in url else "?"
         url = url + sep + urlencode({k: v for k, v in (("msg", msg), ("err", err)) if v})
@@ -269,6 +274,12 @@ def can_reveal(request: Request) -> bool:
     return from_this_computer(request)
 
 
+def bug_report_url(request: Request) -> str:
+    """The "Report a bug" link: GitHub's form with the version and system filled in."""
+    c: AppContext | None = getattr(request.app.state, "ctx", None)
+    return bugreport.issue_url(c.settings if c is not None else None)
+
+
 #: why an update check failed (``updates.NETWORK`` ...), translated when shown
 UPDATE_ERRORS = {
     updates.NETWORK: N_("Could not reach GitHub. Is this computer online?"),
@@ -315,5 +326,6 @@ templates.env.globals.update(
     update_offer=update_offer,
     update_error=update_error,
     can_reveal=can_reveal,
+    bug_report_url=bug_report_url,
     **NSFW_GLOBALS,
 )

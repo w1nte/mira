@@ -64,6 +64,12 @@ only what will matter again, and delete what no longer holds. Rules live in `CLA
 - "Show in folder" (`reveal.py`) is offered only in local mode to a request from this computer
   (loopback client, local Host, no proxy headers) and never takes a path from the request.
 
+- Logging: one file per library, `data/logs/vision-tagger.log`, shared by every process (app,
+  `serve`, command line). It rotates by copy + truncate, not rename: Windows can't rename a file
+  another process has open. uvicorn runs with `log_config=None` so its errors reach the file;
+  its access log is filtered out of it. "Report a bug" fills the issue form's `version` and
+  `environment` ids through the URL; never prefill the log (it holds file and folder names).
+
 ## Pitfalls we hit
 - Windows: `socket.shutdown()` from another thread doesn't wake a blocked `recv`. Read in a
   thread and poll a queue (see `vlm/models.py` `pull`).

@@ -98,6 +98,8 @@ class PipelineRunner:
         self._state = RUNNING
         self._state_at = 0.0
         self._reported: tuple[str | None, float] = (None, 0.0)
+        #: (stage, exception type) whose traceback is in the log already (one per run)
+        self._explained: set[tuple[str, str]] = set()
 
     def shutdown(self) -> None:
         """The application is closing: end the run after the current image, but leave the
@@ -123,6 +125,14 @@ class PipelineRunner:
             )
             if recovered:
                 log.info("recovered %d interrupted items", recovered)
+            log.info(
+                "run %d started: %s, batch size %d%s",
+                run_id,
+                ", ".join(stage_names) or "no stages",
+                batch_size,
+                f", at most {limit} images per stage" if limit else "",
+            )
+            self._explained.clear()
             from ..indexer import ensure_stage_rows
 
             # a stage enabled after images were indexed (e.g. "ages") has no rows yet
@@ -153,6 +163,7 @@ class PipelineRunner:
                 summary.status = PAUSED
                 summary.messages.append("paused because the application was closed")
             self._finish_run(summary)
+            _log_summary(summary)
             return summary
         finally:
             self._lock.release()
@@ -368,6 +379,28 @@ class PipelineRunner:
             for stmt in stmts:
                 s.execute(stmt)
 
+    def _log_failure(self, stage: str, image_id: int, exc: BaseException) -> None:
+        """A warning with the photo's path; the traceback only the first time this kind of
+        error happens in this stage and run (a thousand photos may fail the same way)."""
+        key = (stage, type(exc).__name__)
+        first = key not in self._explained
+        self._explained.add(key)
+        try:
+            with self.db.session() as s:
+                img = s.get(Image, image_id)
+                where = img.path if img is not None else "no longer in the library"
+        except Exception:  # pragma: no cover - a locked database: the id has to do
+            where = "?"
+        log.warning(
+            "%s failed for image %s (%s): %s: %s",
+            stage,
+            image_id,
+            where,
+            type(exc).__name__,
+            exc,
+            exc_info=exc if first else None,
+        )
+
     def _process_one(
         self, stage: Stage, image_id: int, run_id: int, prefetch: _Prefetcher | None = None
     ) -> bool:
@@ -379,8 +412,7 @@ class PipelineRunner:
         except StageAbort:
             raise  # row stays claimed and is released by _finish_run (no attempt counted)
         except Exception as exc:
-            log.warning("%s failed for image %s: %s", stage.name, image_id, exc)
-            log.debug("traceback", exc_info=True)
+            self._log_failure(stage.name, image_id, exc)
             self._mark(stage, image_id, run_id, exc)
             return False
         self._mark(stage, image_id, run_id, None)
@@ -399,10 +431,9 @@ class PipelineRunner:
         except StageAbort:
             raise
         except Exception as exc:
-            log.debug("traceback", exc_info=True)
             errors = dict.fromkeys(image_ids, exc)
         for image_id, exc in errors.items():
-            log.warning("%s failed for image %s: %s", stage.name, image_id, exc)
+            self._log_failure(stage.name, image_id, exc)
         self._mark_many(stage, run_id, [(i, errors.get(i)) for i in image_ids])
         return sum(1 for i in image_ids if i in errors)
 
@@ -548,6 +579,22 @@ class PipelineRunner:
             summary.status = STOPPED
             return False
         return True
+
+
+def _log_summary(summary: RunSummary) -> None:
+    failed = summary.failed
+    stages = ", ".join(
+        f"{name} {count}" + (f" ({failed[name]} failed)" if failed.get(name) else "")
+        for name, count in summary.processed.items()
+    )
+    log.log(
+        logging.WARNING if summary.status == "failed" else logging.INFO,
+        "run %d %s: %s%s",
+        summary.run_id,
+        summary.status,
+        stages or "nothing to do",
+        "".join(f"; {m}" for m in summary.messages),
+    )
 
 
 class _Prefetcher:

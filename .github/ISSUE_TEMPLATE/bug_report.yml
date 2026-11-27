@@ -1,0 +1,59 @@
+# The "Report a bug" button in Mira (sidebar, and System -> Log) opens this form and fills in the
+# fields "version" and "environment" through the URL (src/vision_tagger/bugreport.py). Keep those
+# ids; tests/test_logs.py checks them.
+name: Bug report
+description: Something in Mira does not work as it should.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a problem! Please check the [open issues](https://github.com/w1nte/mira/issues) first: maybe someone has reported it already.
+
+        Tip: the **Report a bug** button in Mira (in the sidebar, and under *System → Log*) opens this form with your version and system filled in.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead? Copy error messages exactly.
+      placeholder: When I click "Scan now" on the Import page, the scan stops after a few photos with "…".
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: How can we make it happen ourselves? Leave it empty if you don't know.
+      placeholder: |
+        1. Open …
+        2. Click …
+        3. See …
+  - type: input
+    id: version
+    attributes:
+      label: Mira version
+      description: Shown in the sidebar next to "What's new".
+      placeholder: "1.4.0"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: System
+      description: How you run Mira (desktop app, Docker, from source), cpu or gpu, and on which operating system.
+      placeholder: desktop app (gpu), Windows 11, Python 3.12
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: |
+        Mira's log shows what happened before the error. In Mira, open *System → Log* and click **Download log**, then drag the file into this box. Or copy the lines around the error from that page and paste them here between two lines of three backticks (```).
+        The log contains the names of files and folders in your library. Remove anything you don't want to share.
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else?
+      description: Screenshots (drag them here), the size of your library, your graphics card, settings you changed in config.toml …
