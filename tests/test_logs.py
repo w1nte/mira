@@ -288,10 +288,11 @@ def test_reading_the_old_format_and_a_cut_tail(tmp_path):
 
 def test_files_and_download_order(tmp_path):
     path = tmp_path / logs.FILE_NAME
-    for name, text in (("vision-tagger.log.2", "a\n"), ("vision-tagger.log.1", "b\n")):
-        (tmp_path / name).write_text(text)
-    (tmp_path / "vision-tagger.log.bak").write_text("not a part")
-    path.write_text("c\n")
+    # bytes: write_text would write "\r\n" on Windows, and the download is the files as they are
+    for name, data in (("vision-tagger.log.2", b"a\n"), ("vision-tagger.log.1", b"b\n")):
+        (tmp_path / name).write_bytes(data)
+    (tmp_path / "vision-tagger.log.bak").write_bytes(b"not a part")
+    path.write_bytes(b"c\n")
     assert [p.name for p in logs.files(path)] == [
         "vision-tagger.log.2",
         "vision-tagger.log.1",

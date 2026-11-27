@@ -9,9 +9,11 @@
 #
 # See docker-compose.yml for a setup with Ollama (the vision model) next to it.
 
-ARG PYTHON=3.12
+# A fixed base image (tag and digest), so a build does not take whatever the tag points to
+# today. To update, take a newer 3.12.x-slim tag and its digest from Docker Hub.
+ARG PYTHON_IMAGE=python:3.12.15-slim@sha256:a0f57064cbdcd6285fa45f51237ab0b35ea8ebaed06a1f5973e89e19dfb86704
 
-FROM python:${PYTHON}-slim AS build
+FROM ${PYTHON_IMAGE} AS build
 ARG EXTRA=cpu
 # insightface is built from source: it needs a C++ compiler
 RUN apt-get update \
@@ -28,7 +30,7 @@ COPY src ./src
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev --no-editable --extra ${EXTRA}
 
-FROM python:${PYTHON}-slim
+FROM ${PYTHON_IMAGE}
 # libgomp: onnxruntime / scikit-learn threads; libglib: OpenCV
 RUN apt-get update \
  && apt-get install -y --no-install-recommends libgomp1 libglib2.0-0 \

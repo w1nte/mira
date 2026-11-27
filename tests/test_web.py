@@ -221,6 +221,57 @@ def test_csrf_and_host_protection(client):
     assert "msg=old" not in r.headers["location"]
 
 
+def test_security_headers_on_every_answer(settings, photos):
+    """No other site may frame the UI (clickjacking would get past the CSRF check)."""
+    make_image(photos / "a.jpg", seed=1)
+    app = create_app(settings)
+    with TestClient(app) as c:
+        Indexer(app.state.ctx.db, settings).run()
+        answers = {
+            "page": c.get("/"),
+            "static": c.get("/static/app.css"),
+            "media": c.get("/media/thumb/1"),
+            "json": c.get("/api/status"),
+            "not found": c.get("/nothing-here"),
+            "rebinding": c.get("/", headers={"Host": "evil.example"}),  # the guard's own answers
+            "csrf": c.post("/actions/stop", headers={"Origin": "http://evil.example"}),
+        }
+    assert answers["rebinding"].status_code == 400 and answers["csrf"].status_code == 403
+    for name, r in answers.items():
+        assert r.headers["x-frame-options"] == "DENY", name
+        assert "frame-ancestors 'none'" in r.headers["content-security-policy"], name
+        assert r.headers["x-content-type-options"] == "nosniff", name
+        assert r.headers["cross-origin-resource-policy"] == "same-origin", name
+        assert r.headers["referrer-policy"] == "strict-origin-when-cross-origin", name
+
+
+def test_other_sites_may_link_but_not_load(settings, photos):
+    make_image(photos / "a.jpg", seed=1)
+    app = create_app(settings)
+
+    def fetch(c, url, site, mode, dest):
+        headers = {"Sec-Fetch-Site": site, "Sec-Fetch-Mode": mode, "Sec-Fetch-Dest": dest}
+        return c.get(url, headers=headers).status_code
+
+    with TestClient(app) as c:
+        Indexer(app.state.ctx.db, settings).run()
+        for url in ("/media/thumb/1", "/media/image/1", "/api/status", "/search/results?q=x"):
+            assert fetch(c, url, "cross-site", "no-cors", "image") == 403, url
+            assert fetch(c, url, "cross-site", "cors", "empty") == 403, url
+            assert fetch(c, url, "same-site", "no-cors", "image") == 403, url  # a subdomain
+            assert fetch(c, url, "same-origin", "no-cors", "image") == 200, url
+        assert fetch(c, "/images/1", "cross-site", "navigate", "document") == 200  # a link
+        assert fetch(c, "/images/1", "cross-site", "navigate", "iframe") == 403
+        assert fetch(c, "/images/1", "none", "navigate", "document") == 200  # typed, bookmark
+        assert c.get("/media/thumb/1").status_code == 200  # no Sec-Fetch headers (old browsers)
+
+
+def test_no_api_docs(settings):
+    with TestClient(create_app(settings)) as c:
+        for url in ("/api/docs", "/docs", "/redoc", "/openapi.json", "/docs/oauth2-redirect"):
+            assert c.get(url).status_code == 404, url
+
+
 def test_no_user_data_in_inline_js(client):
     db = client.ctx.db
     from vision_tagger.faces import clustering as C

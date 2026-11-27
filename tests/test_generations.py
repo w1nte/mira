@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from PIL import Image, ImageDraw
 from sqlalchemy import select
 
+from vision_tagger.access import checker
 from vision_tagger.db.models import Cluster, Face, Person
 from vision_tagger.faces.align import ARCFACE_112, align_face, frontalness, template
 from vision_tagger.faces.clustering import update_cluster_stats
@@ -197,15 +198,24 @@ def test_growup_frames_are_thinned_but_keep_the_span(db, family):
 
 def test_aligned_portrait_is_cached(db, family, settings):
     cache = settings.cache_dir / "aligned"
+    allowed = checker(settings)
     with db.session() as s:
         face_id = growup_frames(s, family["mia"])[0].face_id
-        path = aligned_portrait(s, cache, face_id, 256)
+        path = aligned_portrait(s, cache, face_id, 256, allowed=allowed)
         assert path == aligned_path(cache, face_id, 256)
         with Image.open(path) as im:
             assert im.size == (256, 256)
         mtime = path.stat().st_mtime_ns
-        assert aligned_portrait(s, cache, face_id, 256).stat().st_mtime_ns == mtime
-        assert aligned_portrait(s, cache, 999_999, 256) is None
+        assert aligned_portrait(s, cache, face_id, 256, allowed=allowed).stat().st_mtime_ns == mtime
+        assert aligned_portrait(s, cache, 999_999, 256, allowed=allowed) is None
+
+
+def test_aligned_portrait_reads_only_allowed_photos(db, family, settings):
+    cache = settings.cache_dir / "aligned"
+    with db.session() as s:
+        face_id = growup_frames(s, family["mia"])[0].face_id
+        assert aligned_portrait(s, cache, face_id, 256, allowed=lambda _p: False) is None
+    assert not aligned_path(cache, face_id, 256).exists()
 
 
 def test_render_animation_frames_and_timing():
@@ -225,14 +235,14 @@ def test_render_animation_frames_and_timing():
 def test_growup_animation_renders_once(db, family, settings, monkeypatch):
     cache = settings.cache_dir / "aligned"
     with db.session() as s:
-        data, frames = growup_animation(s, cache, family["mia"], size=96)
+        data, frames = growup_animation(s, cache, family["mia"], size=96, allowed=checker(settings))
         assert len(frames) == 7
         with Image.open(io.BytesIO(data)) as im:
             assert im.size == (96, 96) and im.n_frames > 7
         from vision_tagger.faces import generations as G
 
         monkeypatch.setattr(G, "render_animation", lambda *a, **k: pytest.fail("not cached"))
-        again, _ = growup_animation(s, cache, family["mia"], size=96)
+        again, _ = growup_animation(s, cache, family["mia"], size=96, allowed=checker(settings))
         assert again == data
 
 

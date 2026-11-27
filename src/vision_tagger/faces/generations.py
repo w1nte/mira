@@ -189,8 +189,16 @@ def _decode_px(face: Face, width: int | None, height: int | None, size: int) -> 
     return None if needed >= longest else max(size, round(needed))
 
 
-def aligned_portrait(s: Session, cache_dir: Path, face_id: int, size: int = 512) -> Path | None:
-    """Eye-aligned portrait of a face (cached on disk)."""
+def aligned_portrait(
+    s: Session,
+    cache_dir: Path,
+    face_id: int,
+    size: int = 512,
+    *,
+    allowed: Callable[[str], bool],
+) -> Path | None:
+    """Eye-aligned portrait of a face (cached on disk). The photo is only read if ``allowed``
+    accepts its path (:func:`vision_tagger.access.checker`)."""
     target = aligned_path(cache_dir, face_id, size)
     if target.exists():
         return target
@@ -202,6 +210,8 @@ def aligned_portrait(s: Session, cache_dir: Path, face_id: int, size: int = 512)
     if row is None:
         return None
     face, path, full_width, full_height = row
+    if not allowed(path):
+        return None
     try:
         im = load_image(path, max_px=_decode_px(face, full_width, full_height, size))
     except OSError as exc:
@@ -283,7 +293,12 @@ def render_animation(
 
 
 def growup_animation(
-    s: Session, cache_dir: Path, person_id: int, size: int = 384
+    s: Session,
+    cache_dir: Path,
+    person_id: int,
+    size: int = 384,
+    *,
+    allowed: Callable[[str], bool],
 ) -> tuple[bytes, list[Frame]] | None:
     """Animated WebP of a person growing up (cached by the selected faces)."""
     frames = growup_frames(s, person_id)
@@ -295,7 +310,7 @@ def growup_animation(
         return target.read_bytes(), frames
     portraits, captions = [], []
     for f in frames:
-        path = aligned_portrait(s, cache_dir, f.face_id, 512)
+        path = aligned_portrait(s, cache_dir, f.face_id, 512, allowed=allowed)
         if path is None:
             continue
         with Image.open(path) as im:

@@ -8,6 +8,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import Response
 
+from ...access import library_checker
 from ...db.models import Image
 from ...db.util import chunked
 from ...export import METADATA, export_images
@@ -108,6 +109,7 @@ def export_results(
             c.db,
             ImageFilter(),
             target.strip(),
+            allowed=library_checker(c.db, c.settings),
             mode=mode,
             layout=layout,
             image_ids=image_ids,  # type: ignore[arg-type]
@@ -137,7 +139,7 @@ def download_results(request: Request, ids: str = "") -> Response:
 
     c = ctx(request)
     return StreamingResponse(
-        stream_zip(c.db, ints(ids.split(","))),
+        stream_zip(c.db, ints(ids.split(",")), allowed=library_checker(c.db, c.settings)),
         media_type="application/zip",
         headers={"Content-Disposition": 'attachment; filename="mira-search.zip"'},
     )

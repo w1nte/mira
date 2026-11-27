@@ -10,11 +10,24 @@ Mira shows them on its "What's new" page, and each GitHub release uses its secti
 - The notes of each release on GitHub list the SHA-256 checksum of every download and a link to its VirusTotal scan.
 - System → Log shows what Mira did, with every warning and error; filter it, download it, or open the log file in your text editor.
 - Report a bug (sidebar, System → Log) opens a GitHub bug report form with your Mira version and system already filled in.
+- `web.trusted_proxies`: behind a reverse proxy in another container, the login lockout counts each visitor, not the proxy.
 - Images: with one person in the filter, Sort → "Age: youngest first" / "oldest first" orders the photos by that person's age in them.
 - When a face doesn't match the photo date, the photo page offers both fixes: set the year, or keep the date and set the person's age (also Edit ages).
 
 ### Changed
+- `vision-tagger serve` refuses to start without a password in remote mode or on an address other computers can reach (`--host 0.0.0.0`).
 - The desktop app, `vision-tagger serve` (also in Docker) and the command line all log to `data/logs/vision-tagger.log`, up to 20 MB.
+
+### Fixed
+- Photos only open image files, and in remote mode only files in the upload folder: an imported database can no longer reveal other files.
+- Changing the password now ends every login; Database → Log out everywhere ends them on all devices. Everyone logs in once more after the update.
+- Exports and ZIP downloads stay inside their folder, and an imported database can no longer make Mira contact network shares you don't use.
+- Login: guessing from many addresses is limited, wrong passwords no longer slow down other pages, and the example password from `.env.example` is refused.
+- Text visible in a photo (a sign, a screenshot) can no longer steer how Deep search ranks other photos.
+- Uploads and database imports larger than allowed (`remote.chunk_mb`, `remote.max_file_gb`) are refused before they fill the server's memory or disk.
+- Other websites can no longer show Mira in a hidden frame to trick you into clicking its buttons.
+- Face models are checked (SHA-256) before use, and Docker uses fixed versions of Python, Ollama and Traefik.
+- Other websites can link to Mira but no longer load its photos or data in the background (which revealed whether a photo exists).
 
 ## 1.7 - 2026-11-26
 
