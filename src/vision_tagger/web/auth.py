@@ -121,7 +121,8 @@ def _existing_secret(path: Path) -> bytes:
 class Auth:
     def __init__(self, password: str, secret: bytes) -> None:
         self.enabled = bool(password)
-        self._digest = hashlib.sha256(password.encode()).digest()
+        self._salt = secret
+        self._digest = hashlib.pbkdf2_hmac("sha256", password.encode(), self._salt, 600_000)
         self._key = self._signing_key(secret)
         self._failures: dict[str, tuple[int, float]] = {}  # key -> (count, last failure)
         self._recent: deque[float] = deque(maxlen=GLOBAL_MAX_FAILURES)  # times, all addresses
@@ -165,7 +166,10 @@ class Auth:
             return False
 
     def check(self, password: str, client: str) -> bool:
-        ok = hmac.compare_digest(hashlib.sha256(password.encode()).digest(), self._digest)
+        ok = hmac.compare_digest(
+            hashlib.pbkdf2_hmac("sha256", password.encode(), self._salt, 600_000),
+            self._digest,
+        )
         key, now = client_key(client), time.time()
         with self._lock:
             if ok:
