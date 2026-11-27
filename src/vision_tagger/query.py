@@ -25,7 +25,9 @@ parameter  meaning                                                example
 ``q``      text search in file name, path and caption             ``q=birthday``
 ``place``  place id (see ``geo.places``; repeatable: OR)          ``place=12&place=14``
 ``bbox``   map area: min lon, min lat, max lon, max lat           ``bbox=13.3,52.4,13.5,52.6``
-``sort``   ``date_desc`` (default), ``date_asc``, ``name``, ``path``, ``faces``, ``size``
+``sort``   ``date_desc`` (default), ``date_asc``, ``name``, ``path``, ``faces``, ``size``,
+           ``age_asc``, ``age_desc``: the age in each photo of    ``sort=age_asc``
+           the one person (or cluster) filtered by
 =========  =====================================================  =========
 
 Alternatives ("or"): the alternatives of one condition are OR-ed, conditions are AND-ed and
@@ -63,7 +65,8 @@ from .db.models import (
 )
 from .db.util import chunked, like_escape
 
-SORTS = ("date_desc", "date_asc", "name", "path", "faces", "size")
+AGE_SORTS = ("age_asc", "age_desc")
+SORTS = ("date_desc", "date_asc", "name", "path", "faces", "size", *AGE_SORTS)
 
 
 def _parse_date(value: str | None, end: bool = False) -> datetime | None:
@@ -218,6 +221,8 @@ class ImageFilter:
             (self.date_from, self.date_to), dates = dates[0], []
         self.dates = dates
         self.places = _unique(self.places)
+        if self.sort in AGE_SORTS and self.age_subject is None:
+            self.sort = "date_desc"  # whose age? (the person was removed from the filter)
 
     # ------------------------------------------------------------------ (de)serialisation
     @classmethod
@@ -299,6 +304,14 @@ class ImageFilter:
     def who_count(self) -> int:
         """Persons, clusters and pets: the filters ``persons_mode`` combines."""
         return len(self.persons) + len(self.clusters) + len(self.pets)
+
+    @property
+    def age_subject(self) -> tuple[int | None, int | None] | None:
+        """``(person id, None)`` or ``(None, cluster id)`` when the photos can be sorted by
+        that one person's age, else ``None``."""
+        if len(self.persons) + len(self.clusters) != 1:
+            return None
+        return (self.persons[0], None) if self.persons else (None, self.clusters[0])
 
     @property
     def is_empty(self) -> bool:
@@ -661,6 +674,8 @@ def image_ids_subquery(f: ImageFilter):
 
 
 def select_images(f: ImageFilter) -> Select:
+    """The images of ``f`` in its order (the age sorts are made in Python: see
+    :func:`page_images`; here they fall back to the date)."""
     return _ordered(select(Image).where(*conditions(f)), f)
 
 
@@ -668,11 +683,60 @@ def count_images(s: Session, f: ImageFilter) -> int:
     return s.scalar(select(func.count()).select_from(Image).where(*conditions(f))) or 0
 
 
-def page_images(s: Session, f: ImageFilter, offset: int = 0, limit: int = 120) -> list[Image]:
+def sort_ages(s: Session, f: ImageFilter) -> dict[int, tuple[int, bool]] | None:
+    """``{image id: (age, estimated)}`` of the person ``f`` is sorted by, or ``None`` when it
+    is not sorted by age (see :func:`faces.ages.image_ages`)."""
+    if f.sort not in AGE_SORTS or f.age_subject is None:
+        return None
+    from .faces.ages import image_ages
+
+    person_id, cluster_id = f.age_subject
+    return image_ages(s, person_id=person_id, cluster_id=cluster_id)
+
+
+def _age_ordered_ids(
+    s: Session, f: ImageFilter, ages: dict[int, tuple[int, bool]] | None = None
+) -> list[int]:
+    """All image ids of ``f`` by the person's age; photos of the same age by date, photos
+    without an age (no face age, no date) last, newest first."""
+    ages = ages if ages is not None else (sort_ages(s, f) or {})
+    rows = s.execute(select(Image.id, Image.recorded_at).where(*conditions(f))).all()
+    dated = sorted(
+        (r for r in rows if r[0] in ages),
+        key=lambda r: (ages[r[0]][0], r[1] is not None, r[1] or datetime.min, r[0]),
+    )
+    if f.sort == "age_desc":
+        dated.reverse()
+    rest = sorted(
+        (r for r in rows if r[0] not in ages),
+        key=lambda r: (r[1] is not None, r[1] or datetime.min, r[0]),
+        reverse=True,
+    )
+    return [r[0] for r in dated] + [r[0] for r in rest]
+
+
+def page_images(
+    s: Session,
+    f: ImageFilter,
+    offset: int = 0,
+    limit: int = 120,
+    ages: dict[int, tuple[int, bool]] | None = None,
+) -> list[Image]:
+    """One gallery page. ``ages``: :func:`sort_ages` if the caller has it already."""
+    if f.sort in AGE_SORTS and f.age_subject is not None:
+        ids = _age_ordered_ids(s, f, ages)[offset : offset + limit]
+        by_id: dict[int, Image] = {}
+        for part in chunked(ids):
+            by_id.update(
+                (img.id, img) for img in s.scalars(select(Image).where(Image.id.in_(part)))
+            )
+        return [by_id[i] for i in ids if i in by_id]
     return list(s.scalars(select_images(f).offset(offset).limit(limit)))
 
 
 def all_image_ids(s: Session, f: ImageFilter) -> list[int]:
+    if f.sort in AGE_SORTS and f.age_subject is not None:
+        return _age_ordered_ids(s, f)
     return list(s.scalars(_ordered(select(Image.id).where(*conditions(f)), f)))
 
 

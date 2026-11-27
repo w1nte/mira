@@ -299,6 +299,9 @@ class Face(Base):
     landmarks: Mapped[list[Any] | None] = mapped_column(JSON)
     embedding: Mapped[bytes] = mapped_column(LargeBinary)
     age: Mapped[int | None] = mapped_column(Integer)
+    # the age set by the user (the person's true age in this photo); kept on re-detection and
+    # used instead of the estimate ``age`` everywhere
+    manual_age: Mapped[int | None] = mapped_column(Integer)
     gender: Mapped[str | None] = mapped_column(String(1))
     face_px: Mapped[int] = mapped_column(Integer, default=0)
     cluster_id: Mapped[int | None] = mapped_column(ForeignKey("clusters.id", ondelete="SET NULL"))

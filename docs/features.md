@@ -76,6 +76,16 @@
     file date, "taken" before birth) are flagged with a suggested year and a one-click fix. A
     date is only doubted when the faces disagree far beyond the model's typical error at that
     age; dates you set by hand are never doubted. Fixed dates survive re-scans.
+  - **Date wrong or face age wrong?** The photo page offers both fixes: *Set year to …* when
+    the date is wrong, or *Anna is 7 here* when the date is right and only the face looks older
+    or younger. **Edit ages** under *People* sets any age by hand (*Automatic* goes back to the
+    estimate). A manual age replaces the face estimate everywhere (date checks, birth-year
+    estimate, timelines) and is kept when the faces are detected again.
+  - **Sort by age.** With exactly one person (or one unnamed cluster) in the gallery filter,
+    *Sort* offers *Age: youngest first* and *Age: oldest first*: the photos in the order of that
+    person's age, which is the age you set, else the age from birth year and date, else the face
+    estimate when the date is doubtful (`~7` on the tile). Photos with a wrong date still land
+    where they belong.
 - **"Who's that?" quiz** 🎲. Name unnamed clusters as a game, or test yourself on the people you
   already named.
   - After each answer you see how sure the face recognition was.

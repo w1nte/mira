@@ -10,6 +10,8 @@ Mira shows them on its "What's new" page, and each GitHub release uses its secti
 - The notes of each release on GitHub list the SHA-256 checksum of every download and a link to its VirusTotal scan.
 - System → Log shows what Mira did, with every warning and error; filter it, download it, or open the log file in your text editor.
 - Report a bug (sidebar, System → Log) opens a GitHub bug report form with your Mira version and system already filled in.
+- Images: with one person in the filter, Sort → "Age: youngest first" / "oldest first" orders the photos by that person's age in them.
+- When a face doesn't match the photo date, the photo page offers both fixes: set the year, or keep the date and set the person's age (also Edit ages).
 
 ### Changed
 - The desktop app, `vision-tagger serve` (also in Docker) and the command line all log to `data/logs/vision-tagger.log`, up to 20 MB.
