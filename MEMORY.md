@@ -9,9 +9,11 @@ only what will matter again, and delete what no longer holds. Rules live in `CLA
   URL in `xmp.py`: other programs have stored data under it.
 - Work happens on feature branches `claude/<topic>`. The owner merges the PRs. To catch up,
   merge `main` into the branch; no rebase, no force-push.
+- The README stays short (description, overview, setup). Everything else is in `docs/`;
+  document new features there.
 - The website is the orphan branch `gh-pages` (no project files) at `w1nte.github.io/mira/`.
   It is built from the owner's claude.ai design artifact, in 11 languages (`site.js`). Its facts
-  must match the README; copy from the README, not from memory.
+  must match the README and `docs/`; copy from there, not from memory.
 
 ## Releases and installers
 - Publishing a GitHub release triggers `.github/workflows/desktop.yml`. It builds the Windows
@@ -42,7 +44,7 @@ only what will matter again, and delete what no longer holds. Rules live in `CLA
   text-document embeddings, properties and keywords.
   - "or": alternatives inside a group are OR-ed, groups are AND-ed, exclusions stay strict.
   - URL `t=k:v|k:v` is one OR group; a repeated `t` is still AND, for old links.
-  - Visual model choice (README table): SigLIP 2 B/16 with the fp32 image and fp16 text file.
+  - Visual model choice (table in `docs/search.md`): SigLIP 2 B/16 with the fp32 image and fp16 text file.
     Its int8 files lose too much (int8 image vectors: cosine 0.8 to fp32), fp16 image is 2x
     slower on the CPU, nomic-embed-vision is English-only. Re-measure before switching.
   - The visual score is calibrated (`VisualModel.low/high`), not min-max: a request nothing

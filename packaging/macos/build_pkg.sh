@@ -5,7 +5,7 @@
 #
 # The package always has the identifier io.github.w1nte.mira, so the macOS Installer offers
 # "Upgrade" over an installed version. Its scripts quit a running Mira first (preinstall) and
-# migrate the library's database afterwards (postinstall). It is not signed (see the README).
+# migrate the library's database afterwards (postinstall). It is not signed (see docs/installation.md).
 set -eu
 version=${1:?usage: build_pkg.sh VERSION}
 here=$(cd "$(dirname "$0")" && pwd)

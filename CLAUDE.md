@@ -23,6 +23,7 @@ Key places:
 - `src/vision_tagger/pipeline/`: batched, resumable runner and the stages
 - `src/vision_tagger/web/`: routes, templates, static assets (HTMX and Alpine are vendored)
 - `tests/`: pytest suite (fake VLM backend, real InsightFace in `integration` tests)
+- `docs/`: the user documentation (the README stays short: description, overview, setup)
 
 ## Commands
 

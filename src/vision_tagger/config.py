@@ -117,7 +117,7 @@ class AnimalsConfig(BaseModel):
     """Animal detection and pets (see ``animals``). Runs on ``faces.providers``.
 
     The thresholds were chosen on real photos (9 dogs and cats with 5-6 photos each, plus 60
-    photos of 10 breeds); see the README section "Animals and pets".
+    photos of 10 breeds); see docs/animals.md.
     """
 
     model_dir: Path | None = None  # defaults to <faces.model_root>/models/animals
@@ -157,8 +157,7 @@ class VisualConfig(BaseModel):
 class NsfwConfig(BaseModel):
     """The NSFW check (see ``nsfw``): a local image classifier on ``faces.providers``.
 
-    The threshold was chosen on safe photos (objects, pets and people); see the README section
-    "Not safe for work (NSFW)".
+    The threshold was chosen on safe photos (objects, pets and people); see docs/nsfw.md.
     """
 
     model_dir: Path | None = None  # defaults to <faces.model_root>/models/nsfw
