@@ -12,6 +12,10 @@ embed its photos.
 
 Mira only ever opens image files as photos, judged by the file's own name, and in remote mode
 only files below the upload folder. An imported database can't make it show other files.
+A path on a network share (`\\server\share`) is only opened if one of your library folders is
+on that share: merely looking at such a path makes Windows sign in to that computer with your
+account. Network folders of an imported library are not added; add them on the *Import* page if
+you trust them. Exports never write outside the target folder.
 
 The buttons that open Explorer or Finder only appear for, and only answer, a browser on the
 server's own computer (local mode, a loopback address, a local host name, no proxy headers). The

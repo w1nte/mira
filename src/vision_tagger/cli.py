@@ -378,6 +378,8 @@ def db_import(
         finally:
             transfer.remove_file(tmp)
         typer.echo(f"imported {result.images} photos (schema {result.revision})")
+        for root in result.skipped_roots:
+            typer.echo(f"  network folder not added (add it yourself if you trust it): {root}")
         if result.backup:
             typer.echo(f"backup:  {result.backup}")
         typer.echo("checking where the photos are…")
@@ -778,15 +780,18 @@ def export(
     """
     from starlette.datastructures import QueryParams
 
+    from .access import library_checker
     from .export import export_images
     from .query import ImageFilter
 
     settings = _settings()
+    db = _db()
     metadata = [name for name, on in (("xmp", xmp), ("embed", embed), ("index", index)) if on]
     stats = export_images(
-        _db(),
+        db,
         ImageFilter.from_params(QueryParams(query)),
         target,
+        allowed=library_checker(db, settings),
         mode=(mode or settings.export.mode),  # type: ignore[arg-type]
         layout=layout,  # type: ignore[arg-type]
         metadata=metadata,
@@ -814,13 +819,17 @@ def sidecars(
     """
     from starlette.datastructures import QueryParams
 
+    from .access import library_checker
     from .export import write_sidecars_in_place
     from .query import ImageFilter
 
+    settings = _settings()
+    db = _db()
     stats = write_sidecars_in_place(
-        _db(),
+        db,
         ImageFilter.from_params(QueryParams(query)),
-        naming=_settings().export.sidecar_naming,
+        allowed=library_checker(db, settings),
+        naming=settings.export.sidecar_naming,
     )
     typer.echo(
         f"{stats.sidecars} sidecars written, {stats.kept} of other apps kept, "
@@ -917,7 +926,7 @@ def growup(
     output: Annotated[Path, typer.Argument(help="Target file (.webp).")] = Path("growing-up.webp"),
 ) -> None:
     """Render an animation of a person growing up (eye-aligned faces, ordered by age)."""
-    from .access import checker
+    from .access import library_checker
     from .faces.clustering import find_person
     from .faces.generations import growup_animation
 
@@ -929,7 +938,7 @@ def growup(
             typer.echo(f"unknown person: {person}", err=True)
             raise typer.Exit(1)
         result = growup_animation(
-            s, settings.cache_dir / "aligned", p.id, allowed=checker(settings)
+            s, settings.cache_dir / "aligned", p.id, allowed=library_checker(db, settings)
         )
     if result is None:
         typer.echo(f"need photos of {p.name} at two or more different ages", err=True)

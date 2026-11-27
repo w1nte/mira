@@ -999,6 +999,7 @@
   "Naming places: %(done)s of %(total)s": "Plaatsen benoemen: %(done)s van %(total)s",
   "natural": "natuurlijk",
   "Need photos of %(name)s at two or more different ages.": "Hiervoor zijn foto’s van %(name)s op twee of meer verschillende leeftijden nodig.",
+  "Network folders of the file were not added (add them on the Import page if you trust them): %(folders)s": "Netwerkmappen uit het bestand zijn niet toegevoegd (voeg ze toe op de pagina Importeren als je ze vertrouwt): %(folders)s",
   "New collection": "Nieuwe collectie",
   "New group": "Nieuwe groep",
   "New name": "Nieuwe naam",

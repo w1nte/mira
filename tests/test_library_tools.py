@@ -685,6 +685,17 @@ def test_reveal_buttons_on_this_computer(local, settings, photos, launched):
     assert len(launched) == 5
 
 
+def test_reveal_never_contacts_an_unknown_network_share(local, launched, monkeypatch):
+    c = local
+    with c.ctx.db.write() as s:  # e.g. from an imported library file
+        s.get(Image, 1).path = "//attacker.example/share/a.jpg"
+    looked: list[str] = []
+    monkeypatch.setattr(Path, "is_file", lambda self: looked.append(str(self)) or True)
+    r = c.post("/reveal", data={"kind": "image", "id": "1"}, headers={"HX-Request": "true"})
+    assert r.status_code == 204 and "err=" in r.headers["HX-Redirect"]
+    assert looked == [] and launched == []
+
+
 def test_reveal_only_on_the_computer_mira_runs_on(settings, photos, tmp_path, launched):
     make_image(photos / "a.jpg", seed=1)
     app = create_app(settings)

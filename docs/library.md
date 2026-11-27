@@ -18,7 +18,9 @@ it; the photos themselves are not part of it, copy them separately.
   - Thumbnails and face crops are cleared (image ids now mean other photos) and made again on
     demand. The pipeline state of the other computer (a run that was active there) is reset.
   - The library folders become the imported folders that exist on this computer plus the ones
-    configured before; remote mode keeps its upload folder.
+    configured before; remote mode keeps its upload folder. Imported folders on a network share
+    (`\\server\share`) none of your folders is on are not added (the import message lists them):
+    add them on the **Import** page if you trust them, then scan.
 - **Missing files.** After an import Mira checks where every photo is, not only those below
   the current folders. Photos that are not where the other computer had them are flagged as
   missing and listed under **Database → Missing files** (with their faces and names), with a

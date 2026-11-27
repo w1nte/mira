@@ -11,6 +11,7 @@ Mira shows them on its "What's new" page, and each GitHub release uses its secti
 ### Fixed
 - Photos only open image files, and in remote mode only files in the upload folder: an imported database can no longer reveal other files.
 - Changing the password now ends every login; Database → Log out everywhere ends them on all devices. Everyone logs in once more after the update.
+- Exports and ZIP downloads stay inside their folder, and an imported database can no longer make Mira contact network shares you don't use.
 - Other websites can no longer show Mira in a hidden frame to trick you into clicking its buttons.
 
 ## 1.7 - 2026-11-26

@@ -18,6 +18,12 @@ from vision_tagger.query import ImageFilter
 
 from .helpers import add_face, add_image, person_centers
 
+
+def everything(_path: str) -> bool:
+    """The access check of the export functions: these tests export every photo."""
+    return True
+
+
 NS = {
     "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
     "dc": "http://purl.org/dc/elements/1.1/",
@@ -131,7 +137,9 @@ def test_embedding_keeps_the_image_and_is_readable(tmp_path):
 def test_export_with_metadata(db, library, tmp_path, settings):
     originals = {p: sha(p) for p in library}
     out = tmp_path / "out"
-    stats = export_images(db, ImageFilter(), out, metadata=("xmp", "embed", "index"))
+    stats = export_images(
+        db, ImageFilter(), out, allowed=everything, metadata=("xmp", "embed", "index")
+    )
     assert stats.exported == 2 and stats.sidecars == 2 and stats.embedded == 2
     assert all(sha(p) == h for p, h in originals.items())  # originals untouched
     assert b"sand castle" in (out / "photo0.jpg.xmp").read_bytes()
@@ -141,7 +149,9 @@ def test_export_with_metadata(db, library, tmp_path, settings):
     assert rows[0]["persons"] == 'Anna "Nan" & <Co>' and "beach" in rows[0]["keywords"]
     doc = json.loads((out / "vision-tagger.json").read_text(encoding="utf-8"))
     assert doc["photos"][0]["faces"][0]["name"] == 'Anna "Nan" & <Co>'
-    export_images(db, ImageFilter(), out, metadata=("index",))  # exporting again: merged
+    export_images(
+        db, ImageFilter(), out, allowed=everything, metadata=("index",)
+    )  # exporting again: merged
     doc = json.loads((out / "vision-tagger.json").read_text(encoding="utf-8"))
     assert len(doc["photos"]) == 4  # the second run made copies with new names
     assert len({p["file"] for p in doc["photos"]}) == 4
@@ -150,7 +160,9 @@ def test_export_with_metadata(db, library, tmp_path, settings):
 def test_links_are_never_modified(db, library, tmp_path):
     original = sha(library[0])
     out = tmp_path / "links"
-    stats = export_images(db, ImageFilter(), out, mode="hardlink", metadata=("xmp", "embed"))
+    stats = export_images(
+        db, ImageFilter(), out, allowed=everything, mode="hardlink", metadata=("xmp", "embed")
+    )
     assert stats.embedded == 0 and stats.sidecars == 2
     assert sha(library[0]) == original and sha(out / "photo0.jpg") == original
 
@@ -159,12 +171,14 @@ def test_sidecars_next_to_originals_respect_other_apps(db, library):
     foreign = X.sidecar_path(library[1])
     foreign.write_text("<x:xmpmeta>darktable history</x:xmpmeta>")
     before = {p: sha(p) for p in library}
-    stats = write_sidecars_in_place(db, ImageFilter())
+    stats = write_sidecars_in_place(db, ImageFilter(), allowed=everything)
     assert stats.sidecars == 1 and stats.kept == 1
     assert "darktable" in foreign.read_text()
     assert X.is_ours(X.sidecar_path(library[0]))
     assert {p: sha(p) for p in library} == before
-    assert write_sidecars_in_place(db, ImageFilter()).sidecars == 1  # ours get updated
+    assert (
+        write_sidecars_in_place(db, ImageFilter(), allowed=everything).sidecars == 1
+    )  # ours get updated
     assert X.sidecar_path(library[0], "replace").name == "photo0.xmp"
 
 

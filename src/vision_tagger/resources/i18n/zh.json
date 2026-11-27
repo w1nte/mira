@@ -937,6 +937,7 @@
   "Naming places: %(done)s of %(total)s": "正在命名地点：%(done)s / %(total)s",
   "natural": "自然光",
   "Need photos of %(name)s at two or more different ages.": "需要 %(name)s 在两个或更多不同年龄的照片。",
+  "Network folders of the file were not added (add them on the Import page if you trust them): %(folders)s": "文件中的网络文件夹未被添加（如果信任它们，请在“导入”页面添加）：%(folders)s",
   "New collection": "新建合集",
   "New group": "新分组",
   "New name": "新名称",

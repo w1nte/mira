@@ -7,15 +7,16 @@ import logging
 import mimetypes
 import os
 import threading
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterable
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .. import APP_NAME, i18n
-from ..access import photo_file
+from ..access import network_share, photo_file
 from ..config import Settings, load_settings
 from ..db.models import Animal, Face, Image, PersonReference
 from ..imaging import (
@@ -27,6 +28,7 @@ from ..imaging import (
     thumbnail_is_fresh,
     thumbnail_path,
 )
+from ..indexer import stored_roots
 from .auth import Auth, load_secret
 from .common import STATIC_DIR, ctx
 from .context import AppContext
@@ -145,7 +147,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             img = s.get(Image, image_id)
             if img is None:
                 raise HTTPException(404)
-            path = photo_file(c.settings, img.path)
+            path = _photo(c, img.path)
         if path is None:  # not a photo file Mira may open (see access.photo_file)
             return _unavailable()
         target = thumbnail_path(c.settings.thumbs_dir, image_id, size)
@@ -170,7 +172,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             img = s.get(Image, image_id)
             if img is None:
                 raise HTTPException(404)
-            path = photo_file(c.settings, img.path)
+            path = _photo(c, img.path)
         if path is None:
             return _unavailable()
         target = thumbnail_path(c.settings.thumbs_dir, image_id, PREVIEW_SIZE)
@@ -189,7 +191,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             img = s.get(Image, image_id)
             if img is None:
                 raise HTTPException(404)
-            path = photo_file(c.settings, img.path)
+            path = _photo(c, img.path)
             rotated = bool((img.meta or {}).get("orientation"))
         if path is None or not path.exists():
             raise HTTPException(404, "file missing")
@@ -214,7 +216,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     raise HTTPException(404)
                 img = s.get(Image, face.image_id)
                 assert img is not None
-                path, w = photo_file(c.settings, img.path), img.width
+                path, w = _photo(c, img.path), img.width
                 bbox = (face.x1, face.y1, face.x2, face.y2)
             if path is None:
                 return _unavailable()
@@ -244,7 +246,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     raise HTTPException(404)
                 img = s.get(Image, animal.image_id)
                 assert img is not None
-                path, w = photo_file(c.settings, img.path), img.width
+                path, w = _photo(c, img.path), img.width
                 bbox = (animal.x1, animal.y1, animal.x2, animal.y2)
             if path is None:
                 raise HTTPException(404, "file missing")
@@ -274,7 +276,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             face_id, source = ref.face_id, ref.source_path
         if face_id is not None:
             return face_crop(request, face_id)
-        file = photo_file(c.settings, source, extra_roots=[c.settings.paths.references_dir])
+        file = _photo(c, source, extra_roots=[c.settings.paths.references_dir])
         if file is not None and file.exists():
             buf = io.BytesIO()
             load_image(file, max_px=320).save(buf, "WEBP", quality=80)
@@ -282,6 +284,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return _unavailable()  # e.g. cut from a photo that was removed from the library
 
     return app
+
+
+def _photo(c: AppContext, path: str | None, extra_roots: Iterable[str | Path] = ()) -> Path | None:
+    """:func:`access.photo_file`; the library folders are only read for network paths."""
+    roots = stored_roots(c.db, c.settings) if path and network_share(path) else ()
+    return photo_file(c.settings, path, roots=roots, extra_roots=extra_roots)
 
 
 def _cache_headers() -> dict[str, str]:

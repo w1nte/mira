@@ -7,6 +7,7 @@ from fastapi.responses import Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
+from ...access import library_checker
 from ...db import transfer
 from ...db.models import Animal, Cluster, Face, Image, ImageProperty, Person, Pet, Place, VlmResult
 from ...db.util import chunked
@@ -304,7 +305,6 @@ def download_zip(request: Request) -> Response:
     """The photos of the current filter as a ZIP, with XMP sidecars (remote mode export)."""
     from fastapi.responses import StreamingResponse
 
-    from ...access import checker
     from ...export import stream_zip
 
     c = ctx(request)
@@ -312,7 +312,7 @@ def download_zip(request: Request) -> Response:
     with c.db.session() as s:
         ids = all_image_ids(s, f)
     return StreamingResponse(
-        stream_zip(c.db, ids, allowed=checker(c.settings)),
+        stream_zip(c.db, ids, allowed=library_checker(c.db, c.settings)),
         media_type="application/zip",
         headers={"Content-Disposition": 'attachment; filename="mira-photos.zip"'},
     )
@@ -427,6 +427,7 @@ def export(
             c.db,
             f,
             target.strip(),
+            allowed=library_checker(c.db, c.settings),
             mode=mode,  # type: ignore[arg-type]
             layout=layout,  # type: ignore[arg-type]
             metadata=[m for m in metadata if m in METADATA],
@@ -476,7 +477,12 @@ def sidecars(request: Request, query: str = Form("")) -> Response:
 
     def job(j: Job) -> Lazy:
         j.message = Lazy("writing XMP sidecars next to the originals")
-        stats = write_sidecars_in_place(c.db, f, naming=c.settings.export.sidecar_naming)
+        stats = write_sidecars_in_place(
+            c.db,
+            f,
+            allowed=library_checker(c.db, c.settings),
+            naming=c.settings.export.sidecar_naming,
+        )
         variables = {
             "written": stats.sidecars,
             "kept": stats.kept,

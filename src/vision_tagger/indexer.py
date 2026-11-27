@@ -19,7 +19,7 @@ from typing import Any
 import imagehash
 from sqlalchemy import delete, exists, insert, literal, select, update
 
-from .access import checker
+from .access import checker, known_shares, network_share
 from .animals.grouping import delete_image_animals
 from .config import Settings
 from .db.models import (
@@ -325,7 +325,7 @@ class Indexer:
             rows = s.execute(
                 select(Image.id, Image.path).where(Image.missing.is_(False)).order_by(Image.id)
             ).all()
-        allowed = checker(self.settings)
+        allowed = checker(self.settings, stored_roots(self.db, self.settings))
         todo = [
             (i, p)
             for i, p in rows
@@ -408,6 +408,7 @@ class Indexer:
             return thumbs
 
         max_dist = self.settings.index.dhash_max_distance
+        allowed = checker(self.settings, stored_roots(self.db, self.settings))
         with self.db.write() as s:
             by_hash: dict[str, list[Image]] = {}
             for part in chunked(sorted({r.phash for r in ok if r.phash})):
@@ -442,7 +443,8 @@ class Indexer:
 
                 owner = find_duplicate(by_hash.get(r.phash, []), r.phash, r.dhash, max_dist)
                 if owner is not None:
-                    if owner.path_key != c.key and not os.path.exists(owner.path):
+                    gone = not (allowed(owner.path) and os.path.exists(owner.path))
+                    if owner.path_key != c.key and gone:
                         # The original file moved: re-point the image instead of duplicating.
                         self._apply_location(owner, c)
                         owner.missing = False
@@ -602,10 +604,15 @@ class Indexer:
         # --- disk checks, no transaction open. A path Mira may not open (an imported database,
         # see access.photo_file) counts as missing and is never looked at.
         disk = _ExistsCache()
-        allowed = checker(self.settings)
+        library = stored_roots(self.db, self.settings)
+        allowed = checker(self.settings, library)
+        shares = known_shares(library)
 
         def exists(path: str, root: str | None = None) -> bool:
-            return allowed(path) and disk(path, root)
+            if not allowed(path):
+                return False
+            share = network_share(root) if root else None
+            return disk(path, root if share is None or share in shares else None)
 
         total = len(images) + len(dups)
         image_exists: dict[int, bool] = {}

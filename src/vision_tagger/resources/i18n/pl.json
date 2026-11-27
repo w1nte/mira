@@ -1061,6 +1061,7 @@
   "Naming places: %(done)s of %(total)s": "Nadawanie nazw miejscom: %(done)s z %(total)s",
   "natural": "naturalne",
   "Need photos of %(name)s at two or more different ages.": "Potrzebne są zdjęcia osoby %(name)s z co najmniej dwóch różnych okresów życia.",
+  "Network folders of the file were not added (add them on the Import page if you trust them): %(folders)s": "Folderów sieciowych z pliku nie dodano (dodaj je na stronie Import, jeśli im ufasz): %(folders)s",
   "New collection": "Nowa kolekcja",
   "New group": "Nowa grupa",
   "New name": "Nowe imię",

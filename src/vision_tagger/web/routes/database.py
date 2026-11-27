@@ -208,11 +208,19 @@ def _import_job(c: AppContext, source: Path) -> Callable[[Job], Lazy]:
             transfer.remove_file(source)
         c.forget_library()
         missing = _check_locations(c, j)
-        return Lazy(
+        done = Lazy(
             "Database imported: %(images)s photos, %(missing)s of them not found on this computer.",
             images=result.images,
             missing=missing,
         )
+        if not result.skipped_roots:
+            return done
+        skipped = Lazy(
+            "Network folders of the file were not added (add them on the Import page if you "
+            "trust them): %(folders)s",
+            folders=", ".join(result.skipped_roots),
+        )
+        return LazyJoin(" ", [done, skipped])
 
     return job
 

@@ -8,6 +8,7 @@ them, in the web UI, the ZIP download or the location check.
 from __future__ import annotations
 
 import io
+import os
 import zipfile
 from pathlib import Path
 
@@ -16,11 +17,13 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from vision_tagger.access import is_below, photo_file
+from vision_tagger.access import checker, is_below, network_share, photo_file
 from vision_tagger.config import Settings
 from vision_tagger.db.models import Image
+from vision_tagger.export import export_images, stream_zip, write_sidecars_in_place
 from vision_tagger.imaging import PREVIEW_SIZE, thumbnail_path
 from vision_tagger.indexer import Indexer
+from vision_tagger.query import ImageFilter
 from vision_tagger.web.app import create_app
 
 from .conftest import make_image
@@ -150,3 +153,136 @@ def test_location_check_flags_files_mira_may_not_open(crafted):
     with c.db.session() as s:
         missing = set(s.scalars(select(Image.id).where(Image.missing)))
     assert missing == set(c.ids.values())
+
+
+# --------------------------------------------------------------------------- network shares
+SHARE = "//attacker.example/share"  # the forward-slash form is an absolute path everywhere
+
+
+@pytest.fixture
+def stats(monkeypatch):
+    """Paths on the attacker's share that something looked at (os.stat: exists, isdir...)."""
+    looked: list[str] = []
+    real = os.stat
+
+    def stat(path, *args, **kwargs):
+        if "attacker" in os.fspath(path):
+            looked.append(os.fspath(path))
+        return real(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "stat", stat)
+    return looked
+
+
+def test_network_share_of_a_path():
+    assert network_share(r"\\NAS\Photos\2021\a.jpg") == r"\\nas\photos"
+    assert network_share("//nas/photos/a.jpg") == r"\\nas\photos"
+    assert network_share(r"C:\Photos\a.jpg") is None
+    assert network_share("/home/me/a.jpg") is None
+
+
+def test_network_photos_only_on_shares_of_library_folders(settings):
+    nas = r"\\nas\photos"
+    assert photo_file(settings, rf"{nas}\2021\a.jpg") is None  # no library folder there
+    assert photo_file(settings, rf"{nas}\2021\a.jpg", roots=[rf"{nas}\2021"]) is not None
+    assert photo_file(settings, r"\\NAS\Photos\x\b.jpg", roots=[nas]) is not None  # any case
+    assert photo_file(settings, rf"{SHARE}/a.jpg", roots=[nas]) is None  # another host
+    assert photo_file(settings, r"\\nas\other\a.jpg", roots=[nas]) is None  # another share
+    assert checker(settings, [nas])(rf"{nas}\a.jpg") and not checker(settings)(rf"{nas}\a.jpg")
+
+
+def test_location_check_never_contacts_unknown_shares(db, settings, photos, stats):
+    real = make_image(photos / "here.jpg", seed=3)
+    with db.write() as s:
+        on_share = add_image(s, 1, path=f"{SHARE}/a.jpg")
+        root_on_share = add_image(s, 2, path=str(real))  # only the root column is on it
+        on_share.root = root_on_share.root = SHARE
+        ids = on_share.id, root_on_share.id
+    assert Indexer(db, settings).check_locations() == 1
+    with db.session() as s:
+        assert [s.get(Image, i).missing for i in ids] == [True, False]
+    assert stats == []
+
+
+def test_scan_relinks_without_contacting_unknown_shares(db, settings, photos, stats):
+    """A found file with the content of a photo whose stored path is on an unknown share: the
+    photo is linked to the found file; the share is never looked at."""
+    real = make_image(photos / "here.jpg", seed=4)
+    Indexer(db, settings).run()
+    with db.write() as s:
+        img = s.scalar(select(Image))
+        img.path, img.path_key, img.root = f"{SHARE}/a.jpg", f"{SHARE}/a.jpg", SHARE
+        image_id = img.id
+    Indexer(db, settings).run()
+    with db.session() as s:
+        img = s.get(Image, image_id)
+        assert img.path == str(real) and not img.missing
+    assert stats == []
+
+
+# --------------------------------------------------------------------------- export names
+def test_export_stays_inside_the_target_folder(db, settings, photos, tmp_path):
+    src = make_image(photos / "a.jpg", seed=1)
+    with db.write() as s:
+        for n, (rel, name) in enumerate(
+            [
+                ("../../outside/rel.jpg", "a.jpg"),
+                ("..\\..\\outside\\win.jpg", "a.jpg"),
+                ("C:/Windows/drive.jpg", "a.jpg"),
+                ("", "../../outside/flat.jpg"),
+            ]
+        ):
+            img = add_image(s, n, path=str(src))
+            img.rel_path, img.filename = rel, name
+    out = tmp_path / "export" / "target"
+    for layout in ("folder", "flat", "date"):
+        stats = export_images(db, ImageFilter(), out, allowed=checker(settings), layout=layout)
+        assert stats.exported == 4 and not stats.errors, (layout, stats.errors)
+    written = {p.relative_to(tmp_path).as_posix() for p in tmp_path.rglob("*.jpg")}
+    assert written - {"photos/a.jpg"} == {p for p in written if p.startswith("export/target/")}, (
+        written
+    )
+    assert (out / "outside" / "rel.jpg").exists() and (out / "outside" / "win.jpg").exists()
+    assert (out / "flat.jpg").exists()
+
+
+def test_export_does_not_follow_links_out_of_the_target(db, settings, photos, tmp_path):
+    src = make_image(photos / "a.jpg", seed=1)
+    out, elsewhere = tmp_path / "target", tmp_path / "elsewhere"
+    out.mkdir()
+    elsewhere.mkdir()
+    try:
+        (out / "sub").symlink_to(elsewhere, target_is_directory=True)
+    except OSError:
+        pytest.skip("symlinks need extra rights here")
+    with db.write() as s:
+        add_image(s, 1, path=str(src)).rel_path = "sub/x.jpg"
+    stats = export_images(db, ImageFilter(), out, allowed=checker(settings), layout="folder")
+    assert stats.exported == 0 and "outside the target folder" in stats.errors[0]
+    assert not list(elsewhere.iterdir())
+
+
+def test_export_reads_only_allowed_photos(db, settings, photos, tmp_path):
+    src = make_image(photos / "a.jpg", seed=1)
+    with db.write() as s:
+        add_image(s, 1, path=str(src))
+        add_image(s, 2, path=str(settings.data_dir / "secret.key"))
+    (settings.data_dir / "secret.key").write_bytes(b"key")
+    stats = export_images(db, ImageFilter(), tmp_path / "out", allowed=checker(settings))
+    assert stats.exported == 1 and stats.skipped == 1
+    assert sorted(p.name for p in (tmp_path / "out").iterdir()) == [
+        "export_manifest.csv",
+        "img1.jpg",
+    ]
+    stats = write_sidecars_in_place(db, ImageFilter(), allowed=checker(settings))
+    assert stats.sidecars == 1 and not (settings.data_dir / "secret.key.xmp").exists()
+
+
+def test_zip_entry_names_are_plain_file_names(db, settings, photos):
+    src = make_image(photos / "a.jpg", seed=1)
+    with db.write() as s:
+        add_image(s, 1, path=str(src)).filename = "../../evil.jpg"
+        add_image(s, 2, path=str(src)).filename = "C:\\x\\con.jpg"
+        ids = [1, 2]
+    data = b"".join(stream_zip(db, ids, allowed=checker(settings), metadata=False))
+    assert zipfile.ZipFile(io.BytesIO(data)).namelist() == ["evil.jpg", "_con.jpg"]

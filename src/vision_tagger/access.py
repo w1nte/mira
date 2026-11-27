@@ -11,6 +11,9 @@ it asks :func:`photo_file`.
 * In remote mode only files below the upload folder (reference photos may also be below the
   reference folder). The server's other folders stay out of reach, as ``docs/remote.md``
   promises.
+* A file on a network share (``\\\\host\\share\\...``) only if a library folder is on that share.
+  Merely looking at such a path makes Windows connect to the host and sign in with the user's
+  account (NTLM), so a crafted database must not be able to name any host it likes.
 
 The check is lexical (``os.path.abspath``, the way the indexer stores paths): it never touches
 the disk or the network, so ``..`` cannot escape and a refused path is not even looked at.
@@ -18,6 +21,7 @@ the disk or the network, so ``..`` cannot escape and a refused path is not even 
 
 from __future__ import annotations
 
+import ntpath
 import os
 from collections.abc import Callable, Iterable
 from pathlib import Path
@@ -27,6 +31,7 @@ from .config import DEFAULT_EXTENSIONS
 
 if TYPE_CHECKING:
     from .config import Settings
+    from .db.session import Database
 
 PathLike = str | os.PathLike[str]
 
@@ -46,10 +51,31 @@ def is_below(path: PathLike, folder: PathLike) -> bool:
     return key.startswith(base + os.sep)
 
 
+def network_share(path: PathLike) -> str | None:
+    """``\\\\host\\share`` (lower case) of a path on a network share, else ``None``."""
+    drive = ntpath.splitdrive(os.fspath(path))[0]
+    if drive[:2] not in ("\\\\", "//"):
+        return None
+    return drive.replace("/", "\\").lower()
+
+
+def known_shares(roots: Iterable[PathLike]) -> set[str]:
+    """The network shares the library folders ``roots`` are on."""
+    return {share for root in roots if (share := network_share(root)) is not None}
+
+
 def photo_file(
-    settings: Settings, path: PathLike | None, *, extra_roots: Iterable[PathLike] = ()
+    settings: Settings,
+    path: PathLike | None,
+    *,
+    roots: Iterable[PathLike] = (),
+    extra_roots: Iterable[PathLike] = (),
 ) -> Path | None:
-    """The file of a photo at ``path`` if Mira may open it, else ``None`` (see the module)."""
+    """The file of a photo at ``path`` if Mira may open it, else ``None`` (see the module).
+
+    ``roots`` are the library folders (:func:`vision_tagger.indexer.stored_roots`); only
+    needed for paths on network shares.
+    """
     if not path:
         return None
     text = os.fspath(path)
@@ -57,16 +83,31 @@ def photo_file(
         return None
     if os.path.splitext(text)[1].lower() not in image_extensions(settings):
         return None
+    folders: list[PathLike] = [*roots, *extra_roots]
     if settings.remote_mode:
         try:
-            roots: list[PathLike] = [settings.upload_dir, *extra_roots]
+            allowed: list[PathLike] = [settings.upload_dir, *extra_roots]
         except ValueError:  # remote mode without an upload folder: nothing is readable
             return None
-        if not any(is_below(text, root) for root in roots):
+        if not any(is_below(text, folder) for folder in allowed):
             return None
+        folders += allowed
+    share = network_share(text)
+    if share is not None and share not in known_shares(folders):
+        return None
     return Path(text)
 
 
-def checker(settings: Settings) -> Callable[[PathLike | None], bool]:
+def checker(
+    settings: Settings, roots: Iterable[PathLike] = ()
+) -> Callable[[PathLike | None], bool]:
     """:func:`photo_file` as a yes/no function, for code that has no settings."""
-    return lambda path: photo_file(settings, path) is not None
+    folders = list(roots)
+    return lambda path: photo_file(settings, path, roots=folders) is not None
+
+
+def library_checker(db: Database, settings: Settings) -> Callable[[PathLike | None], bool]:
+    """:func:`checker` with the library folders of ``db``."""
+    from .indexer import stored_roots  # the indexer uses this module
+
+    return checker(settings, stored_roots(db, settings))

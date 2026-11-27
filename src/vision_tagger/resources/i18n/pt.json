@@ -999,6 +999,7 @@
   "Naming places: %(done)s of %(total)s": "Nomeando locais: %(done)s de %(total)s",
   "natural": "natural",
   "Need photos of %(name)s at two or more different ages.": "São necessárias fotos de %(name)s em duas ou mais idades diferentes.",
+  "Network folders of the file were not added (add them on the Import page if you trust them): %(folders)s": "As pastas de rede do ficheiro não foram adicionadas (adicione-as na página Importar se confiar nelas): %(folders)s",
   "New collection": "Nova coleção",
   "New group": "Novo grupo",
   "New name": "Novo nome",

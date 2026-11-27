@@ -937,6 +937,7 @@
   "Naming places: %(done)s of %(total)s": "場所に名前を付けています：%(done)s / %(total)s",
   "natural": "自然光",
   "Need photos of %(name)s at two or more different ages.": "%(name)sの、2つ以上の異なる年齢の写真が必要です。",
+  "Network folders of the file were not added (add them on the Import page if you trust them): %(folders)s": "ファイル内のネットワークフォルダーは追加されませんでした（信頼できる場合は「インポート」ページで追加してください）: %(folders)s",
   "New collection": "新しいコレクション",
   "New group": "新しいグループ",
   "New name": "新しい名前",
