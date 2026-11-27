@@ -12,7 +12,8 @@ name: Desktop apps
 # Publishing a GitHub release (tag v1.2.3, v1.2.3-rc.1, ...; drafts don't count, pre-releases
 # do) builds everything with the tag as the version and attaches the files to the release. A
 # release published without notes gets the changelog's section for its tag as notes
-# (packaging/changelog.py; src/vision_tagger/resources/CHANGELOG.md).
+# (packaging/changelog.py; src/vision_tagger/resources/CHANGELOG.md). Then virustotal.yml scans
+# the attached files and adds their SHA-256 checksums and scan links to the notes.
 # Manual runs and the quick checks on pushes to main and on pull requests (cpu builds) keep the
 # files as workflow artifacts. packaging/plan.py decides which builds run.
 
@@ -313,3 +314,17 @@ jobs:
         run: |
           ls -l files
           gh release upload "$TAG" files/* --repo "$GITHUB_REPOSITORY" --clobber
+
+  virustotal:
+    name: VirusTotal
+    # the files attached by publish (also when a build failed: re-running it re-runs publish and
+    # this job, which then replaces its section in the notes)
+    needs: publish
+    if: github.event_name == 'release' && !cancelled() && needs.publish.result == 'success'
+    permissions:
+      contents: write  # the release notes
+    uses: ./.github/workflows/virustotal.yml
+    with:
+      tag: ${{ github.event.release.tag_name }}
+    secrets:
+      VIRUSTOTAL_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
