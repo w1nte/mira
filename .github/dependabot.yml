@@ -1,0 +1,85 @@
+# Dependabot: pull requests for outdated dependencies, once a week.
+# Options: https://docs.github.com/code-security/dependabot/working-with-dependabot/dependabot-options-reference
+#
+# - Minor and patch updates come grouped (a few pull requests a week, not one per package); every
+#   major update gets a pull request of its own, since it may need code changes.
+# - Each pull request runs CI (ruff and pytest on Ubuntu and Windows). A change to uv.lock also
+#   builds the desktop apps (desktop.yml), so an update that breaks the bundle shows up there.
+# - New releases wait a week (cooldown) before Dependabot suggests them: broken or compromised
+#   versions are usually withdrawn by then. Security updates don't wait.
+# - Dependency updates are internal: they get no changelog entry (see CLAUDE.md).
+#
+# Not covered: the Docker images. The Dockerfile's base image is python:${PYTHON}-slim (ARG, which
+# Dependabot can't read; the Python version follows requires-python in pyproject.toml, by hand),
+# and the compose files use moving tags (ollama:latest, traefik:v3) that `docker compose pull`
+# already updates. uv itself is pinned in the Dockerfile (pip install uv==…): update it by hand.
+version: 2
+updates:
+  # Python: pyproject.toml and uv.lock, including the extras (cpu, gpu, desktop) and the dev and
+  # packaging groups. The lower bounds in pyproject.toml stay; only uv.lock moves (and the exact
+  # insightface pin).
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: Dependencies
+    groups:
+      # the models' runtime and image decoding: versions that must work together, tested together
+      ai-and-images:
+        patterns:
+          - onnxruntime
+          - onnxruntime-gpu
+          - insightface
+          - numpy
+          - opencv-python-headless
+          - scikit-learn
+          - tokenizers
+          - pillow
+          - pillow-heif
+          - imagehash
+        update-types: [minor, patch]
+      # web UI, settings, command line and the desktop window
+      web-and-app:
+        patterns:
+          - fastapi
+          - uvicorn
+          - jinja2
+          - python-multipart
+          - httpx
+          - pydantic
+          - pydantic-settings
+          - typer
+          - pywebview
+        update-types: [minor, patch]
+      # tests, linting and the desktop build (a new ruff may need a formatting commit)
+      dev-tools:
+        patterns:
+          - pytest
+          - pytest-timeout
+          - ruff
+          - pyinstaller
+        update-types: [minor, patch]
+      # the rest: database, migrations, config files, ...
+      other:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  # GitHub Actions in .github/workflows: one pull request for all of them
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: CI
+    groups:
+      actions:
+        patterns: ["*"]
