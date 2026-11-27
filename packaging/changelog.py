@@ -100,6 +100,18 @@ def cut_release(
         return text, f"the changelog already has a section for {tag}"
     source = changelog.parse(entries_from) if entries_from is not None else releases
     moved = changelog.find(source, changelog.UNRELEASED)
+    if moved is not None and entries_from is not None:
+        # the released commit may still list entries of an earlier release whose step was
+        # forgotten too (1.6, then 1.7): they stay in that release, not in this one as well
+        filed = {item for r in released for items in r.sections.values() for item in items}
+        moved = changelog.Release(
+            version=moved.version,
+            sections={
+                kind: fresh
+                for kind, items in moved.sections.items()
+                if (fresh := [item for item in items if item not in filed])
+            },
+        )
     if moved is None or not moved.items:
         return text, f"nothing under Unreleased to file under {tag}"
     current = changelog.find(releases, changelog.UNRELEASED)
