@@ -109,6 +109,10 @@ technical details (the traceback). When something goes wrong, the log shows what
   own computer, **Open log file** opens it in your text editor (Notepad, Console, …) and **Show in
   folder** shows it in Explorer or Finder. The *Pipeline* page links to the log next to its errors
   and failed jobs.
+- **Slow pages.** When a page takes longer than 10 seconds to load, the log gets a warning with
+  what Mira was doing meanwhile (each thread's current step), and another when the page finally
+  answered. If Mira is slow for you, these warnings show where the time goes: add them to a bug
+  report.
 
 **Reporting a bug.** **Report a bug** (bottom of the sidebar, and on the Log page) opens a new
 issue on GitHub with the bug report form, with your Mira version and system already filled in

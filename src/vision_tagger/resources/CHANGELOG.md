@@ -10,6 +10,7 @@ Mira shows them on its "What's new" page, and each GitHub release uses its secti
 - The notes of each release on GitHub list the SHA-256 checksum of every download and a link to its VirusTotal scan.
 - System → Log shows what Mira did, with every warning and error; filter it, download it, or open the log file in your text editor.
 - Report a bug (sidebar, System → Log) opens a GitHub bug report form with your Mira version and system already filled in.
+- When a page takes longer than 10 seconds to load, System → Log says what Mira was doing meanwhile, to find out why.
 
 ### Changed
 - The desktop app, `vision-tagger serve` (also in Docker) and the command line all log to `data/logs/vision-tagger.log`, up to 20 MB.
