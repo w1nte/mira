@@ -35,7 +35,7 @@ Install, or update an installed Mira (your library is kept and its database migr
     ./install.sh --prefix DIR    # somewhere else
     ./install.sh --uninstall     # remove the app; the library is kept
 
-Then start Mira from the applications menu or with \`mira\`. More: https://github.com/w1nte/vision-tagger
+Then start Mira from the applications menu or with \`mira\`. More: https://github.com/w1nte/mira
 EOF
 
 # the app folder goes in as $name/app without a copy (the gpu build has gigabytes)

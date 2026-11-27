@@ -110,7 +110,7 @@ def test_docker_env_file_instructions_work_on_windows():
     example = (root / ".env.example").read_bytes()
     assert not example.startswith((b"\xef\xbb\xbf", b"\xff\xfe", b"\xfe\xff"))  # no BOM
     assert b"\nVT_PASSWORD=" in example and example.decode("ascii")  # plain text
-    for doc in ("README.md", "docker-compose.yml"):
+    for doc in ("README.md", "docs/remote.md", "docker-compose.yml"):
         assert 'echo "VT_PASSWORD' not in (root / doc).read_text(encoding="utf-8"), doc
     for ignore in (".gitignore", ".dockerignore"):  # the password never lands in git or images
         assert ".env" in (root / ignore).read_text(encoding="utf-8").splitlines(), ignore
