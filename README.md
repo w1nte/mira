@@ -10,7 +10,7 @@ It is a plain static site: no build step, no frameworks, nothing loaded from oth
 |---|---|
 | `index.html` | The page, with the English text |
 | `style.css` | All styles; light and dark follow the visitor's system theme |
-| `site.js` | Language switch with the texts in 11 languages (`?lang=de` works too), and the main button for the visitor's system (Windows download in the HTML; macOS and Linux point to the setup section) |
+| `site.js` | Language switch with the texts in 11 languages (`?lang=de` works too), and the label of the main download button for the visitor's system (Windows in the HTML; it always links to the latest release) |
 | `images/` | The sample photos (Kodak Lossless True Color Image Suite) |
 | `favicon.svg` | The logo mark |
 | `.nojekyll` | Tells GitHub Pages to serve the files as they are |
