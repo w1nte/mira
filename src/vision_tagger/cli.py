@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import sys
 import time
@@ -1016,9 +1017,17 @@ def serve(
         host=host,
         port=port,
         log_level="info",
-        proxy_headers=True,  # X-Forwarded-For only from web.trusted_proxies
-        forwarded_allow_ips=settings.web.trusted_proxies,
+        proxy_headers=True,  # X-Forwarded-For only from trusted proxies
+        forwarded_allow_ips=trusted_proxies(settings),
     )
+
+
+def trusted_proxies(settings: Settings) -> list[str] | str:
+    """``web.trusted_proxies`` if it is set, else uvicorn's own ``FORWARDED_ALLOW_IPS`` (the
+    Traefik compose file sets it), else the default (this computer)."""
+    if "trusted_proxies" in settings.web.model_fields_set:
+        return settings.web.trusted_proxies
+    return os.environ.get("FORWARDED_ALLOW_IPS") or settings.web.trusted_proxies
 
 
 @app.command()

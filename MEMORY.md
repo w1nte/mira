@@ -20,8 +20,8 @@ only what will matter again, and delete what no longer holds. Rules live in `CLA
   setups (cpu, gpu), the Linux tar.gz with `install.sh`, and the macOS `.pkg` (Apple silicon,
   macOS 15+). The version comes from the tag (`packaging/version.py`). Nothing is signed;
   the publish job uploads `SHA256SUMS.txt` with the files.
-- Docker images are pinned by tag and digest (`Dockerfile` `PYTHON_IMAGE`, the `ollama` image in
-  `docker-compose.yml`; `test_docker_images_are_pinned`). Bump them deliberately, taking the
+- Docker images are pinned by tag and digest (`Dockerfile` `PYTHON_IMAGE`, `ollama` in
+  `docker-compose.yml`, `traefik` in `docker-compose.traefik.yml`; `test_docker_images_are_pinned`). Bump them deliberately, taking the
   digest from Docker Hub. `buffalo_l` is pinned in `faces/analyzer.py` like the other models.
 - If the changelog release step was forgotten, the workflow does it
   (`packaging/changelog.py release`) and opens a PR for `main`.

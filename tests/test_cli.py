@@ -123,6 +123,9 @@ def test_cli_serve_refuses_the_example_password_and_trusts_only_set_proxies(cli_
     assert "shorter than 12 characters" in out
     assert started[-1]["proxy_headers"] is True
     assert started[-1]["forwarded_allow_ips"] == ["127.0.0.1"]
-    monkeypatch.setenv("VT_WEB__TRUSTED_PROXIES", '["172.18.0.0/16"]')
+    monkeypatch.setenv("FORWARDED_ALLOW_IPS", "*")  # uvicorn's own setting (Traefik compose)
+    invoke("-c", str(cfg), "serve", "--host", "0.0.0.0")
+    assert started[-1]["forwarded_allow_ips"] == "*"
+    monkeypatch.setenv("VT_WEB__TRUSTED_PROXIES", '["172.18.0.0/16"]')  # Mira's setting wins
     invoke("-c", str(cfg), "serve", "--host", "0.0.0.0")
     assert started[-1]["forwarded_allow_ips"] == ["172.18.0.0/16"]

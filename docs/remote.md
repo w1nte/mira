@@ -63,13 +63,9 @@ Every page then asks for it; a login lasts 30 days. Changing the password ends e
 new logins wait 5 minutes (logins made before keep working). Choose a long password: the
 example from `.env.example` is refused, and one shorter than 12 characters gets a warning.
 
-Mira counts wrong passwords per visitor. Behind a reverse proxy it only knows the visitor's
-address if it trusts the proxy's `X-Forwarded-For` header: a proxy on the same computer
-(`127.0.0.1`) is trusted. For a proxy in another container, set
-`VT_WEB__TRUSTED_PROXIES='["172.18.0.0/16"]'` (its address or network); otherwise every visitor
-shares the proxy's address and a few wrong passwords lock everyone out.
-
-Put the server behind a reverse proxy with HTTPS (Caddy, Traefik, nginx), for example with Caddy:
+Put the server behind a reverse proxy with HTTPS. The quickest way is the Traefik setup that
+comes with Mira (see [HTTPS with Traefik](#https-with-traefik) below). Any other proxy works too
+(Caddy, nginx, …), for example with Caddy:
 
 ```
 photos.example.com {
@@ -79,3 +75,136 @@ photos.example.com {
 
 HTTPS protects the password on the way and lets browsers install the app. Allow uploads of any
 size in the proxy (`client_max_body_size 0;` in nginx); each request is at most one 8 MB piece.
+
+Tell Mira to trust the proxy, so it sees each visitor's own address in the proxy's
+`X-Forwarded-For` header: set the environment variable `FORWARDED_ALLOW_IPS` to the proxy's
+address as Mira sees it, or to `*` if nothing but the proxy can reach Mira's port (with Docker,
+publish it as `127.0.0.1:8765:8765`). Otherwise every visitor seems to come from the proxy, and 10
+wrong passwords from anyone lock everyone out for 5 minutes. A proxy on the same computer
+(`127.0.0.1`) is trusted without it. `web.trusted_proxies` (`VT_WEB__TRUSTED_PROXIES`, a list such
+as `'["172.18.0.0/16"]'`) does the same and takes precedence.
+
+## HTTPS with Traefik
+
+[`docker-compose.traefik.yml`](../docker-compose.traefik.yml) puts
+[Traefik](https://doc.traefik.io/traefik/) in front of Mira. Traefik answers on ports 80 and 443,
+gets a free certificate for your domain from [Let's Encrypt](https://letsencrypt.org/), renews it
+in time, and redirects `http://` to `https://`. Mira no longer opens a port of its own on the
+server: Traefik is the only way in. The file adds to `docker-compose.yml`, which stays as it is.
+
+### Before you start
+
+- A domain or subdomain, e.g. `photos.example.com`, whose DNS record (A, and AAAA for IPv6)
+  points at the server.
+- Ports 80 and 443 reachable from the internet: open them in the firewall, and at home forward
+  them on the router to the server. Let's Encrypt connects to port 443 to check that the domain
+  is yours.
+- No other program on the server using ports 80 and 443 (another web server or proxy); otherwise
+  see [Other ports](#other-ports).
+- Docker Compose 2.24 or newer (`docker compose version`).
+
+### Setup
+
+1. In `.env` (your copy of `.env.example`, next to `VT_PASSWORD`), remove the `# ` in front of
+   these lines and fill in your domain and e-mail address:
+   ```bash
+   COMPOSE_FILE=docker-compose.yml:docker-compose.traefik.yml
+   MIRA_DOMAIN=photos.example.com
+   ACME_EMAIL=you@example.com
+   ```
+2. Start it (again):
+   ```bash
+   docker compose up -d
+   ```
+3. Open `https://photos.example.com` and log in. The first certificate takes up to a minute;
+   until then the browser warns about Traefik's own certificate. `docker compose logs traefik`
+   shows the certificate request and what went wrong, if anything.
+
+`COMPOSE_FILE` makes every `docker compose` command use both files (`up`, `down`, `logs`,
+`pull`, …). Without it, name both files each time:
+`docker compose -f docker-compose.yml -f docker-compose.traefik.yml up -d`. On Windows, Docker
+Compose separates the files with `;` instead of `:`.
+
+### Settings in `.env`
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `MIRA_DOMAIN` | (required) | The domain Mira answers on. The certificate is issued for it. |
+| `ACME_EMAIL` | (required) | Your e-mail address for Let's Encrypt, used only for notices about the certificate. |
+| `COMPOSE_FILE` | not set | `docker-compose.yml:docker-compose.traefik.yml` uses the Traefik file with every command. |
+| `ACME_CA_SERVER` | Let's Encrypt | Where certificates come from; Let's Encrypt's staging server for a first try (below). |
+| `TRAEFIK_HTTP_PORT` | `80` | The server's port for `http://` (redirected to `https://`). |
+| `TRAEFIK_HTTPS_PORT` | `443` | The server's port for `https://`. |
+
+Change them in `.env`, then run `docker compose up -d` again.
+
+### Trying it out first
+
+Let's Encrypt allows only a few failed attempts per domain and hour. If the DNS record or the
+port forwarding may not be ready yet, start with its staging server, whose certificates browsers
+don't trust (they warn) but which has generous limits:
+
+```bash
+ACME_CA_SERVER=https://acme-staging-v02.api.letsencrypt.org/directory
+```
+
+Once Mira opens with the staging certificate, remove that line, delete the stored certificate and
+start again:
+
+```bash
+docker compose down
+docker volume rm mira_traefik-certs      # "docker volume ls" shows the name
+docker compose up -d
+```
+
+### Other ports
+
+If ports 80 and 443 are taken on the server, set for example `TRAEFIK_HTTP_PORT=8080` and
+`TRAEFIK_HTTPS_PORT=8443`, and on the router forward the internet's ports 80 and 443 to them.
+Let's Encrypt always connects to port 443, so the certificate can't be issued without that
+forwarding.
+
+### What the file sets up
+
+- **Traefik** watches Docker (through `/var/run/docker.sock`, read-only) and publishes only
+  containers labelled `traefik.enable=true`: Mira, not Ollama.
+- **Mira's port 8765** is not published on the server (`ports: !reset []`), so nobody can bypass
+  Traefik and its HTTPS.
+- **Uploads:** a request may take up to 10 minutes. Traefik's default of 60 seconds would cut off
+  an 8 MB upload piece on a slow connection. Traefik sets no size limit for requests.
+- **Visitors' addresses:** `FORWARDED_ALLOW_IPS: "*"` lets Mira read the visitor's address from
+  Traefik's `X-Forwarded-For` header. The login lock (10 wrong passwords block an address for 5
+  minutes) then applies to whoever typed them; without it, everyone would come from Traefik's
+  address and be locked out together. This is safe because only Traefik and Ollama can reach
+  Mira's port.
+- **The certificate** is kept in the volume `traefik-certs` and renewed by Traefik about 30 days
+  before it expires. Mira's login cookie is only sent over HTTPS then.
+
+### Already running Traefik?
+
+Then use only Mira's part with your own Traefik. Leave `COMPOSE_FILE` out of `.env` and put this
+into `docker-compose.override.yml` next to `docker-compose.yml` (Docker Compose reads that file
+by itself), with your Traefik's network, entrypoint and certificate resolver names:
+
+```yaml
+services:
+  mira:
+    ports: !reset []
+    environment:
+      FORWARDED_ALLOW_IPS: "*"
+    networks: [default, proxy]
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=proxy
+      - traefik.http.routers.mira.rule=Host(`photos.example.com`)
+      - traefik.http.routers.mira.entrypoints=websecure
+      - traefik.http.routers.mira.tls.certresolver=letsencrypt
+      - traefik.http.services.mira.loadbalancer.server.port=8765
+
+networks:
+  proxy:
+    external: true
+```
+
+For uploads over slow connections, raise the read timeout of that entrypoint in your Traefik
+(`--entrypoints.websecure.transport.respondingTimeouts.readTimeout=10m`).

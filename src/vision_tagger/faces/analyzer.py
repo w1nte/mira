@@ -25,10 +25,11 @@ from .vectors import normalize
 
 log = logging.getLogger(__name__)
 
-#: InsightFace's buffalo_l pack of its v0.7 release (the file InsightFace itself downloads)
+#: InsightFace's buffalo_l pack from its model zoo (the file InsightFace itself downloads; the
+#: same file as in its v0.7 release)
 BUFFALO_L = ModelFile(
     name="buffalo_l.zip",
-    url="https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip",
+    url="https://github.com/deepinsight/insightface/releases/download/model-zoo/buffalo_l.zip",
     sha256="80ffe37d8a5940d59a7384c201a2a38d4741f2f3c51eef46ebb28218a7b0ca2f",
     size=288_621_354,
     license="InsightFace models: non-commercial research use",

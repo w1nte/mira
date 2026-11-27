@@ -11,7 +11,8 @@ Important knobs:
 - `web.password` (better: `VT_WEB__PASSWORD`): login password. Required in remote mode and when
   `web.host` is an address other computers can reach (e.g. `0.0.0.0`).
 - `web.trusted_proxies` (default `["127.0.0.1"]`): reverse proxies whose `X-Forwarded-For`
-  header Mira believes, for the login lockout (see [Remote mode](remote.md#password-and-https)).
+  header Mira believes, for the login lockout; without it, uvicorn's `FORWARDED_ALLOW_IPS` applies
+  (see [Remote mode](remote.md#password-and-https)).
 - `pipeline.resume_on_start`: continue a pipeline that was paused when the app was closed.
 - `faces.cluster_eps` / `cluster_min_samples`: how strict face clustering is.
 - `faces.reference_threshold` / `auto_accept_threshold`: when reference matches are suggested
