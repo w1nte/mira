@@ -96,6 +96,7 @@
     "%(num)d animal restored.": "%(num)d animals restored.",
     "%(num)d cluster": "%(num)d clusters",
     "%(num)d date doesn’t fit": "%(num)d dates don’t fit",
+    "%(num)d default date": "%(num)d default dates",
     "%(num)d duplicate file": "%(num)d duplicate files",
     "%(num)d entry": "%(num)d entries",
     "%(num)d face": "%(num)d faces",
@@ -213,6 +214,9 @@
   ],
   "%(num)d date doesn’t fit": [
     "%(num)d 个日期不符"
+  ],
+  "%(num)d default date": [
+    "%(num)d 个默认日期"
   ],
   "%(num)d duplicate file": [
     "%(num)d 个重复文件"
@@ -594,6 +598,8 @@
   "Deep search": "深度搜索",
   "deep search needs descriptions from the vision model": "深度搜索需要视觉模型的描述",
   "deep search unavailable (%(error)s)": "深度搜索不可用（%(error)s）",
+  "default date": "默认日期",
+  "Default dates": "默认日期",
   "Delete": "删除",
   "Delete %(name)s? Clusters stay but become unnamed.": "删除 %(name)s？分组会保留，但将变为未命名。",
   "Delete person": "删除人物",
@@ -1010,6 +1016,7 @@
   "No other groups.": "没有其他分组。",
   "No persons yet. Name a face cluster or import a reference folder.": "还没有人物。为人脸分组命名，或导入参考文件夹。",
   "No photo in this group has a camera date, only the time its file was saved or copied. Enter the day they were taken.": "该组中没有照片带有相机日期，只有文件保存或复制的时间。请输入拍摄当天的日期。",
+  "No photo in this group has a trustworthy date: they carry a camera’s default date (a clock that was never set) or only file times. Enter the day they were taken.": "该组中没有照片带有可信的日期：它们只有相机的默认日期（时钟未设置）或文件时间。请输入拍摄当天的日期。",
   "No photos belong together yet.": "还没有属于同一组的照片。",
   "No photos in this group any more. Its name is kept: when the animal is found again, its photos join it.": "此分组中已没有照片。名字会保留：再次找到这只动物时，它的照片会回到这里。",
   "No photos of %(a)s and %(b)s at (about) the same age yet.": "还没有 %(a)s 和 %(b)s 在（大约）相同年龄时的照片。",
@@ -1510,6 +1517,7 @@
   "These animals fit no group (seen only once, small or uncertain, or taken out of a group). Move them to a pet or start a new group.": "这些动物不属于任何分组（只出现过一次、太小或不确定，或已被移出分组）。可将它们移到某只宠物，或新建分组。",
   "These faces did not fit any cluster (seen too rarely, or low quality). Assign them to a person or create a cluster.": "这些人脸不属于任何分组（出现次数太少或质量较低）。请将它们分配给某个人物，或创建一个分组。",
   "These photos are not where Mira last saw them – for example because the database comes from another computer, or a drive is not connected.": "这些照片不在 Mira 上次看到它们的位置——例如数据库来自另一台电脑，或者某个驱动器没有连接。",
+  "These photos carry a date that looks like a camera’s default (a clock that was never set, e.g. 2000-01-01 00:00), and no other photo seems to belong with them. Tick the ones taken on the same day and set their date.": "这些照片的日期看起来像相机的默认值（从未设置过的时钟，例如 2000-01-01 00:00），而且没有其他照片与它们同组。请勾选同一天拍摄的照片并设置日期。",
   "These values can't be merged or deleted here.": "这些值无法在此合并或删除。",
   "They describe your photos (properties) and make them searchable. The download is several GB and runs in the background.": "它们用于描述你的照片（属性）并让照片可被搜索。下载大小为几 GB，会在后台进行。",
   "This configuration needs no models from Ollama.": "当前配置不需要 Ollama 模型。",

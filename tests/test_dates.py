@@ -9,7 +9,14 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from vision_tagger.dates import Photo, apply_dates, group_photos, planned_dates
+from vision_tagger.dates import (
+    Photo,
+    apply_dates,
+    default_date_reason,
+    group_photos,
+    mark_default_dates,
+    planned_dates,
+)
 from vision_tagger.db.models import Image, ImageProperty, StageStatus, Status
 from vision_tagger.web.app import create_app
 
@@ -57,8 +64,8 @@ def test_trustworthy_dates_far_apart_stay_separate():
     photos = [
         photo(1, "IMG_0100.jpg", datetime(2015, 12, 24, 18)),
         photo(2, "IMG_0101.jpg", datetime(2015, 12, 24, 19)),
-        photo(3, "IMG_0102.jpg", datetime(2015, 12, 31, 23)),
-        photo(4, "IMG_0103.jpg", datetime(2015, 12, 31, 23, 30)),
+        photo(3, "IMG_0102.jpg", datetime(2015, 12, 31, 23, 4, 51)),
+        photo(4, "IMG_0103.jpg", datetime(2015, 12, 31, 23, 31, 7)),
     ]
     groups = by_member(group_photos(photos))
     assert groups[1] is groups[2] and groups[3] is groups[4] and groups[1] is not groups[3]
@@ -109,6 +116,80 @@ def test_a_date_set_by_hand_is_never_contradicted():
     photos.append(photo(4, "IMG_0004.jpg", datetime(2015, 7, 2, 20), "manual"))
     (g,) = group_photos(photos)  # linked by name, and more than a day before the others
     assert 4 not in g.off and g.status == "ok"
+
+
+@pytest.mark.parametrize(
+    ("when", "reason"),
+    [
+        (datetime(2000, 12, 31, 22, 0), "epoch"),  # 2001-01-01 00:00 UTC, seen in UTC-2
+        (datetime(2000, 1, 1, 0, 0), "epoch"),
+        (datetime(2000, 1, 2, 9, 14, 37), "epoch"),  # a reset clock running on
+        (datetime(1970, 1, 1, 1, 0), "epoch"),
+        (datetime(1969, 12, 31, 19, 0), "epoch"),
+        (datetime(1980, 1, 1, 0, 0, 2), "epoch"),
+        (datetime(2012, 1, 1, 0, 0), "new_year"),  # a maker's default, any year
+        (datetime(2011, 12, 31, 23, 45), "new_year"),
+        (datetime(2040, 5, 1), "future"),
+        (datetime(2011, 12, 31, 23, 59, 58), None),  # fireworks: a real second
+        (datetime(2012, 1, 1, 0, 7), None),
+        (datetime(2000, 3, 1, 0, 0), None),
+        (datetime(2015, 7, 4, 14, 0), None),
+        (None, None),
+    ],
+)
+def test_default_date_reason(when, reason):
+    assert default_date_reason(when, now=datetime(2026, 11, 27)) == reason
+
+
+def test_repeated_dates_in_unrelated_photos_are_defaults():
+    noon = datetime(2007, 6, 1, 12, 0)
+    photos = [
+        photo(1, "a.jpg", noon, folder="x"),
+        photo(2, "b.jpg", noon, folder="y"),
+        photo(3, "c.jpg", noon, folder="z"),
+        photo(4, "d.jpg", noon, "manual", folder="z"),  # set by hand: never a default
+        # a burst: the same second, but one folder
+        photo(5, "e.jpg", datetime(2008, 5, 5, 10, 0), folder="burst"),
+        photo(6, "f.jpg", datetime(2008, 5, 5, 10, 0), folder="burst"),
+        photo(7, "g.jpg", datetime(2008, 5, 5, 10, 0), folder="burst"),
+        # copies: the same pHash in three folders
+        photo(8, "h.jpg", datetime(2009, 9, 9, 9, 0), folder="p", phash="ab" * 8),
+        photo(9, "h.jpg", datetime(2009, 9, 9, 9, 0), folder="q", phash="ab" * 8),
+        photo(10, "h.jpg", datetime(2009, 9, 9, 9, 0), folder="r", phash="ab" * 8),
+    ]
+    mark_default_dates(photos)
+    assert {p.id: p.default for p in photos if p.default} == {1: "repeated", 2: "repeated",
+                                                              3: "repeated"}  # fmt: skip
+    assert photos[3].trusted  # the manual date stays trustworthy
+
+
+def test_a_default_date_in_a_group_gets_its_neighbours_date():
+    photos = [photo(i, f"IMG_010{i}.jpg", JULY.replace(minute=i)) for i in range(1, 5)]
+    photos.append(photo(5, "IMG_0105.jpg", datetime(2000, 12, 31, 22, 0)))  # EXIF, but a reset
+    (g,) = group_photos(photos)
+    assert g.date == JULY.replace(minute=2)  # the default date doesn't count
+    assert g.off == {5} and g.suggestions == {5: JULY.replace(minute=4)}
+    assert [p.id for p in g.defaults] == [5]
+
+
+def test_a_reset_camera_batch_has_no_date_to_suggest():
+    photos = [photo(i, f"DSC_00{i}.jpg", datetime(2000, 1, 1, 0, 3 * i, 11)) for i in range(1, 5)]
+    (g,) = group_photos(photos)  # grouped by file name: their dates don't count
+    assert g.status == "unreliable" and g.off == {1, 2, 3, 4} and not g.suggestions
+    assert not g.loose
+
+
+def test_lone_default_dates_are_collected():
+    photos = [
+        photo(1, "party.jpg", datetime(2000, 12, 31, 22, 0), folder="a"),
+        photo(2, "beach.jpg", datetime(1970, 1, 1, 1, 0), folder="b"),
+        photo(3, "fine.jpg", datetime(2015, 7, 4), folder="c"),
+        photo(4, "set.jpg", datetime(2000, 1, 1), "manual", folder="d"),
+    ]
+    groups = group_photos(photos)
+    assert groups[0].loose and {p.id for p in groups[0].photos} == {1, 2}
+    assert groups[0].needs_attention and not groups[0].suggestions
+    assert all(not g.loose and g.size == 1 for g in groups[1:])
 
 
 def test_planned_dates_set_and_shift():
@@ -170,7 +251,7 @@ def client(settings):
                 img.filename = f"IMG_010{i}.jpg"
             copy = add_image(s, 5, folder="2015/summer", recorded_at=datetime(2023, 3, 1))
             copy.filename, copy.date_source = "IMG_0105.jpg", "mtime"
-            other = add_image(s, 6, folder="misc", recorded_at=datetime(2019, 1, 1))
+            other = add_image(s, 6, folder="misc", recorded_at=datetime(2019, 3, 1, 10))
             other.filename = "lonely.jpg"
         c.ctx = app.state.ctx
         yield c
@@ -192,6 +273,18 @@ def test_dates_page_lists_groups_that_need_a_look(client):
     assert 'href="/dates"' in client.get("/").text  # in the sidebar
     # a filter narrows the photos that are grouped
     assert "No photos belong together yet." in client.get("/dates?folder=misc").text
+
+
+def test_lone_default_date_is_listed(client):
+    with client.ctx.db.write() as s:
+        img = add_image(s, 7, folder="old", recorded_at=datetime(2000, 12, 31, 22, 0))
+        img.filename = "party.jpg"
+    page = client.get("/dates").text
+    assert "Default dates" in page and "party.jpg" in page and "default date" in page
+    assert 'value="7" form="dg-7" aria-label="Select party.jpg">' in page  # not pre-ticked
+    client.post("/dates/apply", data={"mode": "set", "image_ids": ["7"], "day": "2001-06-02"})
+    assert recorded(client, 7) == (datetime(2001, 6, 2, 22, 0), "manual")
+    assert "party.jpg" not in client.get("/dates").text
 
 
 def test_use_suggested_dates(client):
@@ -228,7 +321,7 @@ def test_set_date_from_the_gallery_selection(client):
         headers={"Referer": "http://testserver/images?folder=misc"},
     )
     assert r.url.path == "/images" and "Date corrected for 1 photo." in r.text
-    assert recorded(client, 6) == (datetime(1999, 12, 31, 0, 0), "manual")
+    assert recorded(client, 6) == (datetime(1999, 12, 31, 10, 0), "manual")
 
 
 @pytest.mark.parametrize(

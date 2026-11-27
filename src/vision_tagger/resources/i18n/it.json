@@ -97,6 +97,7 @@
     "%(num)d animal restored.": "%(num)d animals restored.",
     "%(num)d cluster": "%(num)d clusters",
     "%(num)d date doesn’t fit": "%(num)d dates don’t fit",
+    "%(num)d default date": "%(num)d default dates",
     "%(num)d duplicate file": "%(num)d duplicate files",
     "%(num)d entry": "%(num)d entries",
     "%(num)d face": "%(num)d faces",
@@ -224,6 +225,10 @@
   "%(num)d date doesn’t fit": [
     "%(num)d data non corrisponde",
     "%(num)d date non corrispondono"
+  ],
+  "%(num)d default date": [
+    "%(num)d data predefinita",
+    "%(num)d date predefinite"
   ],
   "%(num)d duplicate file": [
     "%(num)d file duplicato",
@@ -650,6 +655,8 @@
   "Deep search": "Ricerca approfondita",
   "deep search needs descriptions from the vision model": "la ricerca approfondita richiede le descrizioni del modello di visione",
   "deep search unavailable (%(error)s)": "ricerca approfondita non disponibile (%(error)s)",
+  "default date": "data predefinita",
+  "Default dates": "Date predefinite",
   "Delete": "Elimina",
   "Delete %(name)s? Clusters stay but become unnamed.": "Eliminare %(name)s? I gruppi restano, ma senza nome.",
   "Delete person": "Elimina persona",
@@ -1074,6 +1081,7 @@
   "No other groups.": "Nessun altro gruppo.",
   "No persons yet. Name a face cluster or import a reference folder.": "Ancora nessuna persona. Dai un nome a un gruppo di volti o importa una cartella di riferimenti.",
   "No photo in this group has a camera date, only the time its file was saved or copied. Enter the day they were taken.": "Nessuna foto di questo gruppo ha una data della fotocamera, solo l’ora in cui il file è stato salvato o copiato. Inserisci il giorno dello scatto.",
+  "No photo in this group has a trustworthy date: they carry a camera’s default date (a clock that was never set) or only file times. Enter the day they were taken.": "Nessuna foto di questo gruppo ha una data affidabile: hanno la data predefinita di una fotocamera (un orologio mai impostato) o solo ore dei file. Inserisci il giorno dello scatto.",
   "No photos belong together yet.": "Nessuna foto va ancora insieme.",
   "No photos in this group any more. Its name is kept: when the animal is found again, its photos join it.": "Questo gruppo non contiene più foto. Il nome resta: quando l’animale verrà ritrovato, le sue foto torneranno qui.",
   "No photos of %(a)s and %(b)s at (about) the same age yet.": "Ancora nessuna foto di %(a)s e %(b)s (più o meno) alla stessa età.",
@@ -1579,6 +1587,7 @@
   "These animals fit no group (seen only once, small or uncertain, or taken out of a group). Move them to a pet or start a new group.": "Questi animali non rientrano in nessun gruppo (visti una sola volta, piccoli o incerti, o tolti da un gruppo). Spostali in un animale o crea un nuovo gruppo.",
   "These faces did not fit any cluster (seen too rarely, or low quality). Assign them to a person or create a cluster.": "Questi volti non rientravano in nessun gruppo (visti troppo di rado o di bassa qualità). Assegnali a una persona o crea un gruppo.",
   "These photos are not where Mira last saw them – for example because the database comes from another computer, or a drive is not connected.": "Queste foto non sono più dove Mira le ha viste l’ultima volta – per esempio perché il database proviene da un altro computer o perché un’unità non è collegata.",
+  "These photos carry a date that looks like a camera’s default (a clock that was never set, e.g. 2000-01-01 00:00), and no other photo seems to belong with them. Tick the ones taken on the same day and set their date.": "Queste foto hanno una data che sembra quella predefinita di una fotocamera (un orologio mai impostato, ad es. 2000-01-01 00:00) e nessun’altra foto sembra andare con loro. Spunta quelle scattate lo stesso giorno e impostane la data.",
   "These values can't be merged or deleted here.": "Questi valori non si possono unire né eliminare qui.",
   "They describe your photos (properties) and make them searchable. The download is several GB and runs in the background.": "Descrivono le tue foto (proprietà) e le rendono ricercabili. Il download è di diversi GB e avviene in background.",
   "This configuration needs no models from Ollama.": "Questa configurazione non richiede modelli di Ollama.",

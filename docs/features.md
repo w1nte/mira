@@ -97,6 +97,19 @@
     the same living room stay two events, and a photo with only a file time can't bridge them.
   - A photo whose date doesn't fit its group is marked, with a suggestion: the date of its nearest
     neighbour by file name that has a good date. Groups without any camera date are listed too.
+  - **Default dates.** A camera whose clock was never set (or lost its battery) writes a default
+    date that looks real but isn't. Mira treats these as untrustworthy, whatever their source:
+    - around New Year 1970, 1980, 2000 or 2001, including the shift of a time zone
+      (`2000-12-31 22:00` is `2001-01-01 00:00` two hours away) and two days of a reset clock
+      running on;
+    - New Year's midnight of any year at a round time (seconds zero, a quarter hour);
+    - the same date, on the hour, in three or more different photos in more than one folder;
+    - dates in the future.
+
+    A default date never sets a group's date. It is marked and gets the date of the photos around
+    it. Photos with a default date that belong to no group are collected under *Default dates*.
+    A real photo that happens to match (New Year's Eve at exactly 23:00:00) is listed too; set its
+    date by hand once and it is never doubted again.
   - **Set date** gives every ticked photo the same day (each keeps its time of day, unless you
     enter one). **Shift dates** moves them together: the earliest gets the date, the others keep
     their distance, for a camera clock that was set wrong.

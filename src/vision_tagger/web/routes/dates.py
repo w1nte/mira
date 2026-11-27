@@ -58,7 +58,7 @@ def dates_page(request: Request, show: str = "attention", page: int = 1) -> Resp
     c = ctx(request)
     f = ImageFilter.from_params(request.query_params)
     show = show if show in ("attention", "all") else "attention"
-    groups = [g for g in _groups(c, f) if g.size > 1]
+    groups = [g for g in _groups(c, f) if g.size > 1 or g.loose]
     attention = sum(1 for g in groups if g.needs_attention)
     listed = [g for g in groups if g.needs_attention] if show == "attention" else groups
     pages = max(1, -(-len(listed) // GROUPS_PER_PAGE))

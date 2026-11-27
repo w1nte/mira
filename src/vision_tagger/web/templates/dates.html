@@ -3,6 +3,7 @@
 {% block main_class %}wide{% endblock %}
 {% block content %}
 {% set qs = f.query_string() %}
+{% set default_label = _('default date') %}
 {% set sources = {'manual': _('set by hand'), 'exif': 'EXIF', 'exif_digitized': 'EXIF', 'exif_datetime': 'EXIF', 'filename': _('file name'), 'mtime': _('file time')} %}
 {% macro day(value) %}{{ value | dt('%Y-%m-%d') }}{% endmacro %}
 <div class="page-head">
@@ -33,20 +34,26 @@
   <div class="row spread">
     <div>
       <h2 class="flush">
-        {% if g.date %}{{ day(g.date) }}{% else %}{{ _('Unknown date') }}{% endif %}
-        {% if mixed %}<span class="badge warn">{{ icon('alert', 'sm') }} {{ ngettext('%(num)d date doesn’t fit', '%(num)d dates don’t fit', g.off | length) }}</span>
-        {% elif g.status == 'unreliable' %}<span class="badge warn">{{ _('Only file times') }}</span>
+        {% if g.loose %}{{ _('Default dates') }}{% elif g.date %}{{ day(g.date) }}{% else %}{{ _('Unknown date') }}{% endif %}
+        {% if g.defaults %}<span class="badge warn">{{ icon('alert', 'sm') }} {{ ngettext('%(num)d default date', '%(num)d default dates', g.defaults | length) }}</span>{% endif %}
+        {% if g.loose %}
+        {% elif mixed %}<span class="badge warn">{{ icon('alert', 'sm') }} {{ ngettext('%(num)d date doesn’t fit', '%(num)d dates don’t fit', g.off | length) }}</span>
+        {% elif g.status == 'unreliable' %}{% if not g.defaults %}<span class="badge warn">{{ _('Only file times') }}</span>{% endif %}
         {% else %}<span class="badge ok">{{ _('Dates agree') }}</span>{% endif %}
       </h2>
-      <small class="muted">{{ ngettext('%(num)d photo', '%(num)d photos', g.size) }}{% if not g.date and g.start %} · {{ _('file times') }} {{ day(g.start) }}{% if day(g.end) != day(g.start) %} – {{ day(g.end) }}{% endif %}{% endif %} · {% for folder in g.folders[:3] %}{{ icon('folder', 'sm') }} {{ folder or '/' }}{% if not loop.last %}, {% endif %}{% endfor %}{% if g.folders | length > 3 %} {{ _('and %(n)s more', n=g.folders | length - 3) }}{% endif %}</small>
+      <small class="muted">{{ ngettext('%(num)d photo', '%(num)d photos', g.size) }}{% if not g.date and g.start and not g.defaults %} · {{ _('file times') }} {{ day(g.start) }}{% if day(g.end) != day(g.start) %} – {{ day(g.end) }}{% endif %}{% endif %} · {% for folder in g.folders[:3] %}{{ icon('folder', 'sm') }} {{ folder or '/' }}{% if not loop.last %}, {% endif %}{% endfor %}{% if g.folders | length > 3 %} {{ _('and %(n)s more', n=g.folders | length - 3) }}{% endif %}</small>
     </div>
     <div class="row">
       <button type="button" class="btn small" @click="vt.toggleAll($root, true); n = vt.count($root)">{{ _('Select all') }}</button>
       <button type="button" class="btn small" @click="vt.toggleAll($root, false); n = 0">{{ _('Select none') }}</button>
     </div>
   </div>
-  {% if mixed %}
+  {% if g.loose %}
+  <p class="hint">{{ _('These photos carry a date that looks like a camera’s default (a clock that was never set, e.g. 2000-01-01 00:00), and no other photo seems to belong with them. Tick the ones taken on the same day and set their date.') }}</p>
+  {% elif mixed %}
   <p class="hint">{{ _('The ticked photos don’t fit the date of the others. “Use suggested dates” gives each the date of its nearest neighbour by file name.') }}</p>
+  {% elif g.status == 'unreliable' and g.defaults %}
+  <p class="hint">{{ _('No photo in this group has a trustworthy date: they carry a camera’s default date (a clock that was never set) or only file times. Enter the day they were taken.') }}</p>
   {% elif g.status == 'unreliable' %}
   <p class="hint">{{ _('No photo in this group has a camera date, only the time its file was saved or copied. Enter the day they were taken.') }}</p>
   {% endif %}
@@ -59,9 +66,9 @@
          {%- if p.recorded_at %} data-date="{{ p.recorded_at.isoformat(timespec='minutes') }}"{% endif %}
          {%- if covered %} data-covered{% else %} data-preview-url="/media/preview/{{ p.id }}"{% endif %}>
         {{ thumb(p.id) }}
-        <span class="cap">{{ day(p.recorded_at) if p.recorded_at else _('undated') }} · {{ sources.get(p.date_source, p.date_source) }}{% if suggestion %}<br>→ {{ day(suggestion) }}{% endif %}</span>
+        <span class="cap">{{ day(p.recorded_at) if p.recorded_at else _('undated') }} · {{ default_label if p.default else sources.get(p.date_source, p.date_source) }}{% if suggestion %}<br>→ {{ day(suggestion) }}{% endif %}</span>
       </a>
-      <input class="pick" type="checkbox" name="image_ids" value="{{ p.id }}" form="{{ form_id }}" aria-label="{{ _('Select %(name)s', name=p.filename) }}"{% if p.id in g.off or g.status == 'unreliable' %} checked{% endif %}>
+      <input class="pick" type="checkbox" name="image_ids" value="{{ p.id }}" form="{{ form_id }}" aria-label="{{ _('Select %(name)s', name=p.filename) }}"{% if not g.loose and (p.id in g.off or g.status == 'unreliable') %} checked{% endif %}>
     </div>
     {% endfor %}
   </div>

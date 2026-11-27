@@ -98,6 +98,7 @@
     "%(num)d animal restored.": "%(num)d animals restored.",
     "%(num)d cluster": "%(num)d clusters",
     "%(num)d date doesn’t fit": "%(num)d dates don’t fit",
+    "%(num)d default date": "%(num)d default dates",
     "%(num)d duplicate file": "%(num)d duplicate files",
     "%(num)d entry": "%(num)d entries",
     "%(num)d face": "%(num)d faces",
@@ -235,6 +236,11 @@
     "%(num)d data nie pasuje",
     "%(num)d daty nie pasują",
     "%(num)d dat nie pasuje"
+  ],
+  "%(num)d default date": [
+    "%(num)d data domyślna",
+    "%(num)d daty domyślne",
+    "%(num)d dat domyślnych"
   ],
   "%(num)d duplicate file": [
     "%(num)d zduplikowany plik",
@@ -706,6 +712,8 @@
   "Deep search": "Wyszukiwanie głębokie",
   "deep search needs descriptions from the vision model": "wyszukiwanie głębokie wymaga opisów z modelu wizyjnego",
   "deep search unavailable (%(error)s)": "wyszukiwanie głębokie niedostępne (%(error)s)",
+  "default date": "data domyślna",
+  "Default dates": "Daty domyślne",
   "Delete": "Usuń",
   "Delete %(name)s? Clusters stay but become unnamed.": "Usunąć osobę %(name)s? Grupy pozostaną, ale stracą nazwę.",
   "Delete person": "Usuń osobę",
@@ -1138,6 +1146,7 @@
   "No other groups.": "Brak innych grup.",
   "No persons yet. Name a face cluster or import a reference folder.": "Nie ma jeszcze osób. Nazwij grupę twarzy lub zaimportuj folder wzorców.",
   "No photo in this group has a camera date, only the time its file was saved or copied. Enter the day they were taken.": "Żadne zdjęcie w tej grupie nie ma daty z aparatu, tylko czas zapisania lub skopiowania pliku. Wpisz dzień, w którym je zrobiono.",
+  "No photo in this group has a trustworthy date: they carry a camera’s default date (a clock that was never set) or only file times. Enter the day they were taken.": "Żadne zdjęcie w tej grupie nie ma wiarygodnej daty: mają domyślną datę aparatu (nigdy nieustawiony zegar) albo tylko czasy plików. Wpisz dzień, w którym je zrobiono.",
   "No photos belong together yet.": "Jeszcze żadne zdjęcia do siebie nie należą.",
   "No photos in this group any more. Its name is kept: when the animal is found again, its photos join it.": "W tej grupie nie ma już zdjęć. Imię zostaje: gdy zwierzę zostanie znów znalezione, jego zdjęcia do niej trafią.",
   "No photos of %(a)s and %(b)s at (about) the same age yet.": "Brak jeszcze zdjęć osób %(a)s i %(b)s w (mniej więcej) tym samym wieku.",
@@ -1648,6 +1657,7 @@
   "These animals fit no group (seen only once, small or uncertain, or taken out of a group). Move them to a pet or start a new group.": "Te zwierzęta nie pasują do żadnej grupy (widziane tylko raz, małe lub niepewne albo wyjęte z grupy). Przenieś je do zwierzaka lub utwórz nową grupę.",
   "These faces did not fit any cluster (seen too rarely, or low quality). Assign them to a person or create a cluster.": "Te twarze nie pasowały do żadnej grupy (widziane zbyt rzadko lub niskiej jakości). Przypisz je do osoby lub utwórz grupę.",
   "These photos are not where Mira last saw them – for example because the database comes from another computer, or a drive is not connected.": "Tych zdjęć nie ma tam, gdzie Mira widziała je ostatnio – na przykład dlatego, że baza danych pochodzi z innego komputera albo dysk nie jest podłączony.",
+  "These photos carry a date that looks like a camera’s default (a clock that was never set, e.g. 2000-01-01 00:00), and no other photo seems to belong with them. Tick the ones taken on the same day and set their date.": "Te zdjęcia mają datę, która wygląda na domyślną datę aparatu (nigdy nieustawiony zegar, np. 2000-01-01 00:00), i żadne inne zdjęcie do nich nie pasuje. Zaznacz te zrobione tego samego dnia i ustaw ich datę.",
   "These values can't be merged or deleted here.": "Tych wartości nie można tu scalić ani usunąć.",
   "They describe your photos (properties) and make them searchable. The download is several GB and runs in the background.": "Opisują twoje zdjęcia (właściwości) i umożliwiają ich wyszukiwanie. Pobieranie ma kilka GB i odbywa się w tle.",
   "This configuration needs no models from Ollama.": "Ta konfiguracja nie wymaga modeli z Ollama.",

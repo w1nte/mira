@@ -97,6 +97,7 @@
     "%(num)d animal restored.": "%(num)d animals restored.",
     "%(num)d cluster": "%(num)d clusters",
     "%(num)d date doesn’t fit": "%(num)d dates don’t fit",
+    "%(num)d default date": "%(num)d default dates",
     "%(num)d duplicate file": "%(num)d duplicate files",
     "%(num)d entry": "%(num)d entries",
     "%(num)d face": "%(num)d faces",
@@ -224,6 +225,10 @@
   "%(num)d date doesn’t fit": [
     "%(num)d datum past niet",
     "%(num)d datums passen niet"
+  ],
+  "%(num)d default date": [
+    "%(num)d standaarddatum",
+    "%(num)d standaarddatums"
   ],
   "%(num)d duplicate file": [
     "%(num)d dubbel bestand",
@@ -650,6 +655,8 @@
   "Deep search": "Diep zoeken",
   "deep search needs descriptions from the vision model": "diep zoeken heeft beschrijvingen van het visiemodel nodig",
   "deep search unavailable (%(error)s)": "diep zoeken niet beschikbaar (%(error)s)",
+  "default date": "standaarddatum",
+  "Default dates": "Standaarddatums",
   "Delete": "Verwijderen",
   "Delete %(name)s? Clusters stay but become unnamed.": "%(name)s verwijderen? De groepen blijven, maar hebben dan geen naam meer.",
   "Delete person": "Persoon verwijderen",
@@ -1074,6 +1081,7 @@
   "No other groups.": "Geen andere groepen.",
   "No persons yet. Name a face cluster or import a reference folder.": "Nog geen personen. Geef een gezichtsgroep een naam of importeer een referentiemap.",
   "No photo in this group has a camera date, only the time its file was saved or copied. Enter the day they were taken.": "Geen foto in deze groep heeft een cameradatum, alleen de tijd waarop het bestand is opgeslagen of gekopieerd. Vul de dag in waarop ze zijn gemaakt.",
+  "No photo in this group has a trustworthy date: they carry a camera’s default date (a clock that was never set) or only file times. Enter the day they were taken.": "Geen foto in deze groep heeft een betrouwbare datum: ze hebben de standaarddatum van een camera (een klok die nooit is ingesteld) of alleen bestandstijden. Vul de dag in waarop ze zijn gemaakt.",
   "No photos belong together yet.": "Nog geen foto’s die bij elkaar horen.",
   "No photos in this group any more. Its name is kept: when the animal is found again, its photos join it.": "Deze groep bevat geen foto’s meer. De naam blijft behouden: als het dier weer wordt gevonden, komen de foto’s hierbij.",
   "No photos of %(a)s and %(b)s at (about) the same age yet.": "Nog geen foto’s van %(a)s en %(b)s op (ongeveer) dezelfde leeftijd.",
@@ -1579,6 +1587,7 @@
   "These animals fit no group (seen only once, small or uncertain, or taken out of a group). Move them to a pet or start a new group.": "Deze dieren passen in geen enkele groep (maar één keer gezien, klein of onzeker, of uit een groep gehaald). Verplaats ze naar een huisdier of begin een nieuwe groep.",
   "These faces did not fit any cluster (seen too rarely, or low quality). Assign them to a person or create a cluster.": "Deze gezichten pasten in geen enkele groep (te zelden gezien of lage kwaliteit). Wijs ze toe aan een persoon of maak een groep.",
   "These photos are not where Mira last saw them – for example because the database comes from another computer, or a drive is not connected.": "Deze foto’s staan niet meer waar Mira ze het laatst zag – bijvoorbeeld omdat de database van een andere computer komt of omdat een schijf niet is aangesloten.",
+  "These photos carry a date that looks like a camera’s default (a clock that was never set, e.g. 2000-01-01 00:00), and no other photo seems to belong with them. Tick the ones taken on the same day and set their date.": "Deze foto’s hebben een datum die eruitziet als de standaardwaarde van een camera (een klok die nooit is ingesteld, bijv. 2000-01-01 00:00), en geen andere foto lijkt erbij te horen. Vink de foto’s van dezelfde dag aan en stel hun datum in.",
   "These values can't be merged or deleted here.": "Deze waarden kunnen hier niet worden samengevoegd of verwijderd.",
   "They describe your photos (properties) and make them searchable. The download is several GB and runs in the background.": "Ze beschrijven je foto’s (eigenschappen) en maken ze doorzoekbaar. De download is enkele GB groot en loopt op de achtergrond.",
   "This configuration needs no models from Ollama.": "Deze configuratie heeft geen modellen van Ollama nodig.",

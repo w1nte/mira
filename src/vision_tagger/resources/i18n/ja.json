@@ -96,6 +96,7 @@
     "%(num)d animal restored.": "%(num)d animals restored.",
     "%(num)d cluster": "%(num)d clusters",
     "%(num)d date doesn’t fit": "%(num)d dates don’t fit",
+    "%(num)d default date": "%(num)d default dates",
     "%(num)d duplicate file": "%(num)d duplicate files",
     "%(num)d entry": "%(num)d entries",
     "%(num)d face": "%(num)d faces",
@@ -213,6 +214,9 @@
   ],
   "%(num)d date doesn’t fit": [
     "%(num)d 件の日付が合いません"
+  ],
+  "%(num)d default date": [
+    "%(num)d 件の既定の日付"
   ],
   "%(num)d duplicate file": [
     "%(num)d件の重複ファイル"
@@ -594,6 +598,8 @@
   "Deep search": "ディープ検索",
   "deep search needs descriptions from the vision model": "ディープ検索にはビジョンモデルの説明が必要です",
   "deep search unavailable (%(error)s)": "ディープ検索は利用できません（%(error)s）",
+  "default date": "既定の日付",
+  "Default dates": "既定の日付",
   "Delete": "削除",
   "Delete %(name)s? Clusters stay but become unnamed.": "%(name)sを削除しますか？グループは残りますが、名前がなくなります。",
   "Delete person": "人物を削除",
@@ -1010,6 +1016,7 @@
   "No other groups.": "他のグループはありません。",
   "No persons yet. Name a face cluster or import a reference folder.": "人物はまだいません。顔グループに名前を付けるか、参照フォルダーをインポートしてください。",
   "No photo in this group has a camera date, only the time its file was saved or copied. Enter the day they were taken.": "このグループの写真にはカメラの日付がなく、ファイルが保存またはコピーされた時刻しかありません。撮影した日を入力してください。",
+  "No photo in this group has a trustworthy date: they carry a camera’s default date (a clock that was never set) or only file times. Enter the day they were taken.": "このグループには信頼できる日付の写真がありません。カメラの既定の日付（時計が未設定）か、ファイル時刻しかありません。撮影した日を入力してください。",
   "No photos belong together yet.": "まとまっている写真はまだありません。",
   "No photos in this group any more. Its name is kept: when the animal is found again, its photos join it.": "このグループにはもう写真がありません。名前は残ります。この動物が再び見つかると、その写真がここに入ります。",
   "No photos of %(a)s and %(b)s at (about) the same age yet.": "%(a)sと%(b)sが（ほぼ）同じ年齢の写真はまだありません。",
@@ -1510,6 +1517,7 @@
   "These animals fit no group (seen only once, small or uncertain, or taken out of a group). Move them to a pet or start a new group.": "これらの動物はどのグループにも当てはまりません（一度しか写っていない、小さいか不確か、またはグループから外したもの）。ペットに移動するか、新しいグループを作ってください。",
   "These faces did not fit any cluster (seen too rarely, or low quality). Assign them to a person or create a cluster.": "これらの顔はどのグループにも当てはまりませんでした（出現回数が少ないか、品質が低いため）。人物に割り当てるか、グループを作成してください。",
   "These photos are not where Mira last saw them – for example because the database comes from another computer, or a drive is not connected.": "これらの写真は、Mira が最後に確認した場所にありません。たとえば、データベースが別のコンピューターから来た場合や、ドライブが接続されていない場合です。",
+  "These photos carry a date that looks like a camera’s default (a clock that was never set, e.g. 2000-01-01 00:00), and no other photo seems to belong with them. Tick the ones taken on the same day and set their date.": "これらの写真の日付はカメラの既定値のようです（時計が一度も設定されていない場合。例: 2000-01-01 00:00）。また、同じグループに属する写真も見つかりません。同じ日に撮影したものにチェックを入れ、日付を設定してください。",
   "These values can't be merged or deleted here.": "これらの値はここでは統合・削除できません。",
   "They describe your photos (properties) and make them searchable. The download is several GB and runs in the background.": "これらのモデルで写真の説明（プロパティ）と検索ができるようになります。ダウンロードは数 GB あり、バックグラウンドで行われます。",
   "This configuration needs no models from Ollama.": "この設定では Ollama のモデルは不要です。",

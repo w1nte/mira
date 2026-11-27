@@ -21,6 +21,13 @@ with a file-time date, though, joins the group it looks or is named like, and th
 date of its group: the date of its nearest trustworthy neighbour in file name order
 (:attr:`DateGroup.suggestions`).
 
+Some dates are a camera's or file system's *default*: a clock that was never set or lost its
+battery starts at 2000-01-01 00:00 (shown as 2000-12-31 22:00 after a time zone shift), an
+empty date reads as 1970-01-01, a maker's default repeats in unrelated photos.
+:func:`mark_default_dates` finds them; they count as untrustworthy whatever their source, so
+they never anchor a group, are always marked, and get their group's date as the suggestion.
+Photos with a default date that belong to no group are collected in one ``loose`` group.
+
 Nothing is stored: groups are computed when the page asks (one pass over the library's rows;
 the visual vectors come from the search index already in memory).
 """
@@ -59,6 +66,15 @@ NUMBER_STEP = 3
 TRUSTED = 0.6
 # the earliest year a date can be set to
 MIN_YEAR = 1800
+# Default dates: what a camera or file system falls back to when its clock was never set or
+# lost power. They count as untrustworthy, whatever their source (see default_date_reason).
+DEFAULT_YEARS = (1970, 1980, 2000, 2001)  # Unix and DOS epochs, common camera resets
+# time zones move a default midnight: 2001-01-01 00:00 UTC is 2000-12-31 22:00 in UTC-2
+TIME_ZONE_SLACK = timedelta(hours=14)
+# a reset clock keeps running: photos up to this long after a default New Year are defaults too
+CLOCK_RUN = timedelta(days=2)
+# the same date on the hour in this many different photos, in more than one folder
+REPEATED_DEFAULT = 3
 
 _NUMBERED = re.compile(r"^(.*?)(\d+)(\D*)$")
 
@@ -74,10 +90,15 @@ class Photo:
     date_source: str
     camera: str | None
     phash: str
+    default: str | None = None  # why the date looks like a default (default_date_reason)
 
     @property
     def trusted(self) -> bool:
-        return self.recorded_at is not None and reliability(self.date_source) >= TRUSTED
+        return (
+            self.recorded_at is not None
+            and self.default is None
+            and reliability(self.date_source) >= TRUSTED
+        )
 
 
 @dataclass
@@ -89,6 +110,11 @@ class DateGroup:
     date: datetime | None  # the group's date: median of the trustworthy dates
     suggestions: dict[int, datetime] = field(default_factory=dict)  # photo id -> better date
     off: set[int] = field(default_factory=set)  # photos whose date is off (or missing)
+    loose: bool = False  # photos with a default date that belong to no group, collected
+
+    @property
+    def defaults(self) -> list[Photo]:
+        return [p for p in self.photos if p.default]
 
     @property
     def size(self) -> int:
@@ -97,7 +123,7 @@ class DateGroup:
     @property
     def status(self) -> str:
         """``mixed``: some dates don't fit the group; ``unreliable``: no trustworthy date at
-        all (only file times); ``ok``: the dates agree."""
+        all (only file times or default dates); ``ok``: the dates agree."""
         if self.date is None:
             return "unreliable"
         return "mixed" if self.off else "ok"
@@ -179,6 +205,65 @@ def _look_alike(a: Photo, b: Photo, vectors: VectorLookup | None) -> bool:
     return float(np.dot(va, vb)) >= LOOK_ALIKE
 
 
+def _new_year_distance(when: datetime) -> timedelta:
+    """Signed distance to the nearest New Year's midnight (negative: before it)."""
+    this = datetime(when.year, 1, 1)
+    following = datetime(when.year + 1, 1, 1)
+    return when - this if when - this < following - when else when - following
+
+
+def default_date_reason(when: datetime | None, *, now: datetime | None = None) -> str | None:
+    """Why ``when`` looks like a camera's or file system's default date, else ``None``.
+
+    * ``epoch``: around New Year of 1970, 1980, 2000 or 2001 (a reset clock, or an empty date
+      read as zero), including the time zone shift and two days of a reset clock running on;
+    * ``new_year``: on New Year's midnight of any year, give or take a time zone, at a round time
+      (seconds zero, minutes a multiple of 15): a clock set to its maker's default;
+    * ``future``: after today.
+
+    Repeated defaults (the same date in unrelated photos) need the whole library: see
+    :func:`mark_default_dates`.
+    """
+    if when is None:
+        return None
+    now = now or datetime.now()
+    if when > now + timedelta(days=1):
+        return "future"
+    gap = _new_year_distance(when)
+    new_year_of = when.year + 1 if gap < timedelta(0) else when.year
+    if new_year_of in DEFAULT_YEARS and -TIME_ZONE_SLACK <= gap <= CLOCK_RUN:
+        return "epoch"
+    if abs(gap) <= TIME_ZONE_SLACK and when.second == 0 and when.minute % 15 == 0:
+        return "new_year"
+    return None
+
+
+def mark_default_dates(photos: Sequence[Photo], *, now: datetime | None = None) -> None:
+    """Set :attr:`Photo.default` of the photos whose date looks like a default.
+
+    Besides :func:`default_date_reason`: ``repeated``, the same date to the second, on the hour,
+    in at least :data:`REPEATED_DEFAULT` different photos (distinct pHashes, so not copies) in
+    more than one folder. A burst of shots shares its second, but in one folder. Dates set by
+    hand are never defaults.
+    """
+    same_time: dict[datetime, list[Photo]] = defaultdict(list)
+    for p in photos:
+        p.default = None
+        if p.recorded_at is None or p.date_source == "manual":
+            continue
+        p.default = default_date_reason(p.recorded_at, now=now)
+        if p.recorded_at.minute == 0 and p.recorded_at.second == 0:
+            same_time[p.recorded_at].append(p)
+    for members in same_time.values():
+        if len(members) < REPEATED_DEFAULT:
+            continue
+        hashes = {p.phash for p in members}
+        folders = {p.folder.casefold() for p in members}
+        if len(hashes) >= REPEATED_DEFAULT and len(folders) > 1:
+            for p in members:
+                p.default = p.default or "repeated"
+
+
 def load_photos(s: Session, image_ids: Iterable[int] | None = None) -> list[Photo]:
     """The rows grouping needs, of all present photos or of ``image_ids``."""
     cols = (
@@ -213,8 +298,10 @@ def load_photos(s: Session, image_ids: Iterable[int] | None = None) -> list[Phot
 def group_photos(photos: Sequence[Photo], vectors: VectorLookup | None = None) -> list[DateGroup]:
     """Groups of photos that belong together (see the module docstring), largest first.
 
-    Photos that belong to no other photo come back as groups of one.
+    Photos that belong to no other photo come back as groups of one, except those with a
+    default date: they are collected in one group (``loose``), listed first.
     """
+    mark_default_dates(photos)
     links = _Links(photos)
     by_folder: dict[str, list[Photo]] = defaultdict(list)
     for p in photos:
@@ -244,8 +331,18 @@ def group_photos(photos: Sequence[Photo], vectors: VectorLookup | None = None) -
     members_of: dict[int, list[Photo]] = defaultdict(list)
     for p in photos:
         members_of[links.find(p.id)].append(p)
-    groups = [_summarize(m) for m in members_of.values()]
+    groups = []
+    loose: list[Photo] = []
+    for members in members_of.values():
+        if len(members) == 1 and members[0].default:
+            loose += members
+        else:
+            groups.append(_summarize(members))
     groups.sort(key=lambda g: (not g.needs_attention, -g.size, g.start or datetime.max, g.key))
+    if loose:
+        group = _summarize(loose)
+        group.loose = True
+        groups.insert(0, group)
     return groups
 
 
@@ -264,6 +361,7 @@ def _summarize(members: list[Photo]) -> DateGroup:
         date=None,
     )
     if not trusted:
+        group.off = {p.id for p in members if p.default}  # nothing to suggest
         return group
     stamps = sorted(p.recorded_at for p in trusted)  # type: ignore[type-var]
     group.date = stamps[(len(stamps) - 1) // 2]  # the lower median: a real photo's date
@@ -271,7 +369,11 @@ def _summarize(members: list[Photo]) -> DateGroup:
     # order (in its folder), else the group's date
     named = sorted(members, key=lambda p: (p.folder.casefold(), _name_key(p.filename), p.id))
     for i, p in enumerate(named):
-        if p.recorded_at is not None and abs(p.recorded_at - group.date) <= OFF_BY:
+        if (
+            p.recorded_at is not None
+            and not p.default
+            and abs(p.recorded_at - group.date) <= OFF_BY
+        ):
             continue
         if p.trusted and p.date_source == "manual":
             continue  # set by hand: never contradicted

@@ -98,6 +98,7 @@
     "%(num)d animal restored.": "%(num)d animals restored.",
     "%(num)d cluster": "%(num)d clusters",
     "%(num)d date doesn’t fit": "%(num)d dates don’t fit",
+    "%(num)d default date": "%(num)d default dates",
     "%(num)d duplicate file": "%(num)d duplicate files",
     "%(num)d entry": "%(num)d entries",
     "%(num)d face": "%(num)d faces",
@@ -235,6 +236,11 @@
     "%(num)d дата не подходит",
     "%(num)d даты не подходят",
     "%(num)d дат не подходят"
+  ],
+  "%(num)d default date": [
+    "%(num)d дата по умолчанию",
+    "%(num)d даты по умолчанию",
+    "%(num)d дат по умолчанию"
   ],
   "%(num)d duplicate file": [
     "%(num)d файл-дубликат",
@@ -706,6 +712,8 @@
   "Deep search": "Глубокий поиск",
   "deep search needs descriptions from the vision model": "глубокому поиску нужны описания от модели зрения",
   "deep search unavailable (%(error)s)": "глубокий поиск недоступен (%(error)s)",
+  "default date": "дата по умолчанию",
+  "Default dates": "Даты по умолчанию",
   "Delete": "Удалить",
   "Delete %(name)s? Clusters stay but become unnamed.": "Удалить %(name)s? Группы останутся, но будут без имени.",
   "Delete person": "Удалить персону",
@@ -1138,6 +1146,7 @@
   "No other groups.": "Других групп нет.",
   "No persons yet. Name a face cluster or import a reference folder.": "Персон пока нет. Дайте имя группе лиц или импортируйте папку образцов.",
   "No photo in this group has a camera date, only the time its file was saved or copied. Enter the day they were taken.": "Ни у одной фотографии в этой группе нет даты с камеры, только время сохранения или копирования файла. Введите день съёмки.",
+  "No photo in this group has a trustworthy date: they carry a camera’s default date (a clock that was never set) or only file times. Enter the day they were taken.": "Ни у одной фотографии в этой группе нет надёжной даты: у них дата камеры по умолчанию (ненастроенные часы) или только время файлов. Введите день съёмки.",
   "No photos belong together yet.": "Пока нет фотографий, которые относятся друг к другу.",
   "No photos in this group any more. Its name is kept: when the animal is found again, its photos join it.": "В этой группе больше нет фото. Имя сохраняется: когда животное снова найдётся, его фото попадут сюда.",
   "No photos of %(a)s and %(b)s at (about) the same age yet.": "Пока нет фото, где %(a)s и %(b)s (примерно) одного возраста.",
@@ -1648,6 +1657,7 @@
   "These animals fit no group (seen only once, small or uncertain, or taken out of a group). Move them to a pet or start a new group.": "Эти животные не подходят ни к одной группе (встречались лишь раз, маленькие или ненадёжно распознанные либо убраны из группы). Переместите их к питомцу или создайте новую группу.",
   "These faces did not fit any cluster (seen too rarely, or low quality). Assign them to a person or create a cluster.": "Эти лица не подошли ни к одной группе (встречаются слишком редко или низкого качества). Назначьте их персоне или создайте группу.",
   "These photos are not where Mira last saw them – for example because the database comes from another computer, or a drive is not connected.": "Этих фото нет там, где Mira видела их в последний раз — например, потому что база данных перенесена с другого компьютера или диск не подключён.",
+  "These photos carry a date that looks like a camera’s default (a clock that was never set, e.g. 2000-01-01 00:00), and no other photo seems to belong with them. Tick the ones taken on the same day and set their date.": "У этих фотографий дата, похожая на значение камеры по умолчанию (часы, которые так и не настроили, например 2000-01-01 00:00), и ни одна другая фотография с ними не связана. Отметьте снятые в один день и задайте им дату.",
   "These values can't be merged or deleted here.": "Эти значения нельзя здесь объединить или удалить.",
   "They describe your photos (properties) and make them searchable. The download is several GB and runs in the background.": "Они описывают ваши фото (свойства) и делают их доступными для поиска. Загрузка занимает несколько ГБ и идёт в фоновом режиме.",
   "This configuration needs no models from Ollama.": "Этой конфигурации не нужны модели Ollama.",
