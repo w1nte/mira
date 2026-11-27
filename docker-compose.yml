@@ -6,7 +6,8 @@
 #   4. the ollama service downloads the AI models when Mira needs them ("Download now" on
 #      Home, or the first run); by hand: docker compose exec ollama ollama pull qwen2.5vl:7b
 #
-# For "Install app" on phones and other computers, put it behind HTTPS (see docs/remote.md).
+# For access from the internet and "Install app" on phones, use HTTPS: docker-compose.traefik.yml
+# adds Traefik with a free Let's Encrypt certificate for your domain (see docs/remote.md).
 services:
   mira:
     build:

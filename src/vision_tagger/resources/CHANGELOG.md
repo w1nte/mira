@@ -5,6 +5,9 @@ Mira shows them on its "What's new" page, and each GitHub release uses its secti
 
 ## Unreleased
 
+### New
+- Docker: `docker-compose.traefik.yml` serves Mira over HTTPS on your own domain with a free Let's Encrypt certificate, set up in `.env`.
+
 ## 1.7 - 2026-11-26
 
 ### New
