@@ -20,4 +20,5 @@ request names a photo or folder by id; the server looks the path up itself.
 In remote mode any host name is accepted (it runs behind your own domain or proxy), while
 cross-site form submissions are still rejected. Set a password and use HTTPS (see
 [Password and HTTPS](remote.md#password-and-https)). Login cookies are `HttpOnly`, `SameSite=Lax` and
-signed with a key stored in the data folder.
+signed with a key made from a secret in the data folder and the password: a new password, or
+*Database → Log out everywhere*, ends every login.

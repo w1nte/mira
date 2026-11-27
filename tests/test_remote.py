@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import zipfile
 
 import pytest
@@ -98,6 +99,41 @@ def test_tokens_and_lockout(tmp_path):
     assert auth.locked("1.2.3.4") and not auth.locked("5.6.7.8")
 
 
+def test_logins_end_with_a_new_password_or_everywhere(tmp_path):
+    secret = A.load_secret(tmp_path)
+    auth = A.Auth("old password", secret)
+    token = auth.token()
+    assert auth.valid(token)
+    assert not A.Auth("new password", secret).valid(token)  # the password changed
+    assert A.Auth("old password", A.load_secret(tmp_path)).valid(token)  # a restart keeps it
+    auth.end_all(tmp_path)
+    assert not auth.valid(token)
+    assert auth.valid(auth.token())
+    assert A.load_secret(tmp_path) != secret  # also after a restart
+    assert not A.Auth("old password", A.load_secret(tmp_path)).valid(token)
+    if os.name != "nt":
+        assert (tmp_path / "secret.key").stat().st_mode & 0o777 == 0o600
+    assert [p.name for p in tmp_path.iterdir()] == ["secret.key"]  # no temporary file left
+
+
+def test_log_out_everywhere(remote):
+    with TestClient(create_app(remote)) as c:
+        c.post("/login", data={"password": "s3cret"})
+        old = c.cookies.get(A.COOKIE)
+        page = c.get("/database", headers=HTML).text
+        assert 'action="/logout/everywhere"' in page and "Log out everywhere" in page
+        r = c.post("/logout/everywhere", follow_redirects=False)
+        assert r.status_code == 303 and r.headers["location"] == "/login"
+        assert c.get("/api/status").status_code == 401
+        c.cookies.set(A.COOKIE, old)  # a copy of the cookie (another device) is no use either
+        assert c.get("/api/status").status_code == 401
+        c.post("/login", data={"password": "s3cret"})
+        assert c.get("/api/status").status_code == 200
+    with TestClient(create_app(remote)) as c:  # after a restart, too
+        c.cookies.set(A.COOKIE, old)
+        assert c.get("/api/status").status_code == 401
+
+
 def test_remote_hosts_and_zip_export(remote):
     remote.web.password = ""
     app = create_app(remote)
@@ -139,3 +175,12 @@ def test_docker_env_file_instructions_work_on_windows():
         assert 'echo "VT_PASSWORD' not in (root / doc).read_text(encoding="utf-8"), doc
     for ignore in (".gitignore", ".dockerignore"):  # the password never lands in git or images
         assert ".env" in (root / ignore).read_text(encoding="utf-8").splitlines(), ignore
+
+
+def test_no_logins_card_without_a_password(settings):
+    with TestClient(create_app(settings)) as c:
+        assert "logout/everywhere" not in c.get("/database").text
+        before = (settings.data_dir / "secret.key").read_bytes()
+        r = c.post("/logout/everywhere", follow_redirects=False)
+        assert r.status_code == 303 and r.headers["location"] == "/"
+        assert (settings.data_dir / "secret.key").read_bytes() == before

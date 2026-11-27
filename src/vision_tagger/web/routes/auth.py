@@ -57,3 +57,13 @@ def logout(request: Request) -> Response:
     resp = RedirectResponse("/login", status_code=303)
     resp.delete_cookie(COOKIE)
     return resp
+
+
+@router.post("/logout/everywhere")
+def logout_everywhere(request: Request) -> Response:
+    """Ends every login, on every device (a new secret signs the cookies from now on)."""
+    auth = request.app.state.auth
+    if not auth.enabled:
+        return RedirectResponse("/", status_code=303)
+    auth.end_all(request.app.state.ctx.settings.data_dir)
+    return logout(request)

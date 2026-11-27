@@ -54,7 +54,8 @@ edit it, or write it as plain text:
 
 Set a password with the environment variable `VT_WEB__PASSWORD`. Remote mode doesn't start without
 one, and neither does a server on an address other computers can reach (`--host 0.0.0.0`).
-Every page then asks for it; a login lasts 30 days. After 10 wrong passwords an address is
+Every page then asks for it; a login lasts 30 days. Changing the password ends every login, and
+*Database → Log out everywhere* ends them on all devices. After 10 wrong passwords an address is
 blocked for 5 minutes.
 
 Put the server behind a reverse proxy with HTTPS (Caddy, Traefik, nginx), for example with Caddy:
