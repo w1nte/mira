@@ -116,6 +116,45 @@ def test_logins_end_with_a_new_password_or_everywhere(tmp_path):
     assert [p.name for p in tmp_path.iterdir()] == ["secret.key"]  # no temporary file left
 
 
+def test_secret_key_is_private_binary_and_made_once(tmp_path, monkeypatch):
+    import threading
+
+    keys: list[bytes] = []
+    start = threading.Barrier(8)
+
+    def load() -> None:
+        start.wait()
+        keys.append(A.load_secret(tmp_path))
+
+    threads = [threading.Thread(target=load) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    stored = (tmp_path / "secret.key").read_bytes()
+    assert len(set(keys)) == 1 and keys[0] == stored  # one key, also for parallel starts
+    if os.name != "nt":
+        assert (tmp_path / "secret.key").stat().st_mode & 0o777 == 0o600
+    # newlines stay as they are (Windows text mode would write \r\n)
+    monkeypatch.setattr(A.secrets, "token_bytes", lambda n: b"\n\r" * (n // 2))
+    other = tmp_path / "other"
+    other.mkdir()
+    assert A.load_secret(other) == (other / "secret.key").read_bytes() == b"\n\r" * 16
+    assert A.new_secret(other) == (other / "secret.key").read_bytes()
+
+
+def test_damaged_or_open_secret_keys_are_fixed(tmp_path, monkeypatch):
+    monkeypatch.setattr(A, "KEY_WAIT", 0.05)
+    path = tmp_path / "secret.key"
+    path.write_bytes(b"short")  # cut off
+    key = A.load_secret(tmp_path)
+    assert len(key) == A.KEY_BYTES and path.read_bytes() == key
+    if os.name != "nt":
+        path.chmod(0o644)  # as older versions left it
+        assert A.load_secret(tmp_path) == key
+        assert path.stat().st_mode & 0o777 == 0o600
+
+
 def test_log_out_everywhere(remote):
     with TestClient(create_app(remote)) as c:
         c.post("/login", data={"password": "s3cret"})

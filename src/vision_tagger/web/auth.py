@@ -40,6 +40,10 @@ MAX_FAILURES = 10  # wrong passwords per address before it is locked out
 LOCKOUT_SECONDS = 300
 GLOBAL_MAX_FAILURES = 100  # wrong passwords of all addresses within LOCKOUT_SECONDS
 MAX_TRACKED = 10_000  # addresses remembered at most (memory stays bounded)
+KEY_BYTES = 32
+KEY_WAIT = 2.0  # seconds to wait for a key file another process is writing right now
+#: new files: this user only (where supported), and binary (Windows would translate newlines)
+_NEW_FILE = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
 
 
 def client_key(address: str) -> str:
@@ -58,7 +62,7 @@ def client_key(address: str) -> str:
 def _write_secret(path: Path, key: bytes) -> None:
     """Replace the key file atomically; readable by this user only (where supported)."""
     tmp = path.with_name(f"{path.name}.{secrets.token_hex(4)}.tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    fd = os.open(tmp, _NEW_FILE, 0o600)
     try:
         with os.fdopen(fd, "wb") as fh:
             fh.write(key)
@@ -71,24 +75,47 @@ def _write_secret(path: Path, key: bytes) -> None:
 
 def new_secret(data_dir: Path) -> bytes:
     """A new random secret in place of the old one: every login signed with it ends."""
-    key = secrets.token_bytes(32)
+    key = secrets.token_bytes(KEY_BYTES)
     _write_secret(data_dir / "secret.key", key)
     return key
 
 
 def load_secret(data_dir: Path) -> bytes:
+    """The secret in ``data_dir/secret.key``, made on first use.
+
+    The file is created exclusively, readable by this user only from the first byte (where
+    supported). A second process starting at the same time reads that key instead of writing
+    its own; a damaged file is replaced.
+    """
     path = data_dir / "secret.key"
+    key = secrets.token_bytes(KEY_BYTES)
     try:
-        key = path.read_bytes()
-        if len(key) >= 32:
-            return key
-    except OSError:
-        pass
-    key = secrets.token_bytes(32)
-    path.write_bytes(key)
-    with contextlib.suppress(OSError):  # not supported everywhere (e.g. some Windows shares)
-        path.chmod(0o600)
+        fd = os.open(path, _NEW_FILE, 0o600)
+    except FileExistsError:
+        return _existing_secret(path)
+    with os.fdopen(fd, "wb") as fh:
+        fh.write(key)
     return key
+
+
+def _existing_secret(path: Path) -> bytes:
+    deadline = time.monotonic() + KEY_WAIT
+    while True:
+        try:
+            key = path.read_bytes()
+        except OSError:
+            key = b""
+        if len(key) >= KEY_BYTES:
+            if os.name != "nt":  # older versions made it readable for everyone
+                with contextlib.suppress(OSError):
+                    if path.stat().st_mode & 0o077:
+                        path.chmod(0o600)
+            return key
+        if time.monotonic() > deadline:  # empty or cut short: damaged, make a new one
+            key = secrets.token_bytes(KEY_BYTES)
+            _write_secret(path, key)
+            return key
+        time.sleep(0.02)  # another process is writing it right now
 
 
 class Auth:
