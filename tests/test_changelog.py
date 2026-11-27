@@ -493,6 +493,30 @@ def test_the_release_step_keeps_entries_added_after_the_release():
     assert release_15.sections["New"] == ['Search understands "or".']
 
 
+def test_two_forgotten_release_steps_file_each_entry_once():
+    """1.6 and 1.7 were released without the step: 1.7's commit still lists 1.6's entries
+    under Unreleased. Filing 1.6, then 1.7, must not put 1.6's entries under 1.7 as well."""
+    at_16 = RELEASE_SAMPLE
+    at_17 = RELEASE_SAMPLE.replace(
+        "### Fixed\n", "- Similar photos.\n\n### Changed\n- Search ranks visually.\n\n### Fixed\n"
+    )
+    main = at_17.replace("### Fixed\n", "### Fixed\n- Merged after 1.7.\n")
+    text, _ = notes_script.cut_release(main, "v1.6", date(2026, 11, 26), entries_from=at_16)
+    text, message = notes_script.cut_release(text, "v1.7", date(2026, 11, 26), entries_from=at_17)
+    assert message == "filed 2 entries under 1.7 - 2026-11-26"
+    assert changelog.validate(text) == []
+    unreleased, r17, r16 = changelog.parse(text)[:3]
+    assert unreleased.sections == {"Fixed": ["Merged after 1.7."]}
+    assert r17.sections == {"New": ["Similar photos."], "Changed": ["Search ranks visually."]}
+    assert r16.sections == {
+        "New": ['Search understands "or".'],
+        "Fixed": ["The sidebar no longer scrolls sideways."],
+    }
+    # a released commit with nothing new for the tag changes nothing
+    again, message = notes_script.cut_release(text, "1.8", date(2026, 11, 27), entries_from=at_16)
+    assert again == text and "nothing under Unreleased" in message
+
+
 def test_the_release_step_with_nothing_unreleased_changes_nothing():
     empty = (
         "# Changelog\n\nNotes.\n\n## Unreleased\n\n"

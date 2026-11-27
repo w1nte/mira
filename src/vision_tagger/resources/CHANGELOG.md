@@ -5,14 +5,20 @@ Mira shows them on its "What's new" page, and each GitHub release uses its secti
 
 ## Unreleased
 
+## 1.7 - 2026-11-26
+
 ### New
-- NSFW photos show as black tiles until you open them; a local check finds them, and you can mark photos yourself (photo page, gallery → Select).
-- Search finds photos by what they show, in any language and right after the import, without Ollama: the new "Visual search" stage (SigLIP 2).
-- "Similar photos" on a photo's page lists the photos that look like it; also `vision-tagger similar <id>`.
 - Database → Clear the library starts over with an empty library after two confirmations (also `vision-tagger db clear`); photo files stay, a backup is kept.
 - Database → Missing files removes photos whose file is gone, one by one or all at once; names of persons and pets stay.
 - On your own computer, "Show in folder" opens a photo, a library folder or the database in Explorer, Finder or the file manager.
 - Images: a click on a photo shows it large over the gallery; arrow keys or a swipe for the next one, Esc to close, "Open details" for its page.
+
+## 1.6 - 2026-11-26
+
+### New
+- NSFW photos show as black tiles until you open them; a local check finds them, and you can mark photos yourself (photo page, gallery → Select).
+- Search finds photos by what they show, in any language and right after the import, without Ollama: the new "Visual search" stage (SigLIP 2).
+- "Similar photos" on a photo's page lists the photos that look like it; also `vision-tagger similar <id>`.
 
 ### Changed
 - Search ranks by what photos show first, then their descriptions, properties and words; results that match nothing are left out.
