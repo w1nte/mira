@@ -635,7 +635,7 @@ td > input.pick:checked { border-color: var(--accent); background-color: var(--a
 .actionbar button.primary, .actionbar .btn.primary { background: var(--on-ink); color: var(--ink); border-color: var(--on-ink); }
 .actionbar button.primary:hover { background: color-mix(in srgb, var(--on-ink) 88%, var(--ink)); }
 .actionbar button.danger { color: var(--err-on-ink); }
-.actionbar input[type="text"], .actionbar input[type="number"] {
+.actionbar input[type="text"], .actionbar input[type="number"], .actionbar input[type="date"] {
   background: var(--ink-fill); color: var(--on-ink); border-color: var(--ink-line);
 }
 .actionbar input::placeholder { color: color-mix(in srgb, var(--on-ink) 55%, transparent); }
@@ -658,6 +658,16 @@ td > input.pick:checked { border-color: var(--accent); background-color: var(--a
 .tile:hover > input.pick, .tile > input.pick:focus-visible, .tile > input.pick:checked,
 .selecting .tile > input.pick, [data-select-scope]:has(input.pick:checked) .tile > input.pick { opacity: 1; }
 .tile:has(input.pick:checked) .thumb { outline: 3px solid var(--accent); outline-offset: -3px; }
+
+/* "Dates" page: a group's photos (captions always shown: the dates are the point) and its form */
+.date-group .thumbs { grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); margin-top: 12px; }
+.date-group + .date-group { margin-top: 16px; }
+.date-group .thumb .cap { opacity: 1; white-space: normal; background: linear-gradient(180deg, transparent, rgb(0 0 0 / .6)); padding-top: 14px; }
+.date-group .tile.off .thumb { box-shadow: inset 0 0 0 3px var(--warn); }
+.date-fix { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.date-fix > b { margin-right: 4px; font-variant-numeric: tabular-nums; }
+.date-fix label { display: inline-flex; align-items: center; gap: 6px; }
+.date-fix input[type="date"], .date-fix input[type="time"] { width: auto; }
 .tile:has(input.pick:checked) .thumb img { transform: scale(.92); }
 .selecting .tile .thumb { cursor: pointer; }
 

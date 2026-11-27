@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Dates') }}{% endblock %}
+{% block main_class %}wide{% endblock %}
+{% block content %}
+{% set qs = f.query_string() %}
+{% set default_label = _('default date') %}
+{% set sources = {'manual': _('set by hand'), 'exif': 'EXIF', 'exif_digitized': 'EXIF', 'exif_datetime': 'EXIF', 'filename': _('file name'), 'mtime': _('file time')} %}
+{% macro day(value) %}{{ value | dt('%Y-%m-%d') }}{% endmacro %}
+<div class="page-head">
+  <div>
+    <h1>{{ _('Dates') }}</h1>
+    <small>{{ _('Photos that seem to belong together, grouped so you can correct their dates in one go.') }}</small>
+  </div>
+  <div class="row">
+    <nav class="segmented" aria-label="{{ _('Show') }}">
+      <a href="/dates?{{ qs ~ '&' if qs }}show=attention"{% if show == 'attention' %} aria-current="page"{% endif %}>{{ _('Need a look') }} · {{ attention }}</a>
+      <a href="/dates?{{ qs ~ '&' if qs }}show=all"{% if show == 'all' %} aria-current="page"{% endif %}>{{ _('All groups') }} · {{ total_groups }}</a>
+    </nav>
+    <a class="btn" href="/images{{ '?' ~ qs if qs }}">{{ icon('image', 'sm') }}{{ _('Gallery') }}</a>
+  </div>
+</div>
+{% set base = '/dates' %}
+{% include "partials/filter_summary.html" %}
+<p class="muted hint">
+  {{ _('Photos are grouped by their dates, folders and file names (consecutive shots and scans), and copies of the same photo are grouped wherever they are.') }}
+  {% if visual %}{{ _('Neighbouring photos that show the same scene are grouped too.') }}{% else %}{{ _('Once the “Visual search” stage has run, neighbouring photos that show the same scene are grouped too.') }}{% endif %}
+  {{ _('Dates you set here count as set by hand: re-indexing keeps them.') }}
+</p>
+
+{% for g in groups %}
+{% set mixed = g.status == 'mixed' %}
+{% set form_id = 'dg-' ~ g.key %}
+<section class="card date-group selecting" id="g{{ g.key }}" x-data="{ n: 0 }" x-init="n = vt.count($el)" @change="n = vt.count($el)" data-select-scope>
+  <div class="row spread">
+    <div>
+      <h2 class="flush">
+        {% if g.loose %}{{ _('Default dates') }}{% elif g.date %}{{ day(g.date) }}{% else %}{{ _('Unknown date') }}{% endif %}
+        {% if g.defaults %}<span class="badge warn">{{ icon('alert', 'sm') }} {{ ngettext('%(num)d default date', '%(num)d default dates', g.defaults | length) }}</span>{% endif %}
+        {% if g.loose %}
+        {% elif mixed %}<span class="badge warn">{{ icon('alert', 'sm') }} {{ ngettext('%(num)d date doesn’t fit', '%(num)d dates don’t fit', g.off | length) }}</span>
+        {% elif g.status == 'unreliable' %}{% if not g.defaults %}<span class="badge warn">{{ _('Only file times') }}</span>{% endif %}
+        {% else %}<span class="badge ok">{{ _('Dates agree') }}</span>{% endif %}
+      </h2>
+      <small class="muted">{{ ngettext('%(num)d photo', '%(num)d photos', g.size) }}{% if not g.date and g.start and not g.defaults %} · {{ _('file times') }} {{ day(g.start) }}{% if day(g.end) != day(g.start) %} – {{ day(g.end) }}{% endif %}{% endif %} · {% for folder in g.folders[:3] %}{{ icon('folder', 'sm') }} {{ folder or '/' }}{% if not loop.last %}, {% endif %}{% endfor %}{% if g.folders | length > 3 %} {{ _('and %(n)s more', n=g.folders | length - 3) }}{% endif %}</small>
+    </div>
+    <div class="row">
+      <button type="button" class="btn small" @click="vt.toggleAll($root, true); n = vt.count($root)">{{ _('Select all') }}</button>
+      <button type="button" class="btn small" @click="vt.toggleAll($root, false); n = 0">{{ _('Select none') }}</button>
+    </div>
+  </div>
+  {% if g.loose %}
+  <p class="hint">{{ _('These photos carry a date that looks like a camera’s default (a clock that was never set, e.g. 2000-01-01 00:00), and no other photo seems to belong with them. Tick the ones taken on the same day and set their date.') }}</p>
+  {% elif mixed %}
+  <p class="hint">{{ _('The ticked photos don’t fit the date of the others. “Use suggested dates” gives each the date of its nearest neighbour by file name.') }}</p>
+  {% elif g.status == 'unreliable' and g.defaults %}
+  <p class="hint">{{ _('No photo in this group has a trustworthy date: they carry a camera’s default date (a clock that was never set) or only file times. Enter the day they were taken.') }}</p>
+  {% elif g.status == 'unreliable' %}
+  <p class="hint">{{ _('No photo in this group has a camera date, only the time its file was saved or copied. Enter the day they were taken.') }}</p>
+  {% endif %}
+  <div class="thumbs date-tiles" data-lightbox>
+    {% for p in g.photos[:tiles_per_group] %}
+    {% set covered = nsfw_covered(p.id) %}
+    {% set suggestion = g.suggestions.get(p.id) %}
+    <div class="tile{{ ' off' if p.id in g.off }}">
+      <a class="thumb" href="/images/{{ p.id }}" title="{{ (p.folder ~ '/' if p.folder) ~ p.filename }}" data-id="{{ p.id }}" data-title="{{ p.filename }}"
+         {%- if p.recorded_at %} data-date="{{ p.recorded_at.isoformat(timespec='minutes') }}"{% endif %}
+         {%- if covered %} data-covered{% else %} data-preview-url="/media/preview/{{ p.id }}"{% endif %}>
+        {{ thumb(p.id) }}
+        <span class="cap">{{ day(p.recorded_at) if p.recorded_at else _('undated') }} · {{ default_label if p.default else sources.get(p.date_source, p.date_source) }}{% if suggestion %}<br>→ {{ day(suggestion) }}{% endif %}</span>
+      </a>
+      <input class="pick" type="checkbox" name="image_ids" value="{{ p.id }}" form="{{ form_id }}" aria-label="{{ _('Select %(name)s', name=p.filename) }}"{% if not g.loose and (p.id in g.off or g.status == 'unreliable') %} checked{% endif %}>
+    </div>
+    {% endfor %}
+  </div>
+  {% if g.size > tiles_per_group %}<p class="muted hint">{{ _('Showing %(shown)s of %(total)s photos. Narrow the group with a folder or year filter to see the rest.', shown=tiles_per_group, total=g.size) }}</p>{% endif %}
+  <form id="{{ form_id }}" method="post" action="/dates/apply" class="date-fix">
+    {% for pid, when in g.suggestions.items() %}<input type="hidden" name="suggested" value="{{ pid }}={{ when.isoformat() }}">{% endfor %}
+    <b x-text="vtT('%(n)s selected', { n: vtNum(n) })"></b>
+    {% if g.suggestions %}<button name="mode" value="suggested" class="primary" :disabled="n === 0">{{ icon('check', 'sm') }}{{ _('Use suggested dates') }}</button>{% endif %}
+    <label>{{ _('Date') }} <input type="date" name="day" value="{{ day(g.date) if g.date }}" max="{{ today_iso }}"></label>
+    <label>{{ _('Time') }} <input type="time" name="at" title="{{ _('Optional. Empty: every photo keeps its time of day.') }}"></label>
+    <button name="mode" value="set" :disabled="n === 0" title="{{ _('Every selected photo gets this date') }}">{{ icon('calendar', 'sm') }}{{ _('Set date') }}</button>
+    <button name="mode" value="shift" :disabled="n === 0" title="{{ _('The earliest selected photo gets this date; the others keep their distance to it (a camera clock that was set wrong)') }}">{{ _('Shift dates') }}</button>
+  </form>
+</section>
+{% else %}
+<div class="card empty">{% if show == 'attention' and total_groups %}{{ _('All groups have dates that agree.') }} <a href="/dates?{{ qs ~ '&' if qs }}show=all">{{ _('Show all groups') }}</a>{% else %}{{ _('No photos belong together yet.') }}{% endif %}</div>
+{% endfor %}
+
+{% if pages > 1 %}
+<nav class="pager" aria-label="{{ _('Pages') }}">
+  {% if page > 1 %}<a class="btn" href="/dates?{{ qs ~ '&' if qs }}show={{ show }}&page={{ page - 1 }}">{{ icon('chevron-left', 'sm') }}{{ _('Previous') }}</a>{% endif %}
+  <span class="muted">{{ _('Page %(page)s of %(pages)s', page=page, pages=pages) }}</span>
+  {% if page < pages %}<a class="btn" href="/dates?{{ qs ~ '&' if qs }}show={{ show }}&page={{ page + 1 }}">{{ _('Next') }}{{ icon('chevron-right', 'sm') }}</a>{% endif %}
+</nav>
+{% endif %}
+{% if groups %}{% include "partials/lightbox.html" %}{% endif %}
+{% endblock %}

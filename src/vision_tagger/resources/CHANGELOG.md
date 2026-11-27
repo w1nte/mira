@@ -10,6 +10,9 @@ Mira shows them on its "What's new" page, and each GitHub release uses its secti
 - The notes of each release on GitHub list the SHA-256 checksum of every download and a link to its VirusTotal scan.
 - System → Log shows what Mira did, with every warning and error; filter it, download it, or open the log file in your text editor.
 - Report a bug (sidebar, System → Log) opens a GitHub bug report form with your Mira version and system already filled in.
+- Organize → Dates groups photos that belong together and corrects their dates in one go: suggested dates, set a day, or shift a whole group.
+- Organize → Dates also finds camera default dates (a clock never set, e.g. `2000-12-31 22:00`) and suggests the date of the photos around them.
+- Images → Select can now set the date of the ticked photos.
 - `web.trusted_proxies`: behind a reverse proxy in another container, the login lockout counts each visitor, not the proxy.
 - Images: with one person in the filter, Sort → "Age: youngest first" / "oldest first" orders the photos by that person's age in them.
 - When a face doesn't match the photo date, the photo page offers both fixes: set the year, or keep the date and set the person's age (also Edit ages).
@@ -19,6 +22,7 @@ Mira shows them on its "What's new" page, and each GitHub release uses its secti
 - The desktop app, `vision-tagger serve` (also in Docker) and the command line all log to `data/logs/vision-tagger.log`, up to 20 MB.
 
 ### Fixed
+- With a birth year and a camera date, a photo shows the person's real age (Images → Sort by age, photo page), even when the face looks older or younger.
 - Photos only open image files, and in remote mode only files in the upload folder: an imported database can no longer reveal other files.
 - Changing the password now ends every login; Database → Log out everywhere ends them on all devices. Everyone logs in once more after the update.
 - Exports and ZIP downloads stay inside their folder, and an imported database can no longer make Mira contact network shares you don't use.

@@ -353,7 +353,8 @@ def image_detail(request: Request, image_id: int) -> Response:
     face_ages = {}
     if date_check is not None:
         face_ages = {
-            fid: age_label(info, date_check.suspicious) for fid, info in date_check.faces.items()
+            fid: age_label(info, date_check.suspicious, date_check.date_trusted)
+            for fid, info in date_check.faces.items()
         }
     busy = None
     if img.missing:  # why "Remove from library" has to wait (like the Missing files page)
