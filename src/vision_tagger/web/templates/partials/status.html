@@ -74,7 +74,10 @@
 
   {% if job or jobs %}
   <section class="card">
-    <h2>{{ _('Jobs') }}</h2>
+    <div class="row spread">
+      <h2 class="flush">{{ _('Jobs') }}</h2>
+      {% if jobs | selectattr('status', 'equalto', 'failed') | first %}<a class="btn small ghost" href="/logs?show=errors">{{ icon('log', 'sm') }}{{ _('Show in the log') }}</a>{% endif %}
+    </div>
     {% if job and job.status == 'running' %}
       <p class="flush"><span class="badge running">{{ job_title(job.name) }}</span> {{ job.message }}</p>
       {% if job.progress and job.progress.get('candidates') %}
@@ -93,7 +96,10 @@
 
   {% if errors %}
   <section class="card">
-    <h2>{{ _('Recent errors') }}</h2>
+    <div class="row spread">
+      <h2 class="flush">{{ _('Recent errors') }}</h2>
+      <a class="btn small ghost" href="/logs?show=warnings">{{ icon('log', 'sm') }}{{ _('Show in the log') }}</a>
+    </div>
     <div class="table-wrap"><table>
       <tr><th>{{ _('Stage') }}</th><th>{{ _('Image') }}</th><th>{{ _('Error') }}</th><th class="num">{{ _('Tries') }}</th></tr>
       {% for e in errors[:10] %}

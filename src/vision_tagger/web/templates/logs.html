@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% from "partials/reveal.html" import reveal_button with context %}
+{% block title %}{{ _('Log') }}{% endblock %}
+{% block content %}
+{# the entries are English, as Mira writes them; only the page around them is translated #}
+<div class="page-head">
+  <div>
+    <h1>{{ _('Log') }}</h1>
+    <small>{{ _('Mira writes down what it does: starts, scans and pipeline runs, and above all every warning and error. When something goes wrong, the log shows what happened before.') }}</small>
+  </div>
+  <a class="btn primary" href="{{ bug_url }}" target="_blank" rel="noopener" title="{{ _('Opens a bug report on GitHub with your Mira version and system filled in') }}">{{ icon('bug', 'sm') }}{{ _('Report a bug') }}</a>
+</div>
+
+<div class="log-file">
+  {% if not remote %}<small class="muted">{{ _('Log file') }}</small> <span class="mono">{{ log_file }}</span>{% endif %}
+  {% if downloadable %}<small class="muted">{{ size | bytes }}</small>{% endif %}
+  <div class="row">
+    {% if exists %}
+    {{ reveal_button('log', 0, _('Open log file'), 'small', icon_name='log') }}
+    {{ reveal_button('logs', 0, _('Show in folder'), 'small') }}
+    {% endif %}
+    {% if downloadable %}<a class="btn small" href="/logs/download" download>{{ icon('download', 'sm') }}{{ _('Download log') }}</a>{% endif %}
+  </div>
+</div>
+
+<div class="note">{{ icon('info', 'sm') }}<small>{{ _('When you report a bug, add the downloaded log: it shows what led to the error. It contains the names of files and folders in your library, so look through it before you share it.') }}</small></div>
+
+<div class="row spread log-tools">
+  {% set counts = view.counts %}
+  <nav class="segmented" aria-label="{{ _('Show') }}">
+    <a href="/logs"{% if show == 'all' %} aria-current="page"{% endif %}>{{ _('Everything') }}</a>
+    <a href="/logs?show=warnings"{% if show == 'warnings' %} aria-current="page"{% endif %}>{{ _('Warnings and errors') }}<span class="n">{{ counts['warn'] + counts['error'] }}</span></a>
+    <a href="/logs?show=errors"{% if show == 'errors' %} aria-current="page"{% endif %}>{{ _('Errors') }}<span class="n">{{ counts['error'] }}</span></a>
+  </nav>
+  <a class="btn small ghost" href="/logs{{ '?show=' ~ show if show != 'all' }}">{{ icon('refresh', 'sm') }}{{ _('Refresh') }}</a>
+</div>
+
+{% if view.entries %}
+<ol class="log-entries" lang="en" aria-label="{{ _('Newest entries first') }}">
+  {% for e in view.entries %}
+  <li class="log-entry {{ e.severity }}">
+    <div class="log-line">
+      <time class="mono">{{ e.time }}</time>
+      <span class="log-level">{{ e.level }}</span>
+      <span class="log-msg">{{ e.message }}</span>
+      <small class="log-src mono">{{ e.logger }}{% if e.where %} · {{ e.where }}{% endif %}</small>
+    </div>
+    {% if e.details %}
+    <details{% if loop.first and e.severity == 'error' %} open{% endif %}>
+      <summary>{{ _('Details') }}</summary>
+      <pre class="mono">{{ e.detail_text }}</pre>
+    </details>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ol>
+{% if view.more %}<p class="muted"><small>{{ _('Only the newest %(num)d entries are shown. The download has the whole log.', num=limit) }}</small></p>{% endif %}
+{% elif not downloadable %}
+<section class="card empty"><p>{{ _('There is no log yet.') }}</p></section>
+{% elif show != 'all' %}
+<section class="card empty"><p>{{ _('No warnings or errors in the newest part of the log.') }}</p></section>
+{% else %}
+<section class="card empty"><p>{{ _('The log is empty.') }}</p></section>
+{% endif %}
+{% endblock %}

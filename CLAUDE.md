@@ -158,6 +158,9 @@ Releasing:
 2. Publish the release with that tag on that commit. When its notes are left empty, the publish
    job of `.github/workflows/desktop.yml` fills them with the tag's section
    (`python packaging/changelog.py notes <tag>`). Notes written on GitHub are kept as they are.
+3. Once the files are attached, `.github/workflows/virustotal.yml` appends a "Downloads" section
+   to the notes: each file's SHA-256 and VirusTotal link (`packaging/virustotal.py`, secret
+   `VIRUSTOTAL_API_KEY`). Run it by hand with the tag to scan again; it replaces its section.
 
 If step 1 was forgotten, the workflow catches it: every build files `Unreleased` under the tag
 before packaging (so the app's "What's new" shows the version), the notes come from that section,
@@ -187,6 +190,11 @@ the notes script, the page and the workflow step. Check the file locally with
     during model inference, DBSCAN or disk scans;
   - chunk `IN (...)` lists built from Python with `db.util.chunked` (parameter limit);
   - escape user input in `LIKE` with `db.util.like_escape`.
+- Logging (`logs.py`): every module logs through `logging.getLogger(__name__)` into the log file
+  users attach to bug reports. Log what explains an error later: actions and their results at
+  INFO, problems at WARNING/ERROR with the traceback (`exc_info`) once, not per photo. In
+  English, never passwords or keys; nothing per request or per photo at INFO (the log is
+  capped at 20 MB).
 - After bulk `update()`/`delete()` statements in a session that also holds ORM objects, flush
   and expire them. See the `_synced` decorator in `faces/clustering.py`.
 - Never discard user work automatically: locked clusters, manual face assignments and manually

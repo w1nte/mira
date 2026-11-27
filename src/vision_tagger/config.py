@@ -304,6 +304,17 @@ class UpdatesConfig(BaseModel):
     api_url: str = "https://api.github.com"
 
 
+class LoggingConfig(BaseModel):
+    """The log file ``<data_dir>/logs/vision-tagger.log`` (see ``logs``)."""
+
+    # "debug" (much more, for tracking down a problem), "info", "warning" or "error"; the
+    # command line's --verbose logs "debug" as well
+    level: Literal["debug", "info", "warning", "error"] = "info"
+    # the file is cut at this size: its content moves to vision-tagger.log.1 (.1 to .2, ...)
+    max_mb: float = Field(default=5.0, gt=0)
+    backups: int = Field(default=3, ge=0)  # older files kept; the oldest is deleted
+
+
 _config_file: Path | None = None
 #: what loading the config file last did (shown by `vision-tagger migrate`)
 last_config_migration: ConfigMigration | None = None
@@ -353,6 +364,7 @@ class Settings(BaseSettings):
     web: WebConfig = Field(default_factory=WebConfig)
     geo: GeoConfig = Field(default_factory=GeoConfig)
     updates: UpdatesConfig = Field(default_factory=UpdatesConfig)
+    logging: LoggingConfig = Field(default_factory=LoggingConfig)
 
     @classmethod
     def settings_customise_sources(

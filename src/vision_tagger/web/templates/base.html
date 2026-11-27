@@ -51,6 +51,7 @@
       {{ navlink('/import', 'upload', _('Import'), path.startswith('/import')) }}
       {{ navlink('/pipeline', 'gauge', _('Pipeline'), path.startswith('/pipeline')) }}
       {{ navlink('/database', 'database', _('Database'), path.startswith('/database')) }}
+      {{ navlink('/logs', 'log', _('Log'), path.startswith('/logs'), _('What Mira did, with every warning and error')) }}
     </nav>
     <div class="sidebar-foot">
       {%- set update = update_offer(request) %}
@@ -61,6 +62,7 @@
       <div id="activity" hx-get="/partials/activity" hx-trigger="load, every 5s [document.visibilityState === 'visible']"></div>
       <button type="button" class="install-btn ghost small" data-install hidden>{{ icon('smartphone', 'sm') }}{{ _('Install app') }}</button>
       <a class="foot-link{{ ' active' if path == '/changelog' }}" href="/changelog"{% if path == '/changelog' %} aria-current="page"{% endif %}>{{ icon('sparkle', 'sm') }}<span>{{ _('What’s new') }}</span><small>{{ app_version }}</small></a>
+      <a class="foot-link" href="{{ bug_report_url(request) }}" target="_blank" rel="noopener" title="{{ _('Opens a bug report on GitHub with your Mira version and system filled in') }}">{{ icon('bug', 'sm') }}<span>{{ _('Report a bug') }}</span></a>
       <label class="lang-switch" title="{{ _('Language') }}">{{ icon('globe', 'sm') }}
         <select data-lang-switch aria-label="{{ _('Language') }}">
           {% for code, name in languages.items() %}<option value="{{ code }}" {{ 'selected' if code == current_lang() }}>{{ name }}</option>{% endfor %}

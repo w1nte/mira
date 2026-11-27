@@ -18,13 +18,15 @@ only what will matter again, and delete what no longer holds. Rules live in `CLA
 ## Releases and installers
 - Publishing a GitHub release triggers `.github/workflows/desktop.yml`. It builds the Windows
   setups (cpu, gpu), the Linux tar.gz with `install.sh`, and the macOS `.pkg` (Apple silicon,
-  macOS 15+). The version comes from the tag (`packaging/version.py`). Nothing is signed;
-  the publish job uploads `SHA256SUMS.txt` with the files.
+  macOS 15+). The version comes from the tag (`packaging/version.py`). Nothing is signed.
 - Docker images are pinned by tag and digest (`Dockerfile` `PYTHON_IMAGE`, `ollama` in
   `docker-compose.yml`, `traefik` in `docker-compose.traefik.yml`; `test_docker_images_are_pinned`). Bump them deliberately, taking the
   digest from Docker Hub. `buffalo_l` is pinned in `faces/analyzer.py` like the other models.
 - If the changelog release step was forgotten, the workflow does it
   (`packaging/changelog.py release`) and opens a PR for `main`.
+- After the upload, `virustotal.yml` (reusable; also manual with a tag) appends SHA-256 and
+  VirusTotal links to the notes between `<!-- virustotal -->` markers, so a re-run replaces
+  them. Public API: 4 requests a minute, uploads up to 650 MB (bigger files are only hashed).
 - Every installer updates in place: it quits Mira with `vision-tagger-cli quit-app` (the
   pipeline pauses), replaces the files, and runs `migrate --desktop`.
 - Inno Setup (`installer.iss`, UTF-8 with BOM):
@@ -67,6 +69,12 @@ only what will matter again, and delete what no longer holds. Rules live in `CLA
   mode: below the upload folder). The location check treats refused paths as missing.
 - "Show in folder" (`reveal.py`) is offered only in local mode to a request from this computer
   (loopback client, local Host, no proxy headers) and never takes a path from the request.
+
+- Logging: one file per library, `data/logs/vision-tagger.log`, shared by every process (app,
+  `serve`, command line). It rotates by copy + truncate, not rename: Windows can't rename a file
+  another process has open. uvicorn runs with `log_config=None` so its errors reach the file;
+  its access log is filtered out of it. "Report a bug" fills the issue form's `version` and
+  `environment` ids through the URL; never prefill the log (it holds file and folder names).
 
 ## Pitfalls we hit
 - Windows: `socket.shutdown()` from another thread doesn't wake a blocked `recv`. Read in a

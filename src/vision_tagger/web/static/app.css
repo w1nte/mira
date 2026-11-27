@@ -1227,3 +1227,31 @@ button.danger.solid:hover { background: color-mix(in srgb, var(--err) 85%, #000)
 .changelog-items li { overflow-wrap: anywhere; }
 .changelog-items li + li { margin-top: 5px; }
 .changelog-items li::marker { color: var(--text-3); }
+
+/* ---------- log */
+.log-file { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: -6px 0 8px; }
+.log-file .mono { overflow-wrap: anywhere; color: var(--text-2); }
+.log-file .row { gap: 8px; }
+.log-tools { gap: 8px 12px; margin: 18px 0 12px; }
+.log-tools .segmented { flex-wrap: wrap; max-width: 100%; }
+.segmented .n { margin-left: 6px; color: var(--text-3); font-size: .86rem; font-variant-numeric: tabular-nums; }
+.log-entries { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); overflow: hidden; }
+.log-entry { padding: 8px 14px; border-top: 1px solid var(--line); font-size: .92rem; }
+.log-entry:first-child { border-top: 0; }
+.log-entry.warn { background: color-mix(in srgb, var(--warn-soft) 70%, transparent); }
+.log-entry.error { background: color-mix(in srgb, var(--err-soft) 80%, transparent); }
+.log-entry.debug { color: var(--text-2); }
+.log-line { display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 2px 10px; align-items: baseline; }
+.log-line time { color: var(--text-3); font-size: .84rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.log-level { justify-self: start; width: 10ch; padding: 0 6px; border-radius: 4px; background: var(--sunken); color: var(--text-2); font: 600 .72rem/1.7 var(--mono); text-align: center; }
+.log-entry.warn .log-level { background: var(--warn-soft); color: var(--warn); }
+.log-entry.error .log-level { background: var(--err-soft); color: var(--err); }
+.log-msg { overflow-wrap: anywhere; white-space: pre-wrap; }
+.log-src { grid-column: 3; color: var(--text-3); font-size: .8rem; overflow-wrap: anywhere; }
+.log-entry details { margin: 6px 0 2px; }
+.log-entry summary { width: fit-content; cursor: pointer; color: var(--text-2); font-size: .86rem; }
+.log-entry pre { max-height: 420px; margin: 6px 0 0; padding: 10px 12px; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--sunken); color: var(--text); font-size: .8rem; line-height: 1.45; white-space: pre; }
+@media (max-width: 640px) {
+  .log-line { grid-template-columns: auto minmax(0, 1fr); }
+  .log-msg, .log-src { grid-column: 1 / -1; }
+}

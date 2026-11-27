@@ -43,6 +43,7 @@ from .routes import (
     home,
     images,
     importing,
+    logs,
     models,
     nsfw,
     overview,
@@ -138,6 +139,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         geo,
         changelog,
         updates,
+        logs,
     ):
         app.include_router(module.router)
 

@@ -37,6 +37,10 @@ Important knobs:
   off, so you can still run them once.
 - `updates.check` (`"auto"`, `"on"`, `"off"`) and `updates.prereleases`: looking for new
   releases (see [Updates](installation.md#update-check)).
+- `logging.level` (`"info"`; `"debug"` writes much more, to track a problem down, `"warning"`
+  and `"error"` less), `logging.max_mb` (5) and `logging.backups` (3): the log file
+  `data/logs/vision-tagger.log`, cut at `max_mb`, with that many older parts (see
+  [The log](usage.md#the-log-and-bug-reports)). The command line's `--verbose` logs `debug` too.
 
 **Updates.** `config.toml` carries a `config_version`. When a new version of Mira changes what
 a setting means or where it lives, it updates older files itself when it loads them, keeping

@@ -137,3 +137,10 @@ thumb_size = 320
 # check = "auto"                    # "auto": the installed app looks for a new release once a day;
 #                                   # "on" (also from source, server, Docker) or "off"
 # prereleases = false               # also tell about release candidates and betas
+
+# [logging]
+# Mira writes what it does, and every warning and error, to data/logs/vision-tagger.log
+# (System -> Log in the app). The file is cut at max_mb; older lines move to .1, .2, ...
+# level = "info"                    # "debug" (much more, to track a problem down), "info", "warning", "error"
+# max_mb = 5
+# backups = 3                       # older files kept; the oldest is deleted

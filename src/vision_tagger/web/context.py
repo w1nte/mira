@@ -70,16 +70,18 @@ class JobManager:
                 return False
             job = Job(name=name)
             self.current = job
+        log.info("job %s started", name)
 
         def target() -> None:
             try:
                 result = fn(job)
                 job.status = "done"
                 job.message = result or job.message or Lazy("done")
+                log.info("job %s done: %s", name, job.message)
             except Exception as exc:
                 job.status = "failed"
                 job.message = _failure(exc)
-                log.error("job %s failed\n%s", name, traceback.format_exc())
+                log.error("job %s failed: %s\n%s", name, job.message, traceback.format_exc())
             finally:
                 job.finished_at = datetime.now()
                 self.history.appendleft(job)
@@ -96,12 +98,15 @@ class JobManager:
             job = Job(name=name)
             self.current = job
         done = False
+        log.info("job %s started", name)
         try:
             result = fn(job)
             job.message = result or job.message or Lazy("done")
             done = True
+            log.info("job %s done: %s", name, job.message)
         except Exception as exc:
             job.message = _failure(exc)
+            log.warning("job %s failed: %s", name, job.message)  # the caller handles the error
             raise
         finally:
             job.status = "done" if done else "failed"
@@ -111,6 +116,8 @@ class JobManager:
 
     def request_stop(self) -> None:
         if self.current is not None:
+            if self.current.status == "running" and not self.current.stop_requested:
+                log.info("job %s: stop requested", self.current.name)
             self.current.stop_requested = True
 
 
@@ -130,6 +137,12 @@ class AppContext:
         recovered = control.recover_stale(self.db, stale_after=stale_after)
         if recovered:
             log.info("recovered %d interrupted items from a previous run", recovered)
+        log.info(
+            "library opened: %s (%s mode, stages %s)",
+            settings.db_path,
+            settings.mode,
+            ", ".join(settings.pipeline.stages or STAGE_NAMES),
+        )
         self.runner = BackgroundRunner(
             PipelineRunner(self.db, settings, default_stage_factory(self.db, settings))
         )

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import logging
 import os
 import string
 from pathlib import Path
@@ -18,6 +19,7 @@ from ...indexer import ROOTS_KEY, stored_roots
 from ...uploads import UploadError
 from ..common import ctx, redirect, render
 
+log = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -79,6 +81,7 @@ def add_root(request: Request, path: str = Form(...)) -> Response:
     if resolved not in roots:
         roots.append(resolved)
         _save_roots(c, roots)
+        log.info("library folder added: %s", resolved)
     return redirect(request, "/import", msg=_("Added %(path)s.", path=resolved))
 
 
@@ -86,6 +89,7 @@ def add_root(request: Request, path: str = Form(...)) -> Response:
 def remove_root(request: Request, path: str = Form(...)) -> Response:
     c = _local_only(request)
     _save_roots(c, [r for r in stored_roots(c.db, c.settings) if r != path])
+    log.info("library folder removed: %s", path)
     return redirect(
         request,
         "/import",

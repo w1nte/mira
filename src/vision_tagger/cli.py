@@ -31,6 +31,10 @@ ConfigOpt = Annotated[
 
 class State:
     settings: Settings | None = None
+    verbose: bool = False
+    #: the data folder whose log file this process writes (see _log_to_file)
+    log_dir: Path | None = None
+    command: str | None = None
 
 
 state = State()
@@ -38,14 +42,16 @@ state = State()
 
 @app.callback()
 def main(
-    config: ConfigOpt = None, verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False
+    ctx: typer.Context,
+    config: ConfigOpt = None,
+    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
 ) -> None:
-    logging.basicConfig(
-        level=logging.DEBUG if verbose else logging.INFO,
-        format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
-        datefmt="%H:%M:%S",
-    )
-    logging.getLogger("httpx").setLevel(logging.WARNING)
+    from . import logs
+
+    logs.console(logging.DEBUG if verbose else logging.INFO)
+    state.verbose = verbose
+    state.log_dir = None
+    state.command = ctx.invoked_subcommand
     state.settings = load_settings(config)
 
 
@@ -54,11 +60,23 @@ def _settings() -> Settings:
     return state.settings
 
 
+def _log_to_file(settings: Settings | None = None, started: str | None = None) -> None:
+    """Commands that work on a library also log to its log file (``logs``)."""
+    from . import logs
+
+    s = settings or _settings()
+    if state.log_dir == s.data_dir:
+        return
+    state.log_dir = s.data_dir
+    logs.setup(s, started or f"command line: {state.command}", verbose=state.verbose)
+
+
 def _db():
     from .db.migrate import MigrationRequired
     from .db.session import Database
 
     s = _settings()
+    _log_to_file(s)
     s.ensure_dirs()
     db = Database(s.db_path)
     try:
@@ -83,13 +101,18 @@ class _Report:
             from . import __version__
 
             log_file.parent.mkdir(parents=True, exist_ok=True)
-            self.write(f"--- {time.strftime('%Y-%m-%d %H:%M:%S')} migrate, version {__version__}")
+            line = f"--- {time.strftime('%Y-%m-%d %H:%M:%S')} migrate, version {__version__}"
+            with log_file.open("a", encoding="utf-8") as f:  # the log file has its own start
+                f.write(line + "\n")
 
     def __call__(self, message: str, *, err: bool = False) -> None:
         typer.echo(message, err=err)
-        self.write(message)
+        self.write(message, err=err)
 
-    def write(self, message: str) -> None:
+    def write(self, message: str, *, err: bool = False) -> None:
+        from . import logs
+
+        logs.to_file(message, logging.ERROR if err else logging.INFO, name="vision_tagger.migrate")
         if self.log_file is not None:
             with self.log_file.open("a", encoding="utf-8") as f:
                 f.write(message + "\n")
@@ -170,11 +193,13 @@ def migrate(
             typer.echo(f"no database yet ({found.db_path}): nothing to migrate")
             return
         settings = found
+        _log_to_file(settings, "command line: migrate --desktop")
         report = _Report(settings.data_dir / "logs" / "migrate.log")
         logging.getLogger("alembic").setLevel(logging.WARNING)  # the report says what matters
     else:
         settings = _settings()
         settings.ensure_dirs()
+        _log_to_file(settings)
         report = _Report(None)
     url = f"sqlite:///{settings.db_path.as_posix()}"
     report(f"database: {settings.db_path}")
@@ -208,7 +233,7 @@ def migrate(
         raise
     except Exception as exc:
         report(f"migration failed, database unchanged: {exc}", err=True)
-        report.write(traceback.format_exc())
+        report.write(traceback.format_exc(), err=True)
         logging.getLogger(__name__).debug("migration failed", exc_info=True)  # with --verbose
         raise typer.Exit(MIGRATE_FAILED) from None
     if result.backup:
@@ -231,8 +256,15 @@ def quit_app(
     was not running, 1 still running after --timeout, 3 the running app is too old to quit on
     request.
     """
+    from .desktop import find_desktop_settings
     from .desktop import quit_app as quit_desktop_app
 
+    try:
+        found = find_desktop_settings()
+    except Exception:  # quit_app says what is wrong with the settings
+        found = None
+    if found is not None:
+        _log_to_file(found, "command line: quit-app")
     raise typer.Exit(quit_desktop_app(timeout, echo=typer.echo))
 
 
@@ -608,6 +640,7 @@ def models_pull() -> None:
     from .vlm.models import PullError, PullProgress, phase_text, pull_missing
 
     settings = _settings()
+    _log_to_file(settings)
     tty = sys.stdout.isatty()
     shown: dict[str, Any] = {"phase": None, "step": -1}
 
@@ -999,6 +1032,7 @@ def serve(
             "a longer one is much harder to guess.",
             err=True,
         )
+    _log_to_file(settings, "server")
     if migrate_db:
         from .db.migrate import upgrade_if_needed
 
@@ -1017,6 +1051,10 @@ def serve(
         host=host,
         port=port,
         log_level="info",
+        # log_config=None: uvicorn logs through the root logger, so its errors (an
+        # exception in a request) reach the log file too; its access log only reaches the
+        # console (see logs)
+        log_config=None,
         proxy_headers=True,  # X-Forwarded-For only from trusted proxies
         forwarded_allow_ips=trusted_proxies(settings),
     )
@@ -1042,6 +1080,7 @@ def desktop(
 
     # without a config file: the per-user config, as in the installed app
     settings = _settings() if config_mod._resolve_config_file() else load_desktop_settings()
+    _log_to_file(settings, "desktop app, from the command line")
     raise typer.Exit(run(settings, port=port))
 
 

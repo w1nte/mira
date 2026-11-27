@@ -168,6 +168,7 @@ def export_database(db: Database, target: Path) -> Path:
         raise
     finally:
         con.close()
+    log.info("database exported (%d bytes)", target.stat().st_size)
     return target
 
 
@@ -366,6 +367,7 @@ def replace_database(
         dst.close()
         src.close()
     db.dispose()  # no pooled connection keeps state from before the copy
+    log.info("database replaced (%s); backup of the previous one: %s", label, backup_path)
     return backup_path
 
 
@@ -424,6 +426,7 @@ def import_database(
     live = database_file(db)
     report(Lazy("Checking and upgrading the database file…"))
     info = prepare_file(source, _page_size(live))
+    log.info("importing a database: %d photos, schema %s", info.images, info.revision)
     previous_roots = [] if settings.remote_mode else stored_roots(db, settings)
     imported_roots, skipped_roots = unknown_share_roots(
         _read_setting(source, ROOTS_KEY), previous_roots
@@ -601,6 +604,7 @@ def clear_library(
         stored = s.get(AppSetting, ROOTS_KEY)
         roots = None if stored is None or stored.value is None else [str(r) for r in stored.value]
     report(Lazy("Preparing an empty database…"))
+    log.info("clearing the library (%d photos)", images)
     source = temp_file(settings, "clear")
     try:
         create_empty(source, _page_size(live))

@@ -17,6 +17,11 @@ rights are needed on Windows and Linux.
 - **gpu**: for an NVIDIA graphics card (CUDA and cuDNN are included; needs driver R580 or newer).
 - **cpu**: for every other computer (slower face detection, much smaller download).
 
+The notes of each release end with a *Downloads* section: the SHA-256 checksum of every file and
+a link to its [VirusTotal](https://www.virustotal.com) scan. To check a download, compare its
+checksum with `certutil -hashfile <file> SHA256` (Windows), `shasum -a 256 <file>` (macOS) or
+`sha256sum <file>` (Linux).
+
 Mira then starts like any other application, in a window of its own. Closing the window stops
 it (a running pipeline is paused and continues on the next start); starting it again while it
 runs opens another window. Install **Ollama** as well (step 4 below) for properties and search;
@@ -35,10 +40,6 @@ about the package (the same applies if macOS blocks Mira.app at its first start)
 Alternatively remove the quarantine flag in the Terminal: `xattr -dr com.apple.quarantine
 ~/Downloads/Mira-*.pkg`. Intel Macs are not supported (there is no ONNX Runtime for them any
 more).
-
-**Checking a download.** Because the installers are not signed, every release also lists the
-SHA-256 of each file in `SHA256SUMS.txt`. Compare it with `Get-FileHash Mira-…-setup.exe` (Windows
-PowerShell), `shasum -a 256 Mira-….pkg` (macOS) or `sha256sum Mira-….tar.gz` (Linux).
 
 **Linux.** Unpack the archive and run its installer as your own user (not root):
 
@@ -71,7 +72,7 @@ Where things are:
 | --- | --- | --- | --- |
 | Library (`config.toml`, `data/`) | `%LOCALAPPDATA%\vision-tagger` | `~/Library/Application Support/vision-tagger` | `~/.local/share/vision-tagger` |
 | Command line | `vision-tagger-cli.exe` in the install folder | `/Applications/Mira.app/Contents/MacOS/vision-tagger-cli` | `vision-tagger-cli` |
-| Logs | `data\logs\desktop.log` in the library | `data/logs/desktop.log` in the library | `data/logs/desktop.log` in the library |
+| Logs (also under *System → Log* in the app) | `data\logs\vision-tagger.log` in the library | `data/logs/vision-tagger.log` in the library | `data/logs/vision-tagger.log` in the library |
 
 The library (settings, database, thumbnails) stays when you update or uninstall the app;
 settings are in its `config.toml`. The command line works like `vision-tagger` from a source

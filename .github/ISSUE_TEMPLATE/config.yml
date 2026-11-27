@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://github.com/w1nte/mira/tree/main/docs
+    about: Installation, using Mira, configuration, and your library's data folder.
