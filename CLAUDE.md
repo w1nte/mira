@@ -158,6 +158,9 @@ Releasing:
 2. Publish the release with that tag on that commit. When its notes are left empty, the publish
    job of `.github/workflows/desktop.yml` fills them with the tag's section
    (`python packaging/changelog.py notes <tag>`). Notes written on GitHub are kept as they are.
+3. Once the files are attached, `.github/workflows/virustotal.yml` appends a "Downloads" section
+   to the notes: each file's SHA-256 and VirusTotal link (`packaging/virustotal.py`, secret
+   `VIRUSTOTAL_API_KEY`). Run it by hand with the tag to scan again; it replaces its section.
 
 If step 1 was forgotten, the workflow catches it: every build files `Unreleased` under the tag
 before packaging (so the app's "What's new" shows the version), the notes come from that section,
