@@ -59,6 +59,17 @@ def test_login_protects_everything_but_public_paths(remote):
         assert c.get("/api/status").status_code == 401
 
 
+def test_login_answers_cannot_be_framed(remote):
+    with TestClient(create_app(remote)) as c:
+        for r in (
+            c.get("/", headers=HTML, follow_redirects=False),  # redirect to the login
+            c.get("/api/status"),  # 401
+            c.get("/login"),
+        ):
+            assert r.headers["x-frame-options"] == "DENY", r.status_code
+            assert "frame-ancestors 'none'" in r.headers["content-security-policy"]
+
+
 def test_exposure_needs_a_password():
     from vision_tagger.web.security import exposure_problem, is_loopback_host
 

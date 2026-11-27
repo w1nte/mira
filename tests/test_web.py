@@ -221,6 +221,30 @@ def test_csrf_and_host_protection(client):
     assert "msg=old" not in r.headers["location"]
 
 
+def test_security_headers_on_every_answer(settings, photos):
+    """No other site may frame the UI (clickjacking would get past the CSRF check)."""
+    make_image(photos / "a.jpg", seed=1)
+    app = create_app(settings)
+    with TestClient(app) as c:
+        Indexer(app.state.ctx.db, settings).run()
+        answers = {
+            "page": c.get("/"),
+            "static": c.get("/static/app.css"),
+            "media": c.get("/media/thumb/1"),
+            "json": c.get("/api/status"),
+            "not found": c.get("/nothing-here"),
+            "rebinding": c.get("/", headers={"Host": "evil.example"}),  # the guard's own answers
+            "csrf": c.post("/actions/stop", headers={"Origin": "http://evil.example"}),
+        }
+    assert answers["rebinding"].status_code == 400 and answers["csrf"].status_code == 403
+    for name, r in answers.items():
+        assert r.headers["x-frame-options"] == "DENY", name
+        assert "frame-ancestors 'none'" in r.headers["content-security-policy"], name
+        assert r.headers["x-content-type-options"] == "nosniff", name
+        assert r.headers["cross-origin-resource-policy"] == "same-origin", name
+        assert r.headers["referrer-policy"] == "strict-origin-when-cross-origin", name
+
+
 def test_no_user_data_in_inline_js(client):
     db = client.ctx.db
     from vision_tagger.faces import clustering as C

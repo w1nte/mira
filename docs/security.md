@@ -7,6 +7,9 @@ machine's name to `web.allowed_hosts` and set a password: `vision-tagger serve` 
 on such an address, or to run in remote mode, without one. The `Host` check only stops browsers;
 it is no protection against other computers on the network.
 
+No other website may show Mira in a frame (so it can't trick you into clicking its buttons) or
+embed its photos.
+
 Mira only ever opens image files as photos, judged by the file's own name, and in remote mode
 only files below the upload folder. An imported database can't make it show other files.
 

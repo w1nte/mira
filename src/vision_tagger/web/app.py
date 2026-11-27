@@ -55,7 +55,7 @@ from .routes import (
 from .routes import (
     auth as auth_routes,
 )
-from .security import allowed_hostnames, guard
+from .security import allowed_hostnames, guard, security_headers
 
 log = logging.getLogger(__name__)
 
@@ -90,8 +90,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "remote mode without a password: anyone who can reach this server sees all "
             "photos. Set VT_WEB__PASSWORD."
         )
-    # Starlette runs the middleware added last first: language -> host/CSRF guard -> login
-    # -> library cookie (see routes.database)
+    # Starlette runs the middleware added last first: security headers -> language ->
+    # host/CSRF guard -> login -> library cookie (see routes.database)
     app.middleware("http")(database.library_cookie())
     app.middleware("http")(auth.middleware())
     app.middleware("http")(guard(hosts))
@@ -106,6 +106,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return await call_next(request)
         finally:
             i18n.reset(token)
+
+    app.middleware("http")(security_headers())  # added last: runs first, wraps every answer
 
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
     for module in (

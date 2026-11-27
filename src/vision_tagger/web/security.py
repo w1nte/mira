@@ -8,6 +8,9 @@
   UI itself, checked with ``Origin`` / ``Sec-Fetch-Site`` / ``Referer``.
 * **This computer only:** what acts on the server's desktop (opening Explorer or Finder) is
   offered only to requests made on the server's own computer (:func:`from_this_computer`).
+* **Clickjacking:** no other site may show the UI in a frame (:data:`HEADERS`). A framed page
+  sends its forms as the UI itself, so the CSRF check could not tell a click a site tricked out
+  of the user from a real one.
 """
 
 from __future__ import annotations
@@ -106,6 +109,27 @@ def from_this_computer(request: Request) -> bool:
 
 
 CallNext = Callable[[Request], Awaitable[Response]]
+
+#: sent with every response (see the module docstring); a route may set its own value
+HEADERS = {
+    "Content-Security-Policy": "frame-ancestors 'none'; object-src 'none'; base-uri 'none'",
+    "X-Frame-Options": "DENY",  # the same for older browsers
+    "X-Content-Type-Options": "nosniff",  # a file is never run as another type than it is sent
+    "Referrer-Policy": "strict-origin-when-cross-origin",  # tile servers get the origin only
+    "Cross-Origin-Resource-Policy": "same-origin",  # other sites cannot embed photos or data
+}
+
+
+def security_headers() -> Callable[[Request, CallNext], Awaitable[Response]]:
+    """Adds :data:`HEADERS`; registered last, so it also covers the guard's own answers."""
+
+    async def middleware(request: Request, call_next: CallNext) -> Response:
+        response = await call_next(request)
+        for name, value in HEADERS.items():
+            response.headers.setdefault(name, value)
+        return response
+
+    return middleware
 
 
 def guard(allowed: set[str]) -> Callable[[Request, CallNext], Awaitable[Response]]:
