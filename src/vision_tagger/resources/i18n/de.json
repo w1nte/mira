@@ -1477,6 +1477,7 @@
   "The face is filed under %(name)s (AI: %(sure)s sure).": "Das Gesicht ist unter %(name)s abgelegt (KI: zu %(sure)s sicher).",
   "the faces found in the photos": "die in den Fotos gefundenen Gesichter",
   "The file cannot be read: %(error)s": "Die Datei kann nicht gelesen werden: %(error)s",
+  "The file is larger than %(size)s GB (remote.max_file_gb).": "Die Datei ist größer als %(size)s GB (remote.max_file_gb).",
   "The file is not there, so it cannot be shown in its folder.": "Die Datei ist nicht da und kann deshalb nicht in ihrem Ordner gezeigt werden.",
   "The file is not there: %(path)s": "Die Datei ist nicht da: %(path)s",
   "The file manager could not be opened: %(error)s": "Der Dateimanager konnte nicht geöffnet werden: %(error)s",

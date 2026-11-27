@@ -9,7 +9,8 @@ it; the photos themselves are not part of it, copy them separately.
 - **Export** downloads `vision-tagger-YYYY-MM-DD.sqlite3`: a consistent snapshot, made while
   Mira keeps running, also while the pipeline works (`VACUUM INTO`, so it is compact and one
   self-contained file).
-- **Import** replaces the current library with such a file.
+- **Import** replaces the current library with such a file (at most `remote.max_file_gb`,
+  50 GB by default).
   - It is refused while the pipeline runs or is paused, or while another job runs: stop the
     pipeline first.
   - The file is checked first (SQLite, not damaged, a Mira database, a schema this version

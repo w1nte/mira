@@ -355,6 +355,25 @@ def test_import_refuses_files_that_are_not_mira_libraries(library, tmp_path):
     assert not list(transfer.transfer_dir(c.ctx.settings).iterdir())
 
 
+def test_import_refuses_files_larger_than_allowed(library, settings):
+    c, db = library, library.ctx.db
+    data = exported(c)
+    before = snapshot(db)
+    settings.remote.max_file_gb = (len(data) - 1) / 1024**3
+    page = ok(import_file(c, data)).text
+    assert "The file is larger than" in page and "remote.max_file_gb" in page
+    assert not c.ctx.jobs.busy and snapshot(db) == before
+    assert not list(transfer.transfer_dir(settings).iterdir())  # nothing left behind
+    # without a Content-Length: stopped while it streams in
+    r = c.post(
+        "/database/import",
+        content=(data[i : i + 4096] for i in range(0, len(data), 4096)),
+        headers={"Content-Type": "multipart/form-data; boundary=x"},
+    )
+    assert "The file is larger than" in ok(r).text
+    assert not list(transfer.transfer_dir(settings).iterdir())
+
+
 def test_imported_paths_cannot_read_other_files(library, settings, tmp_path):
     """A crafted library file names the server's own files as photos: never served."""
     c, db = library, library.ctx.db

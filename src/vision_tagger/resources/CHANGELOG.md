@@ -17,6 +17,7 @@ Mira shows them on its "What's new" page, and each GitHub release uses its secti
 - Exports and ZIP downloads stay inside their folder, and an imported database can no longer make Mira contact network shares you don't use.
 - Login: guessing from many addresses is limited, wrong passwords no longer slow down other pages, and the example password from `.env.example` is refused.
 - Text visible in a photo (a sign, a screenshot) can no longer steer how Deep search ranks other photos.
+- Uploads and database imports larger than allowed (`remote.chunk_mb`, `remote.max_file_gb`) are refused before they fill the server's memory or disk.
 - Other websites can no longer show Mira in a hidden frame to trick you into clicking its buttons.
 
 ## 1.7 - 2026-11-26

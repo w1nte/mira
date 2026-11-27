@@ -1410,6 +1410,7 @@
   "The face is filed under %(name)s (AI: %(sure)s sure).": "该人脸已归入 %(name)s（AI 把握：%(sure)s）。",
   "the faces found in the photos": "在照片中找到的人脸",
   "The file cannot be read: %(error)s": "无法读取文件：%(error)s",
+  "The file is larger than %(size)s GB (remote.max_file_gb).": "文件大于 %(size)s GB（remote.max_file_gb）。",
   "The file is not there, so it cannot be shown in its folder.": "文件不存在，因此无法在文件夹中显示。",
   "The file is not there: %(path)s": "文件不存在：%(path)s",
   "The file manager could not be opened: %(error)s": "无法打开文件管理器：%(error)s",
