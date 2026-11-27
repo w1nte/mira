@@ -14,6 +14,7 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import Response
 
 from ... import logs
+from ...access import library_checker
 from ...db.models import Image
 from ...i18n import _
 from ...indexer import stored_roots
@@ -45,7 +46,8 @@ def reveal(request: Request, kind: str = Form(...), item: str = Form("", alias="
         if stored is None:
             raise HTTPException(404, "no such photo")
         path, select = Path(stored), True
-        if not path.is_absolute() or not path.is_file():
+        allowed = library_checker(c.db, c.settings)  # never a host a database names by itself
+        if not path.is_absolute() or not allowed(stored) or not path.is_file():
             return redirect(request, url, err=_("The file is not there: %(path)s", path=stored))
     elif kind == "root":
         roots = stored_roots(c.db, c.settings)

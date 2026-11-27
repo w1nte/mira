@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import sys
 import time
@@ -410,6 +411,8 @@ def db_import(
         finally:
             transfer.remove_file(tmp)
         typer.echo(f"imported {result.images} photos (schema {result.revision})")
+        for root in result.skipped_roots:
+            typer.echo(f"  network folder not added (add it yourself if you trust it): {root}")
         if result.backup:
             typer.echo(f"backup:  {result.backup}")
         typer.echo("checking where the photos are…")
@@ -811,15 +814,18 @@ def export(
     """
     from starlette.datastructures import QueryParams
 
+    from .access import library_checker
     from .export import export_images
     from .query import ImageFilter
 
     settings = _settings()
+    db = _db()
     metadata = [name for name, on in (("xmp", xmp), ("embed", embed), ("index", index)) if on]
     stats = export_images(
-        _db(),
+        db,
         ImageFilter.from_params(QueryParams(query)),
         target,
+        allowed=library_checker(db, settings),
         mode=(mode or settings.export.mode),  # type: ignore[arg-type]
         layout=layout,  # type: ignore[arg-type]
         metadata=metadata,
@@ -847,13 +853,17 @@ def sidecars(
     """
     from starlette.datastructures import QueryParams
 
+    from .access import library_checker
     from .export import write_sidecars_in_place
     from .query import ImageFilter
 
+    settings = _settings()
+    db = _db()
     stats = write_sidecars_in_place(
-        _db(),
+        db,
         ImageFilter.from_params(QueryParams(query)),
-        naming=_settings().export.sidecar_naming,
+        allowed=library_checker(db, settings),
+        naming=settings.export.sidecar_naming,
     )
     typer.echo(
         f"{stats.sidecars} sidecars written, {stats.kept} of other apps kept, "
@@ -950,6 +960,7 @@ def growup(
     output: Annotated[Path, typer.Argument(help="Target file (.webp).")] = Path("growing-up.webp"),
 ) -> None:
     """Render an animation of a person growing up (eye-aligned faces, ordered by age)."""
+    from .access import library_checker
     from .faces.clustering import find_person
     from .faces.generations import growup_animation
 
@@ -960,7 +971,9 @@ def growup(
         if p is None:
             typer.echo(f"unknown person: {person}", err=True)
             raise typer.Exit(1)
-        result = growup_animation(s, settings.cache_dir / "aligned", p.id)
+        result = growup_animation(
+            s, settings.cache_dir / "aligned", p.id, allowed=library_checker(db, settings)
+        )
     if result is None:
         typer.echo(f"need photos of {p.name} at two or more different ages", err=True)
         raise typer.Exit(1)
@@ -989,6 +1002,7 @@ def serve(
     import uvicorn
 
     from .web.app import create_app
+    from .web.security import MIN_PASSWORD_LENGTH, exposure_problem, password_problem, weak_password
 
     settings = _settings()
     if remote:
@@ -1001,6 +1015,23 @@ def serve(
         except ValueError as exc:
             typer.echo(f"Error: {exc}", err=True)
             raise typer.Exit(2) from exc
+    host = host or settings.web.host
+    port = port or settings.web.port
+    settings.web.host = host  # the app accepts the address it listens on as a Host name
+    password = settings.web.password
+    problem = exposure_problem(settings.remote_mode, host, password) or password_problem(password)
+    if problem:
+        typer.echo(
+            f"Error: {problem} Set a password with the environment variable VT_WEB__PASSWORD.",
+            err=True,
+        )
+        raise typer.Exit(2)
+    if weak_password(password):
+        typer.echo(
+            f"Warning: the password is shorter than {MIN_PASSWORD_LENGTH} characters; "
+            "a longer one is much harder to guess.",
+            err=True,
+        )
     _log_to_file(settings, "server")
     if migrate_db:
         from .db.migrate import upgrade_if_needed
@@ -1009,17 +1040,32 @@ def serve(
         if upgrade_if_needed(settings.db_path):
             typer.echo("upgraded the database (a backup copy was made first)")
     _db().dispose()  # fails early with a clear message if `vision-tagger migrate` is needed
-    host = host or settings.web.host
-    port = port or settings.web.port
     if open_browser:
         import threading
         import webbrowser
 
         threading.Timer(1.5, lambda: webbrowser.open(f"http://{host}:{port}/")).start()
     typer.echo(f"vision-tagger UI on http://{host}:{port}/")
-    # log_config=None: uvicorn logs through the root logger, so its errors (an exception in a
-    # request) reach the log file too; its access log only reaches the console (see logs)
-    uvicorn.run(create_app(settings), host=host, port=port, log_level="info", log_config=None)
+    uvicorn.run(
+        create_app(settings),
+        host=host,
+        port=port,
+        log_level="info",
+        # log_config=None: uvicorn logs through the root logger, so its errors (an
+        # exception in a request) reach the log file too; its access log only reaches the
+        # console (see logs)
+        log_config=None,
+        proxy_headers=True,  # X-Forwarded-For only from trusted proxies
+        forwarded_allow_ips=trusted_proxies(settings),
+    )
+
+
+def trusted_proxies(settings: Settings) -> list[str] | str:
+    """``web.trusted_proxies`` if it is set, else uvicorn's own ``FORWARDED_ALLOW_IPS`` (the
+    Traefik compose file sets it), else the default (this computer)."""
+    if "trusted_proxies" in settings.web.model_fields_set:
+        return settings.web.trusted_proxies
+    return os.environ.get("FORWARDED_ALLOW_IPS") or settings.web.trusted_proxies
 
 
 @app.command()

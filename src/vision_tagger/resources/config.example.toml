@@ -128,7 +128,8 @@ max_zip_gb = 200                    # largest total size unpacked from one ZIP
 host = "127.0.0.1"
 port = 8765
 # allowed_hosts = ["my-pc"]         # extra Host names if you expose the UI (host = "0.0.0.0")
-# password: set VT_WEB__PASSWORD instead of writing it here (strongly recommended in remote mode)
+# password: set VT_WEB__PASSWORD instead of writing it here (required in remote mode and off 127.0.0.1)
+# trusted_proxies = ["127.0.0.1"]  # reverse proxies whose X-Forwarded-For names the visitor
 page_size = 120
 thumb_size = 320
 

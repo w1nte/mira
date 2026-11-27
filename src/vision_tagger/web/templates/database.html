@@ -87,6 +87,18 @@
   <p class="muted"><small>{% if remote %}{{ _('Mira recognises a photo by its content (perceptual hash): an upload of a missing photo links it again instead of adding it twice.') }}{% else %}{{ _('Mira recognises a photo by its content (perceptual hash): when a scan finds a missing photo in another folder, it links it again instead of adding it twice.') }} {% if roots %}{{ _('Library folders:') }} {% for r in roots %}<span class="mono">{{ r }}</span>{{ ', ' if not loop.last }}{% endfor %}. {% endif %}<a href="/import">{{ _('Add or scan folders') }}</a>{% endif %}</small></p>
 </section>
 
+{% if request.app.state.auth.enabled %}
+<section class="card" aria-labelledby="logins">
+  <div class="row spread danger-row">
+    <div>
+      <h2 class="flush" id="logins">{{ icon('key') }}{{ _('Logins') }}</h2>
+      <p class="muted">{{ _('Ends the login on every device and browser, this one included. Changing the password does the same.') }}</p>
+    </div>
+    <form method="post" action="/logout/everywhere"><button>{{ icon('key', 'sm') }}{{ _('Log out everywhere') }}</button></form>
+  </div>
+</section>
+{% endif %}
+
 <section class="card danger-zone" aria-labelledby="danger-zone">
   <h2 id="danger-zone">{{ icon('alert') }}{{ _('Danger zone') }}</h2>
   <div class="row spread danger-row">

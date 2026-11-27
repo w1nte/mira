@@ -44,16 +44,24 @@ edit it, or write it as plain text:
   To use a host folder, replace `vt-photos:/photos` with e.g. `./photos:/photos`.
 - NVIDIA GPU: build with `EXTRA: gpu` and uncomment the two `deploy` sections (needs the NVIDIA
   Container Toolkit).
+- The images are fixed versions (tag and digest). To update Ollama, put a newer tag and its digest
+  from Docker Hub into `docker-compose.yml`. Behind a reverse proxy on the same machine, publish
+  the port on that machine only: `"127.0.0.1:8765:8765"`.
 - The container upgrades its database on start (`serve --migrate`, with a backup) and pauses a
   running pipeline when it is stopped; it continues after the next start.
-- Without Docker: `vision-tagger serve --remote --upload-dir /srv/photos --host 0.0.0.0`, or set
+- Without Docker: set a password (`VT_WEB__PASSWORD`, see below), then
+  `vision-tagger serve --remote --upload-dir /srv/photos --host 0.0.0.0`, or set
   `mode = "remote"` and `remote.upload_dir` in `config.toml`.
 
 ## Password and HTTPS
 
-Set a password with the environment variable `VT_WEB__PASSWORD` (the compose file requires one).
-Every page then asks for it; a login lasts 30 days. After 10 wrong passwords an address is
-blocked for 5 minutes.
+Set a password with the environment variable `VT_WEB__PASSWORD`. Remote mode doesn't start without
+one, and neither does a server on an address other computers can reach (`--host 0.0.0.0`).
+Every page then asks for it; a login lasts 30 days. Changing the password ends every login, and
+*Database → Log out everywhere* ends them on all devices. After 10 wrong passwords an address
+(IPv6: its /64 network) is blocked for 5 minutes; after 100 wrong passwords from any addresses,
+new logins wait 5 minutes (logins made before keep working). Choose a long password: the
+example from `.env.example` is refused, and one shorter than 12 characters gets a warning.
 
 Put the server behind a reverse proxy with HTTPS. The quickest way is the Traefik setup that
 comes with Mira (see [HTTPS with Traefik](#https-with-traefik) below). Any other proxy works too
@@ -72,7 +80,9 @@ Tell Mira to trust the proxy, so it sees each visitor's own address in the proxy
 `X-Forwarded-For` header: set the environment variable `FORWARDED_ALLOW_IPS` to the proxy's
 address as Mira sees it, or to `*` if nothing but the proxy can reach Mira's port (with Docker,
 publish it as `127.0.0.1:8765:8765`). Otherwise every visitor seems to come from the proxy, and 10
-wrong passwords from anyone lock everyone out for 5 minutes.
+wrong passwords from anyone lock everyone out for 5 minutes. A proxy on the same computer
+(`127.0.0.1`) is trusted without it. `web.trusted_proxies` (`VT_WEB__TRUSTED_PROXIES`, a list such
+as `'["172.18.0.0/16"]'`) does the same and takes precedence.
 
 ## HTTPS with Traefik
 
