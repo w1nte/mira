@@ -245,6 +245,27 @@ def test_security_headers_on_every_answer(settings, photos):
         assert r.headers["referrer-policy"] == "strict-origin-when-cross-origin", name
 
 
+def test_other_sites_may_link_but_not_load(settings, photos):
+    make_image(photos / "a.jpg", seed=1)
+    app = create_app(settings)
+
+    def fetch(c, url, site, mode, dest):
+        headers = {"Sec-Fetch-Site": site, "Sec-Fetch-Mode": mode, "Sec-Fetch-Dest": dest}
+        return c.get(url, headers=headers).status_code
+
+    with TestClient(app) as c:
+        Indexer(app.state.ctx.db, settings).run()
+        for url in ("/media/thumb/1", "/media/image/1", "/api/status", "/search/results?q=x"):
+            assert fetch(c, url, "cross-site", "no-cors", "image") == 403, url
+            assert fetch(c, url, "cross-site", "cors", "empty") == 403, url
+            assert fetch(c, url, "same-site", "no-cors", "image") == 403, url  # a subdomain
+            assert fetch(c, url, "same-origin", "no-cors", "image") == 200, url
+        assert fetch(c, "/images/1", "cross-site", "navigate", "document") == 200  # a link
+        assert fetch(c, "/images/1", "cross-site", "navigate", "iframe") == 403
+        assert fetch(c, "/images/1", "none", "navigate", "document") == 200  # typed, bookmark
+        assert c.get("/media/thumb/1").status_code == 200  # no Sec-Fetch headers (old browsers)
+
+
 def test_no_user_data_in_inline_js(client):
     db = client.ctx.db
     from vision_tagger.faces import clustering as C

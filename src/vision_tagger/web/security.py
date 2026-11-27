@@ -11,6 +11,10 @@
 * **Clickjacking:** no other site may show the UI in a frame (:data:`HEADERS`). A framed page
   sends its forms as the UI itself, so the CSRF check could not tell a click a site tricked out
   of the user from a real one.
+* **Cross-site reads:** another site may link to the UI, but not load anything from it
+  (photos in ``<img>``, data, searches in the background: :func:`cross_site_load`). The browser
+  would hide the answer anyway (``Cross-Origin-Resource-Policy``), but the request alone makes
+  the server work, and how long it takes tells the other site about the library.
 """
 
 from __future__ import annotations
@@ -53,6 +57,22 @@ def same_origin(request: Request) -> bool:
     if referer is not None:
         return urlsplit(referer).netloc.lower() == host
     return True  # no browser headers at all: CLI tools / scripts on this machine
+
+
+#: frames and embeds: a navigation into one of them is a cross-site load, not a link
+EMBEDDING_DESTINATIONS = {"iframe", "frame", "embed", "object", "fencedframe"}
+
+
+def cross_site_load(request: Request) -> bool:
+    """Another site (or a sibling subdomain) loads something from the UI instead of linking to
+    it, judged by the browser's ``Sec-Fetch-*`` headers. Browsers without them are left to the
+    ``Cross-Origin-Resource-Policy`` header."""
+    site = request.headers.get("sec-fetch-site")
+    if site in (None, "same-origin", "none"):
+        return False
+    if request.headers.get("sec-fetch-mode") != "navigate":
+        return True
+    return request.headers.get("sec-fetch-dest", "") in EMBEDDING_DESTINATIONS
 
 
 #: headers a reverse proxy adds: the request was not made on this computer, even if the proxy is
@@ -157,6 +177,8 @@ def guard(allowed: set[str]) -> Callable[[Request, CallNext], Awaitable[Response
         if not any_host and _hostname(request.headers.get("host", "")) not in allowed:
             return PlainTextResponse("invalid Host header", status_code=400)
         if request.method not in SAFE_METHODS and not same_origin(request):
+            return PlainTextResponse("cross-site request blocked", status_code=403)
+        if cross_site_load(request):
             return PlainTextResponse("cross-site request blocked", status_code=403)
         return await call_next(request)
 

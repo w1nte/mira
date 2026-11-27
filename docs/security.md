@@ -8,7 +8,7 @@ on such an address, or to run in remote mode, without one. The `Host` check only
 it is no protection against other computers on the network.
 
 No other website may show Mira in a frame (so it can't trick you into clicking its buttons) or
-embed its photos.
+load its photos or data in the background; links from other sites to Mira's pages still work.
 
 Mira only ever opens image files as photos, judged by the file's own name, and in remote mode
 only files below the upload folder. An imported database can't make it show other files.
