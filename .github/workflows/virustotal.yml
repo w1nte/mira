@@ -1,0 +1,106 @@
+name: VirusTotal
+
+# Scans the files of a GitHub release with VirusTotal and adds a "Downloads" section to the
+# release notes: each file's SHA-256 checksum and a link to its scan results
+# (packaging/virustotal.py). The desktop workflow (desktop.yml) calls it once it has attached
+# the files to a published release. Run it by hand (Actions → VirusTotal → Run workflow, with
+# the tag) to scan a release again, e.g. after files were replaced: the section of an earlier
+# run is replaced, never added twice. The rest of the notes stays as it is.
+#
+# Needs the repository secret VIRUSTOTAL_API_KEY: the API key of a VirusTotal account (a free
+# one will do; its 4 requests a minute make a scan take a few minutes). Without the secret the
+# job only warns.
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: Release tag
+        type: string
+        required: true
+    secrets:
+      VIRUSTOTAL_API_KEY:
+        required: false
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag (e.g. v1.8)
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    name: Scan the release files
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: write  # the release notes
+    concurrency:
+      group: virustotal-${{ inputs.tag }}
+      cancel-in-progress: false
+    defaults:
+      run:
+        shell: bash
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ inputs.tag }}
+    steps:
+      - name: API key
+        id: key
+        env:
+          VT_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
+        run: |
+          if [ -z "$VT_API_KEY" ]; then
+            echo "::warning title=VirusTotal::The repository secret VIRUSTOTAL_API_KEY is not set: the files of $TAG are not scanned."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v7
+        if: steps.key.outputs.present == 'true'
+        with:
+          persist-credentials: false
+
+      - name: Download the release files
+        # from the release itself: what is scanned and hashed is what users download
+        if: steps.key.outputs.present == 'true'
+        run: |
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/files"
+          ls -l "$RUNNER_TEMP/files"
+
+      - name: Scan with VirusTotal
+        id: scan
+        if: steps.key.outputs.present == 'true'
+        env:
+          VT_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
+        run: |
+          # a file that could not be scanned is still listed (with its checksum); the job fails
+          # after the notes are written, so a re-run can complete them
+          status=0
+          python3 packaging/virustotal.py scan "$RUNNER_TEMP"/files/* \
+            --output "$RUNNER_TEMP/section.md" || status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          if [ ! -s "$RUNNER_TEMP/section.md" ]; then
+            echo "::error title=VirusTotal::no section for the release notes"
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/section.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Add the checksums and scan links to the release notes
+        if: steps.key.outputs.present == 'true'
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq '.body // ""' \
+            > "$RUNNER_TEMP/body.md"
+          python3 packaging/virustotal.py merge "$RUNNER_TEMP/body.md" "$RUNNER_TEMP/section.md" \
+            > "$RUNNER_TEMP/notes.md"
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file "$RUNNER_TEMP/notes.md"
+
+      - name: Every file scanned
+        if: steps.key.outputs.present == 'true' && steps.scan.outputs.status != '0'
+        run: |
+          echo "::error title=VirusTotal::Some files of $TAG were not scanned (see the scan step); re-run this job."
+          exit 1

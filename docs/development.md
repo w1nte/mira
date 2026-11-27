@@ -46,7 +46,15 @@ Publishing a GitHub release builds the desktop apps and attaches them to it, in 
    ([`packaging/version.py`](../packaging/version.py): `v1.2.3-rc.1` → `1.2.3rc1`), runs each
    app's self-test, packs the installers and uploads them to the release. A release without
    notes gets the changelog's section for the tag ([`packaging/changelog.py`](../packaging/changelog.py)).
-4. If a build fails, re-run the failed jobs; the upload replaces files of the same name.
+4. Then [`.github/workflows/virustotal.yml`](../.github/workflows/virustotal.yml) downloads the
+   attached files, has [VirusTotal](https://www.virustotal.com) scan them and appends a
+   *Downloads* section to the notes: each file's SHA-256 checksum and a link to its scan results
+   ([`packaging/virustotal.py`](../packaging/virustotal.py); files over 650 MB are only hashed).
+   It needs the repository secret `VIRUSTOTAL_API_KEY` (*Settings → Secrets and variables →
+   Actions*), the API key of a VirusTotal account; a free one will do. Without it the job only
+   warns. To scan a release again, run *Actions → VirusTotal → Run workflow* with its tag.
+5. If a build fails, re-run the failed jobs; the upload replaces files of the same name, and the
+   scan replaces its section in the notes.
 
 The version in `pyproject.toml` is only used for builds without a release (manual runs of the
 workflow, and the cpu builds it makes as a check on pull requests and pushes to `main` that touch

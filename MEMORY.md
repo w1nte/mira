@@ -21,6 +21,9 @@ only what will matter again, and delete what no longer holds. Rules live in `CLA
   macOS 15+). The version comes from the tag (`packaging/version.py`). Nothing is signed.
 - If the changelog release step was forgotten, the workflow does it
   (`packaging/changelog.py release`) and opens a PR for `main`.
+- After the upload, `virustotal.yml` (reusable; also manual with a tag) appends SHA-256 and
+  VirusTotal links to the notes between `<!-- virustotal -->` markers, so a re-run replaces
+  them. Public API: 4 requests a minute, uploads up to 650 MB (bigger files are only hashed).
 - Every installer updates in place: it quits Mira with `vision-tagger-cli quit-app` (the
   pipeline pauses), replaces the files, and runs `migrate --desktop`.
 - Inno Setup (`installer.iss`, UTF-8 with BOM):

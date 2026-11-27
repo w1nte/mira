@@ -17,6 +17,11 @@ rights are needed on Windows and Linux.
 - **gpu**: for an NVIDIA graphics card (CUDA and cuDNN are included; needs driver R580 or newer).
 - **cpu**: for every other computer (slower face detection, much smaller download).
 
+The notes of each release end with a *Downloads* section: the SHA-256 checksum of every file and
+a link to its [VirusTotal](https://www.virustotal.com) scan. To check a download, compare its
+checksum with `certutil -hashfile <file> SHA256` (Windows), `shasum -a 256 <file>` (macOS) or
+`sha256sum <file>` (Linux).
+
 Mira then starts like any other application, in a window of its own. Closing the window stops
 it (a running pipeline is paused and continues on the next start); starting it again while it
 runs opens another window. Install **Ollama** as well (step 4 below) for properties and search;
