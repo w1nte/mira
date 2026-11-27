@@ -36,6 +36,10 @@ Alternatively remove the quarantine flag in the Terminal: `xattr -dr com.apple.q
 ~/Downloads/Mira-*.pkg`. Intel Macs are not supported (there is no ONNX Runtime for them any
 more).
 
+**Checking a download.** Because the installers are not signed, every release also lists the
+SHA-256 of each file in `SHA256SUMS.txt`. Compare it with `Get-FileHash Mira-…-setup.exe` (Windows
+PowerShell), `shasum -a 256 Mira-….pkg` (macOS) or `sha256sum Mira-….tar.gz` (Linux).
+
 **Linux.** Unpack the archive and run its installer as your own user (not root):
 
 ```bash

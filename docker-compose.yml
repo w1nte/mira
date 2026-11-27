@@ -15,6 +15,8 @@ services:
         EXTRA: cpu # gpu: NVIDIA GPU, then also uncomment the deploy section below
     image: mira:latest
     ports:
+      # Behind a reverse proxy on this machine (HTTPS, see docs/remote.md), publish the port
+      # on this machine only: "127.0.0.1:8765:8765"
       - "8765:8765"
     environment:
       VT_WEB__PASSWORD: ${VT_PASSWORD:?set VT_PASSWORD in the .env file (see .env.example)}
@@ -33,7 +35,9 @@ services:
     #       devices: [{ driver: nvidia, count: 1, capabilities: [gpu] }]
 
   ollama:
-    image: ollama/ollama:latest
+    # a fixed release (tag and digest): an update is a deliberate change, not whatever "latest"
+    # is on the day of the pull. To update, take a newer tag and its digest from Docker Hub.
+    image: ollama/ollama:0.40.16@sha256:910d0d8107b538fb0894e63163eb195de0cc7aefcbc666dc62d3b18f71124592
     volumes:
       - ollama:/root/.ollama
     restart: unless-stopped

@@ -1,19 +1,82 @@
-"""Thin wrapper around InsightFace's ``FaceAnalysis`` with provider fallback."""
+"""Thin wrapper around InsightFace's ``FaceAnalysis`` with provider fallback.
+
+InsightFace downloads a missing model pack itself, without checking what it got. For the
+default pack (``buffalo_l``) Mira downloads and verifies it first (:func:`ensure_face_models`,
+pinned SHA-256 like every other model), so InsightFace only ever loads checked files.
+"""
 
 from __future__ import annotations
 
+import contextlib
 import logging
+import uuid
 import warnings
+import zipfile
 from dataclasses import dataclass
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import numpy as np
 from PIL import Image
 
+from ..animals.models import ModelFile, ensure_model
 from ..config import FacesConfig
 from .vectors import normalize
 
 log = logging.getLogger(__name__)
+
+#: InsightFace's buffalo_l pack of its v0.7 release (the file InsightFace itself downloads)
+BUFFALO_L = ModelFile(
+    name="buffalo_l.zip",
+    url="https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip",
+    sha256="80ffe37d8a5940d59a7384c201a2a38d4741f2f3c51eef46ebb28218a7b0ca2f",
+    size=288_621_354,
+    license="InsightFace models: non-commercial research use",
+    title="InsightFace buffalo_l",
+)
+#: model packs Mira verifies: name -> (archive, the files it holds)
+PINNED_PACKS = {
+    "buffalo_l": (
+        BUFFALO_L,
+        ("1k3d68.onnx", "2d106det.onnx", "det_10g.onnx", "genderage.onnx", "w600k_r50.onnx"),
+    ),
+}
+
+
+def ensure_face_models(cfg: FacesConfig, *, client: Any = None) -> None:
+    """Download, verify and unpack a pinned model pack that is not complete yet.
+
+    Only the expected ``.onnx`` files are taken from the archive, by name (nothing else, no
+    folders). Another pack (``faces.model``) is left to InsightFace, unverified.
+    """
+    pinned = PINNED_PACKS.get(cfg.model)
+    if pinned is None:
+        log.warning("face model %r is not pinned: InsightFace downloads it unverified", cfg.model)
+        return
+    spec, files = pinned
+    root = Path(cfg.model_root).expanduser() if cfg.model_root else Path.home() / ".insightface"
+    folder = root / "models" / cfg.model
+    if all((folder / name).is_file() for name in files):
+        return
+    archive = ensure_model(folder.parent, spec, client=client)  # raises ModelUnavailable
+    folder.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(archive) as zf:
+        for info in zf.infolist():
+            name = PurePosixPath(info.filename.replace("\\", "/")).name
+            if name not in files:
+                continue
+            tmp = folder / f"{name}.{uuid.uuid4().hex}.part"
+            try:
+                with zf.open(info) as src, tmp.open("wb") as out:
+                    while block := src.read(1 << 20):
+                        out.write(block)
+                tmp.replace(folder / name)
+            finally:
+                with contextlib.suppress(OSError):
+                    tmp.unlink(missing_ok=True)
+    missing = [name for name in files if not (folder / name).is_file()]
+    if missing:
+        raise RuntimeError(f"{archive} does not contain {', '.join(missing)}")
 
 
 @dataclass
@@ -61,6 +124,7 @@ class FaceAnalyzer:
             return
         from insightface.app import FaceAnalysis
 
+        ensure_face_models(self.cfg)  # verified files: InsightFace then downloads nothing
         providers = available_providers(self.cfg.providers)
         kwargs: dict[str, Any] = {
             "name": self.cfg.model,

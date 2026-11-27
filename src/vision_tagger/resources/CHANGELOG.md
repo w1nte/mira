@@ -19,6 +19,7 @@ Mira shows them on its "What's new" page, and each GitHub release uses its secti
 - Text visible in a photo (a sign, a screenshot) can no longer steer how Deep search ranks other photos.
 - Uploads and database imports larger than allowed (`remote.chunk_mb`, `remote.max_file_gb`) are refused before they fill the server's memory or disk.
 - Other websites can no longer show Mira in a hidden frame to trick you into clicking its buttons.
+- Face models are checked (SHA-256) before use, Docker uses fixed versions of Python and Ollama, and releases list the SHA-256 of their files.
 - Other websites can link to Mira but no longer load its photos or data in the background (which revealed whether a photo exists).
 
 ## 1.7 - 2026-11-26

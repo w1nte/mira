@@ -310,6 +310,25 @@ def test_docker_env_file_instructions_work_on_windows():
         assert ".env" in (root / ignore).read_text(encoding="utf-8").splitlines(), ignore
 
 
+def test_docker_images_are_pinned():
+    """Third-party images by tag and digest: a build or pull never takes whatever is newest."""
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    pinned = re.compile(r"[\w./-]+:[\w.-]+@sha256:[0-9a-f]{64}$")
+    compose = (root / "docker-compose.yml").read_text(encoding="utf-8")
+    images = re.findall(r"^\s*image:\s*(\S+)", compose, re.MULTILINE)
+    assert [i for i in images if not i.startswith("mira:")] and all(
+        pinned.match(i) for i in images if not i.startswith("mira:")
+    ), images
+    dockerfile = (root / "Dockerfile").read_text(encoding="utf-8")
+    bases = re.findall(r"^FROM\s+(\S+)", dockerfile, re.MULTILINE)
+    assert bases == ["${PYTHON_IMAGE}", "${PYTHON_IMAGE}"]
+    image = re.search(r"^ARG PYTHON_IMAGE=(\S+)", dockerfile, re.MULTILINE)
+    assert image and pinned.match(image.group(1)), image
+
+
 def test_no_logins_card_without_a_password(settings):
     with TestClient(create_app(settings)) as c:
         assert "logout/everywhere" not in c.get("/database").text

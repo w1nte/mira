@@ -44,6 +44,9 @@ edit it, or write it as plain text:
   To use a host folder, replace `vt-photos:/photos` with e.g. `./photos:/photos`.
 - NVIDIA GPU: build with `EXTRA: gpu` and uncomment the two `deploy` sections (needs the NVIDIA
   Container Toolkit).
+- The images are fixed versions (tag and digest). To update Ollama, put a newer tag and its digest
+  from Docker Hub into `docker-compose.yml`. Behind a reverse proxy on the same machine, publish
+  the port on that machine only: `"127.0.0.1:8765:8765"`.
 - The container upgrades its database on start (`serve --migrate`, with a backup) and pauses a
   running pipeline when it is stopped; it continues after the next start.
 - Without Docker: set a password (`VT_WEB__PASSWORD`, see below), then

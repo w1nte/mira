@@ -569,3 +569,12 @@ def test_the_workflow_files_the_release_in_builds_notes_and_main():
     assert "--entries-from" in runs[pull] and "released-changelog.md" in runs[cut]
     for step in (cut, pull):  # neither may keep the files from being attached
         assert publish["steps"][step].get("continue-on-error") is True
+
+
+def test_the_release_lists_the_checksums_of_its_files():
+    """The installers are not signed: SHA256SUMS.txt is uploaded with them."""
+    workflow = yaml.safe_load((ROOT / ".github/workflows/desktop.yml").read_text(encoding="utf-8"))
+    runs = [s.get("run", "") for s in workflow["jobs"]["publish"]["steps"]]
+    upload = next(r for r in runs if "gh release upload" in r)
+    assert "sha256sum -- *" in upload and "files/SHA256SUMS.txt" in upload
+    assert upload.index("SHA256SUMS.txt") < upload.index("gh release upload")

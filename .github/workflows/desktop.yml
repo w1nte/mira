@@ -312,4 +312,7 @@ jobs:
           TAG: ${{ github.event.release.tag_name }}
         run: |
           ls -l files
+          # the installers are not signed: the checksums let users verify a download
+          sums=$(cd files && sha256sum -- *)
+          printf '%s\n' "$sums" > files/SHA256SUMS.txt
           gh release upload "$TAG" files/* --repo "$GITHUB_REPOSITORY" --clobber
