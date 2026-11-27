@@ -74,7 +74,8 @@
         {% set a = f.best_age %}
         <a class="face" href="/images/{{ f.image_id }}" title="{{ f.recorded_at | dt('%Y-%m-%d') }} · {{ _('date from %(source)s', source=f.date_source) }}{% if f.face_age is not none %} · {{ _('face looks ~%(age)s', age=f.face_age) }}{% endif %}{% if f.suspicious %} · {% if f.suggested_year %}{{ _('date doubtful, faces suggest ~%(year)s', year=f.suggested_year) }}{% else %}{{ _('date doubtful') }}{% endif %}{% endif %}">
           {{ face_img(f.face_id) }}
-          {% if a is not none %}<span class="agebadge {{ 'est' if (f.calendar_age is none or f.suspicious) }}">{{ '~' if (f.calendar_age is none or f.suspicious) }}{{ a }}</span>{% endif %}
+          {% set est = not f.manual and (f.calendar_age is none or f.suspicious) %}
+          {% if a is not none %}<span class="agebadge {{ 'est' if est }}">{{ '~' if est }}{{ a }}</span>{% endif %}
           {% if f.suspicious %}<span class="lq badge warn" aria-label="{{ _('date doubtful') }}">{{ icon('alert') }}</span>{% endif %}
         </a>
       {% endfor %}
@@ -96,6 +97,9 @@
         <small>{% if f.calendar_age is not none and f.face_age is not none %}{{ _('%(name)s would be %(age)s, but looks about %(face_age)s', name=person.name, age=f.calendar_age, face_age=f.face_age) }}{% elif f.calendar_age is not none %}{{ _('%(name)s would be %(age)s', name=person.name, age=f.calendar_age) }}{% elif f.face_age is not none %}{{ _('looks about %(face_age)s', face_age=f.face_age) }}{% endif %}</small></td>
       <td class="num">{% if f.suggested_year %}
         <form method="post" action="/images/{{ f.image_id }}/date"><input type="hidden" name="year" value="{{ f.suggested_year }}"><button class="small">{{ _('Set to %(year)s', year=f.suggested_year) }}</button></form>
+      {% endif %}
+      {% if not f.manual and f.calendar_age is not none and f.calendar_age >= 0 %}
+        <form method="post" action="/images/{{ f.image_id }}/faces/{{ f.face_id }}/age" style="margin-top:4px"><input type="hidden" name="age" value="{{ f.calendar_age }}"><button class="small" title="{{ _('Keep the date and set the age in this photo instead of the face estimate') }}">{{ _('Keep date, age %(age)s', age=f.calendar_age) }}</button></form>
       {% endif %}</td>
     </tr>
     {% endfor %}

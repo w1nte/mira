@@ -73,10 +73,21 @@
             <li>{% if f.calendar_age is not none %}{{ _('%(person)s: would be %(age)s, looks about %(face_age)s', person=f.person, age=f.calendar_age, face_age=f.face_age) }}{% else %}{{ _('%(person)s: looks about %(face_age)s', person=f.person, face_age=f.face_age) }}{% endif %}{% if f.birth_source == 'estimated' %} <small class="muted">{{ _('(birth year estimated)') }}</small>{% endif %}</li>
           {% endfor %}
         </ul>
+        <p class="fix-label"><b>{{ _('The date is wrong') }}</b></p>
         <form method="post" action="/images/{{ img.id }}/date" class="row">
           <input type="hidden" name="year" value="{{ date_check.suggested_year }}">
           <button class="small primary">{{ _('Set year to %(year)s', year=date_check.suggested_year) }}</button>
         </form>
+        {% set keep = date_check.faces.values() | selectattr('calendar_age', 'ne', none) | selectattr('calendar_age', 'ge', 0) | rejectattr('manual') | list %}
+        {% if keep %}
+        <p class="fix-label"><b>{{ _('The date is right') }}</b></p>
+        {% for f in keep %}
+        <form method="post" action="/images/{{ img.id }}/faces/{{ f.face_id }}/age" class="row">
+          <input type="hidden" name="age" value="{{ f.calendar_age }}">
+          <button class="small" title="{{ _('Keep the date and set the age in this photo instead of the face estimate') }}">{{ _('%(person)s is %(age)s here', person=f.person, age=f.calendar_age) }}</button>
+        </form>
+        {% endfor %}
+        {% endif %}
         <small class="muted">{{ _('Face ages are estimates – only fix it if it looks right to you.') }}</small>
       </div>
     </section>
@@ -96,6 +107,20 @@
           {% endif %}
         {% endfor %}
       </div>
+      {% if date_check and date_check.faces %}
+      <details class="inline-edit face-ages"><summary>{{ _('Edit ages') }}</summary>
+        {% for f in date_check.faces.values() %}
+        <form method="post" action="/images/{{ img.id }}/faces/{{ f.face_id }}/age" class="row">
+          <label class="row">{{ f.person }}
+            <input type="number" name="age" value="{{ f.face_age if f.manual else '' }}" min="0" max="120" style="width:5rem"
+                   placeholder="{{ (f.calendar_age if f.calendar_age is not none and f.calendar_age >= 0 and not date_check.suspicious else f.face_age) if (f.calendar_age is not none or f.face_age is not none) else '' }}"></label>
+          <button class="small">{{ _('Set age') }}</button>
+          {% if f.manual %}<button class="small ghost" name="reset" value="1" title="{{ _('Forget the age you set: the face estimate counts again') }}">{{ _('Automatic') }}</button>{% endif %}
+        </form>
+        {% endfor %}
+        <small class="muted">{{ _('The age a person really has in this photo. It replaces the face estimate and is kept when faces are detected again.') }}</small>
+      </details>
+      {% endif %}
     </section>
     {% endif %}
 

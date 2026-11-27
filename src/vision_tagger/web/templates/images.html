@@ -85,7 +85,7 @@
             <select name="faces"><option value="">{{ _('any') }}</option><option value="yes" {{ 'selected' if f.has_faces == true }}>{{ _('with') }}</option><option value="no" {{ 'selected' if f.has_faces == false }}>{{ _('without') }}</option></select></label>
         </div>
         <label class="field"><span>{{ _('Sort') }}</span>
-          <select name="sort">{% for v, l in [('date_desc', _('Newest first')), ('date_asc', _('Oldest first')), ('name', _('File name')), ('path', _('Path')), ('faces', _('Most faces')), ('size', _('File size'))] %}<option value="{{ v }}" {{ 'selected' if f.sort == v }}>{{ l }}</option>{% endfor %}</select></label>
+          <select name="sort">{% for v, l in [('date_desc', _('Newest first')), ('date_asc', _('Oldest first')), ('name', _('File name')), ('path', _('Path')), ('faces', _('Most faces')), ('size', _('File size'))] + ([('age_asc', _('Age: youngest first')), ('age_desc', _('Age: oldest first'))] if f.age_subject else []) %}<option value="{{ v }}" {{ 'selected' if f.sort == v }}>{{ l }}</option>{% endfor %}</select></label>
         <button class="primary block">{{ _('Apply') }}</button>
       </form>
     </section>

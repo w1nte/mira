@@ -18,6 +18,9 @@ How the pieces fit together:
   the file time, messenger apps strip EXIF. Date sources are weighted (EXIF and manual dates
   count most, the file time least), and a date is only called doubtful when the faces disagree
   far beyond the model's error. The calendar age stays the age shown everywhere else.
+* When the faces and the date disagree, the user decides which is right: fix the date
+  (:func:`correct_image_date`) or set the person's age in that photo (:func:`set_face_age`). A
+  manual age replaces the face estimate everywhere and counts as nearly exact.
 """
 
 from __future__ import annotations
@@ -46,6 +49,10 @@ MIN_SAMPLES = 3
 # a date is doubtful when the faces imply a year this many standard deviations away
 DOUBT_Z = {"exif": 3.5, "exif_digitized": 3.5, "exif_datetime": 3.0, "filename": 3.0}
 DOUBT_Z_DEFAULT = 2.5  # file times and unknown sources
+# error of an age set by hand: exact, but a birth year and a photo year only give the age to
+# within a year
+MANUAL_SIGMA = 0.6
+MAX_AGE = 120
 
 
 def reliability(date_source: str | None) -> float:
@@ -182,14 +189,23 @@ class FaceAge:
     suspicious: bool = False
     suggested_year: int | None = None
     quality: float = 1.0
+    manual: bool = False  # ``face_age`` is the age the user set
 
     @property
     def weight(self) -> float:
         return reliability(self.date_source)
 
     @property
+    def sigma(self) -> float:
+        """Typical error of ``face_age`` in years."""
+        return MANUAL_SIGMA if self.manual else age_sigma(self.face_age or 0)
+
+    @property
     def best_age(self) -> int | None:
-        """Calendar age when the date fits, otherwise the face estimate."""
+        """The age set by the user, else the calendar age when the date fits, else the face
+        estimate."""
+        if self.manual:
+            return self.face_age
         if self.calendar_age is not None and not self.suspicious:
             return self.calendar_age
         return self.face_age
@@ -250,7 +266,7 @@ def estimate_birth_year(faces: list[FaceAge]) -> BirthYearEstimate | None:
         return [
             (
                 f.recorded_at.year - f.face_age,
-                f.weight * f.quality / age_sigma(f.face_age) ** 2,
+                f.weight * f.quality / f.sigma**2,
             )
             for f in faces
             if f.recorded_at is not None
@@ -300,7 +316,8 @@ def _check(face: FaceAge, birth_year: int, birth_se: float = 0.0, certain: bool 
         face.suspicious = certain or face.calendar_age < -round(2 * birth_se) - 1
     elif face.face_age is not None:
         mid = (face.calendar_age + face.face_age) / 2.0
-        sigma = math.sqrt(age_sigma(mid) ** 2 + birth_se**2)
+        own = MANUAL_SIGMA if face.manual else age_sigma(mid)
+        sigma = math.sqrt(own**2 + birth_se**2)
         z = DOUBT_Z.get(face.date_source, DOUBT_Z_DEFAULT) + (0.0 if certain else 0.5)
         face.suspicious = abs(face.calendar_age - face.face_age) > z * sigma
     if face.suspicious and face.face_age is not None:
@@ -308,14 +325,21 @@ def _check(face: FaceAge, birth_year: int, birth_se: float = 0.0, certain: bool 
 
 
 def person_faces(
-    s: Session, person_id: int, calibration: AgeCalibration | None = None
+    s: Session,
+    person_id: int | None,
+    calibration: AgeCalibration | None = None,
+    *,
+    cluster_id: int | None = None,
 ) -> list[FaceAge]:
+    """The faces of a person (or of one cluster: ``person_id=None, cluster_id=...``)."""
     calibration = calibration if calibration is not None else get_calibration(s)
+    owner = Cluster.person_id == person_id if cluster_id is None else Face.cluster_id == cluster_id
     rows = s.execute(
         select(
             Face.id,
             Face.image_id,
             Face.age,
+            Face.manual_age,
             Face.face_px,
             Face.det_score,
             Face.clusterable,
@@ -324,10 +348,13 @@ def person_faces(
         )
         .join(Cluster, Cluster.id == Face.cluster_id)
         .join(Image, Image.id == Face.image_id)
-        .where(Cluster.person_id == person_id, Face.ignored.is_(False), Image.missing.is_(False))
+        .where(owner, Face.ignored.is_(False), Image.missing.is_(False))
     )
     out = []
-    for fid, iid, age, px, det, clusterable, when, src in rows:
+    for fid, iid, age, manual, px, det, clusterable, when, src in rows:
+        if manual is not None:
+            out.append(FaceAge(fid, iid, when, src or "", manual, quality=1.0, manual=True))
+            continue
         corrected = calibration.apply(float(age)) if age is not None else None
         out.append(
             FaceAge(
@@ -366,6 +393,36 @@ def analyse_person(s: Session, person: Person, today: date | None = None) -> Per
     )
 
 
+def image_ages(
+    s: Session, person_id: int | None = None, cluster_id: int | None = None
+) -> dict[int, tuple[int, bool]]:
+    """Age of one person (or the person of an unnamed cluster) in each of their photos:
+    ``{image id: (age, estimated)}`` for the gallery's sort by age.
+
+    The age is :attr:`FaceAge.best_age`: the age set by hand, else the calendar age when the
+    date fits the face, else the face estimate (``estimated``). So photos with a wrong date
+    still land where the person's age puts them. Several faces of the person in one photo: the
+    youngest.
+    """
+    if person_id is not None:
+        person = s.get(Person, person_id)
+        faces = analyse_person(s, person).faces if person is not None else []
+    elif cluster_id is not None:
+        faces = person_faces(s, None, cluster_id=cluster_id)
+    else:
+        return {}
+    out: dict[int, tuple[int, bool]] = {}
+    for f in faces:
+        age = f.best_age
+        if age is None:
+            continue
+        estimated = not f.manual and (f.calendar_age is None or f.suspicious)
+        current = out.get(f.image_id)
+        if current is None or max(0, age) < current[0]:
+            out[f.image_id] = (max(0, age), estimated)
+    return out
+
+
 # --------------------------------------------------------------------------- per image
 @dataclass
 class FaceInImage:
@@ -374,6 +431,8 @@ class FaceInImage:
     face_age: int | None
     calendar_age: int | None
     birth_source: str | None
+    manual: bool = False  # ``face_age`` is the age the user set
+    person_id: int | None = None
 
 
 @dataclass
@@ -412,7 +471,7 @@ def check_image_date(s: Session, image_id: int) -> DateCheck | None:
         return None
     rows = list(
         s.execute(
-            select(Face.id, Face.age, Cluster.person_id, Person.name)
+            select(Face.id, Face.age, Face.manual_age, Cluster.person_id, Person.name)
             .join(Cluster, Cluster.id == Face.cluster_id)
             .join(Person, Person.id == Cluster.person_id)
             .where(Face.image_id == image_id, Face.ignored.is_(False))
@@ -421,19 +480,31 @@ def check_image_date(s: Session, image_id: int) -> DateCheck | None:
     if not rows:
         return None
     calibration = get_calibration(s)
-    births = _birth_years(s, {r[2] for r in rows}, calibration)
+    births = _birth_years(s, {r[3] for r in rows}, calibration)
     year = img.recorded_at.year if img.recorded_at else None
     faces: dict[int, FaceInImage] = {}
     implied: list[tuple[float, float]] = []  # (year implied by the face, its standard deviation)
     certain = True
-    for face_id, raw_age, pid, name in rows:
-        corrected = calibration.apply(float(raw_age)) if raw_age is not None else None
-        face_age = round(corrected) if corrected is not None else None
+    for face_id, raw_age, manual, pid, name in rows:
+        if manual is not None:
+            face_age, own_sigma = manual, MANUAL_SIGMA
+        else:
+            corrected = calibration.apply(float(raw_age)) if raw_age is not None else None
+            face_age = round(corrected) if corrected is not None else None
+            own_sigma = age_sigma(face_age or 0)
         birth = births.get(pid)
         calendar = (year - birth[0]) if birth and year is not None else None
-        faces[face_id] = FaceInImage(face_id, name, face_age, calendar, birth[1] if birth else None)
+        faces[face_id] = FaceInImage(
+            face_id,
+            name,
+            face_age,
+            calendar,
+            birth[1] if birth else None,
+            manual=manual is not None,
+            person_id=pid,
+        )
         if birth and face_age is not None:
-            implied.append((birth[0] + face_age, math.hypot(age_sigma(face_age), birth[2])))
+            implied.append((birth[0] + face_age, math.hypot(own_sigma, birth[2])))
             certain = certain and birth[1] == "set"
     if not implied or year is None:
         return DateCheck(year, img.date_source, False, None, None, None, faces)
@@ -459,7 +530,10 @@ def check_image_date(s: Session, image_id: int) -> DateCheck | None:
 
 
 def age_label(face: FaceInImage, date_suspicious: bool = False) -> str | None:
-    """Short label for a face box: the calendar age, or ``~face age`` if the date is doubtful."""
+    """Short label for a face box: the age set by the user, the calendar age, or ``~face age``
+    if the date is doubtful."""
+    if face.manual and face.face_age is not None:
+        return str(face.face_age)
     if face.calendar_age is not None and face.calendar_age >= 0 and not date_suspicious:
         return str(face.calendar_age)
     if face.face_age is not None:
@@ -486,3 +560,19 @@ def correct_image_date(s: Session, image_id: int, year: int, month: int | None =
         new = datetime(year, m, 28, 12, 0, 0)
     set_photo_date(s, img, new)
     mark_pending(s, "embed", [image_id])  # the search document contains the date
+
+
+def set_face_age(s: Session, face_id: int, age: int | None) -> Face:
+    """Set the person's age in a photo by hand (``None`` goes back to the face estimate).
+
+    For a photo whose date is right but whose face looks older or younger than the person was:
+    the manual age replaces the estimate in date checks, birth-year estimates and the gallery's
+    sort by age, and is kept when the faces are detected again.
+    """
+    face = s.get(Face, face_id)
+    if face is None:
+        raise LookupError(f"face {face_id} not found")
+    if age is not None and not 0 <= age <= MAX_AGE:
+        raise ValueError(f"implausible age {age}")
+    face.manual_age = age
+    return face
