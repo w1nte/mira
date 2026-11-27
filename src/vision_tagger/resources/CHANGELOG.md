@@ -5,6 +5,9 @@ Mira shows them on its "What's new" page, and each GitHub release uses its secti
 
 ## Unreleased
 
+### Changed
+- `vision-tagger serve` refuses to start without a password in remote mode or on an address other computers can reach (`--host 0.0.0.0`).
+
 ### Fixed
 - Photos only open image files, and in remote mode only files in the upload folder: an imported database can no longer reveal other files.
 

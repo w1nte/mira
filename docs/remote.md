@@ -46,12 +46,14 @@ edit it, or write it as plain text:
   Container Toolkit).
 - The container upgrades its database on start (`serve --migrate`, with a backup) and pauses a
   running pipeline when it is stopped; it continues after the next start.
-- Without Docker: `vision-tagger serve --remote --upload-dir /srv/photos --host 0.0.0.0`, or set
+- Without Docker: set a password (`VT_WEB__PASSWORD`, see below), then
+  `vision-tagger serve --remote --upload-dir /srv/photos --host 0.0.0.0`, or set
   `mode = "remote"` and `remote.upload_dir` in `config.toml`.
 
 ## Password and HTTPS
 
-Set a password with the environment variable `VT_WEB__PASSWORD` (the compose file requires one).
+Set a password with the environment variable `VT_WEB__PASSWORD`. Remote mode doesn't start without
+one, and neither does a server on an address other computers can reach (`--host 0.0.0.0`).
 Every page then asks for it; a login lasts 30 days. After 10 wrong passwords an address is
 blocked for 5 minutes.
 

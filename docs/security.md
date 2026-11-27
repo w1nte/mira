@@ -3,7 +3,9 @@
 In local mode the UI is meant for your own machine. It listens on `127.0.0.1`, only answers
 requests whose `Host` is this machine (blocks DNS rebinding) and rejects form submissions coming
 from other websites (CSRF). If you expose it on your network (`web.host = "0.0.0.0"`), add the
-machine's name to `web.allowed_hosts` and set a password.
+machine's name to `web.allowed_hosts` and set a password: `vision-tagger serve` refuses to listen
+on such an address, or to run in remote mode, without one. The `Host` check only stops browsers;
+it is no protection against other computers on the network.
 
 Mira only ever opens image files as photos, judged by the file's own name, and in remote mode
 only files below the upload folder. An imported database can't make it show other files.

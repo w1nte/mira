@@ -59,6 +59,20 @@ def test_login_protects_everything_but_public_paths(remote):
         assert c.get("/api/status").status_code == 401
 
 
+def test_exposure_needs_a_password():
+    from vision_tagger.web.security import exposure_problem, is_loopback_host
+
+    for host in ("127.0.0.1", "localhost", "::1", "[::1]", "127.0.0.2", "LOCALHOST"):
+        assert is_loopback_host(host), host
+        assert exposure_problem(False, host, "") is None, host
+    for host in ("0.0.0.0", "::", "", "192.168.1.20", "my-pc"):
+        assert not is_loopback_host(host), host
+        assert "other computers" in exposure_problem(False, host, ""), host
+        assert exposure_problem(False, host, "pw") is None
+    assert "remote mode needs a password" in exposure_problem(True, "127.0.0.1", "")
+    assert exposure_problem(True, "0.0.0.0", "pw") is None
+
+
 def test_tokens_and_lockout(tmp_path):
     auth = A.Auth("pw", A.load_secret(tmp_path))
     assert A.load_secret(tmp_path) == A.load_secret(tmp_path)  # stable key

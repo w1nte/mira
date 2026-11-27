@@ -81,10 +81,31 @@ def test_cli_serve_remote_and_migrate(cli_env, monkeypatch):
     assert result.exit_code == 2 and "upload" in result.output  # remote mode needs a folder
     result = CliRunner().invoke(app, ["-c", str(cfg), "serve"])
     assert result.exit_code != 0 and not started  # outdated database: refused
+    args = ["-c", str(cfg), "serve", "--remote", "--upload-dir", str(tmp / "up"), "--migrate"]
+    result = CliRunner().invoke(app, args)  # remote mode without a password: refused
+    assert result.exit_code == 2 and "VT_WEB__PASSWORD" in result.output
+    assert not started and not list(db_path.parent.glob("*.bak-*"))  # before touching the db
 
-    invoke("-c", str(cfg), "serve", "--remote", "--upload-dir", str(tmp / "up"), "--migrate")
+    monkeypatch.setenv("VT_WEB__PASSWORD", "a long passphrase")
+    invoke(*args)
     engine = migration_engine(url_of(db_path))
     assert current_revision(engine) == head_revision()
     engine.dispose()
     assert list(db_path.parent.glob("*.bak-0003-*"))  # backup made before upgrading
     assert len(started) == 1
+
+
+def test_cli_serve_refuses_network_addresses_without_a_password(cli_env, monkeypatch):
+    cfg, _tmp = cli_env
+    started = []
+    monkeypatch.setattr("uvicorn.run", lambda app, **kw: started.append(kw))
+    monkeypatch.delenv("VT_WEB__PASSWORD", raising=False)
+    for host in ("0.0.0.0", "::", "192.168.1.20"):
+        result = CliRunner().invoke(app, ["-c", str(cfg), "serve", "--host", host])
+        assert result.exit_code == 2, host
+        assert "reached from other computers" in result.output, host
+    assert not started
+    invoke("-c", str(cfg), "serve", "--host", "127.0.0.1")  # this computer only: fine
+    monkeypatch.setenv("VT_WEB__PASSWORD", "a long passphrase")
+    invoke("-c", str(cfg), "serve", "--host", "0.0.0.0")
+    assert [kw["host"] for kw in started] == ["127.0.0.1", "0.0.0.0"]

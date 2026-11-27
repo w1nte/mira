@@ -959,6 +959,7 @@ def serve(
     import uvicorn
 
     from .web.app import create_app
+    from .web.security import exposure_problem
 
     settings = _settings()
     if remote:
@@ -971,6 +972,16 @@ def serve(
         except ValueError as exc:
             typer.echo(f"Error: {exc}", err=True)
             raise typer.Exit(2) from exc
+    host = host or settings.web.host
+    port = port or settings.web.port
+    settings.web.host = host  # the app accepts the address it listens on as a Host name
+    problem = exposure_problem(settings.remote_mode, host, settings.web.password)
+    if problem:
+        typer.echo(
+            f"Error: {problem} Set a password with the environment variable VT_WEB__PASSWORD.",
+            err=True,
+        )
+        raise typer.Exit(2)
     if migrate_db:
         from .db.migrate import upgrade_if_needed
 
@@ -978,8 +989,6 @@ def serve(
         if upgrade_if_needed(settings.db_path):
             typer.echo("upgraded the database (a backup copy was made first)")
     _db().dispose()  # fails early with a clear message if `vision-tagger migrate` is needed
-    host = host or settings.web.host
-    port = port or settings.web.port
     if open_browser:
         import threading
         import webbrowser

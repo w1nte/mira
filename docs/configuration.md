@@ -8,7 +8,8 @@ set with an environment variable, for example `VT_VLM__MODEL=qwen3-vl:8b` or
 Important knobs:
 
 - `mode`: `local` (scan folders on this computer) or `remote` (uploads, with `remote.upload_dir`).
-- `web.password` (better: `VT_WEB__PASSWORD`): login password, meant for remote mode.
+- `web.password` (better: `VT_WEB__PASSWORD`): login password. Required in remote mode and when
+  `web.host` is an address other computers can reach (e.g. `0.0.0.0`).
 - `pipeline.resume_on_start`: continue a pipeline that was paused when the app was closed.
 - `faces.cluster_eps` / `cluster_min_samples`: how strict face clustering is.
 - `faces.reference_threshold` / `auto_accept_threshold`: when reference matches are suggested

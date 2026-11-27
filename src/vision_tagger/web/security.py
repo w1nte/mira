@@ -65,6 +65,35 @@ def _loopback(address: str) -> bool:
     return ip.is_loopback or (mapped is not None and mapped.is_loopback)
 
 
+def is_loopback_host(host: str) -> bool:
+    """A bind address or host name that only accepts connections from this computer."""
+    name = host.strip().strip("[]").lower()
+    return name == "localhost" or _loopback(name)
+
+
+def exposure_problem(remote_mode: bool, host: str, password: str) -> str | None:
+    """Why serving on ``host`` without ``password`` would be unsafe; ``None`` if it is fine.
+
+    Without a password every request is trusted. That is right only on a loopback address in
+    local mode: the Host check below blocks DNS rebinding from browsers, but anyone on the
+    network can send any Host header. So remote mode, and any address that other computers can
+    reach, needs a password (``vision-tagger serve`` refuses to start without one).
+    """
+    if password:
+        return None
+    if remote_mode:
+        return (
+            "remote mode needs a password: without one, anyone who reaches the server sees "
+            "every photo."
+        )
+    if not is_loopback_host(host):
+        return (
+            f"{host} can be reached from other computers: without a password, anyone there "
+            "sees every photo and can browse the folders of this computer."
+        )
+    return None
+
+
 def from_this_computer(request: Request) -> bool:
     """The request comes from a browser on the computer the server runs on: from a loopback
     address (127.0.0.1, ::1), under a local host name, and not through a reverse proxy."""
