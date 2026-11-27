@@ -60,6 +60,7 @@ from .routes import (
     auth as auth_routes,
 )
 from .security import allowed_hostnames, guard, security_headers
+from .watchdog import Watchdog, WatchdogMiddleware
 
 log = logging.getLogger(__name__)
 
@@ -77,10 +78,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.ctx = AppContext(settings)
+        app.state.watchdog.start()
         yield
         context: AppContext = app.state.ctx
-        context.shutdown_pipeline()  # paused, not stopped: the next start continues it
-        context.close()
+        try:
+            context.shutdown_pipeline()  # paused, not stopped: the next start continues it
+            context.close()
+        finally:
+            app.state.watchdog.stop()
 
     # no /docs, /redoc or /openapi.json: they describe every endpoint to whoever asks, and
     # their pages load scripts from a CDN into the UI's origin
@@ -115,7 +120,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         finally:
             i18n.reset(token)
 
-    app.middleware("http")(security_headers())  # added last: runs first, wraps every answer
+    app.middleware("http")(security_headers())  # wraps every answer, the guard's too
+    # outermost (added last): a slow page is logged with what every thread was doing; it only
+    # watches, so the security headers above still cover every answer
+    app.state.watchdog = Watchdog()
+    app.add_middleware(WatchdogMiddleware, watchdog=app.state.watchdog)
 
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
     for module in (

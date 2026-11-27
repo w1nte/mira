@@ -16,6 +16,7 @@ Mira shows them on its "What's new" page, and each GitHub release uses its secti
 - `web.trusted_proxies`: behind a reverse proxy in another container, the login lockout counts each visitor, not the proxy.
 - Images: with one person in the filter, Sort → "Age: youngest first" / "oldest first" orders the photos by that person's age in them.
 - When a face doesn't match the photo date, the photo page offers both fixes: set the year, or keep the date and set the person's age (also Edit ages).
+- When a page takes longer than 10 seconds to load, System → Log says what Mira was doing meanwhile, to find out why.
 
 ### Changed
 - `vision-tagger serve` refuses to start without a password in remote mode or on an address other computers can reach (`--host 0.0.0.0`).

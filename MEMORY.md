@@ -77,6 +77,11 @@ only what will matter again, and delete what no longer holds. Rules live in `CLA
   `environment` ids through the URL; never prefill the log (it holds file and folder names).
 
 ## Pitfalls we hit
+- Pages slow (a minute and more) during the Properties stage, seen on Windows with `serve`: not
+  reproduced on Linux with a fake Ollama and 200k photos (pages under 0.6 s while running).
+  `web/watchdog.py` logs slow pages and a stuck event loop with every thread's stack: ask for
+  those log lines. A fake Ollama must answer most vocabulary fields, or `coerce` rejects every
+  answer and the stage writes nothing.
 - Windows: `socket.shutdown()` from another thread doesn't wake a blocked `recv`. Read in a
   thread and poll a queue (see `vlm/models.py` `pull`).
 - Merging branches:
