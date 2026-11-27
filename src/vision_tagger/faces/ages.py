@@ -469,7 +469,7 @@ def age_label(face: FaceInImage, date_suspicious: bool = False) -> str | None:
 
 def correct_image_date(s: Session, image_id: int, year: int, month: int | None = None) -> None:
     """Set a photo's date by hand (kept on re-index); keeps month/day where sensible."""
-    from ..db.models import ImageProperty
+    from ..dates import set_photo_date
     from ..pipeline.control import mark_pending
 
     img = s.get(Image, image_id)
@@ -484,10 +484,5 @@ def correct_image_date(s: Session, image_id: int, year: int, month: int | None =
         new = datetime(year, m, d, *(old.timetuple()[3:6] if old else (12, 0, 0)))
     except ValueError:  # 29 February
         new = datetime(year, m, 28, 12, 0, 0)
-    img.recorded_at = new
-    img.date_source = "manual"
-    for prop in s.scalars(
-        select(ImageProperty).where(ImageProperty.image_id == image_id, ImageProperty.key == "year")
-    ):
-        prop.value = str(year)
+    set_photo_date(s, img, new)
     mark_pending(s, "embed", [image_id])  # the search document contains the date

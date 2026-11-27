@@ -76,6 +76,23 @@
     file date, "taken" before birth) are flagged with a suggested year and a one-click fix. A
     date is only doubted when the faces disagree far beyond the model's typical error at that
     age; dates you set by hand are never doubted. Fixed dates survive re-scans.
+- **Correcting dates** (Organize → Dates). Dates go wrong in batches: scans and copies carry the
+  time they were scanned or copied, messenger apps strip the camera date, a camera clock was never
+  set. Mira groups the photos that belong together, so a whole batch is fixed at once:
+  - In one folder, photos with a camera date (or a date in the file name) at most 4 hours apart
+    form one event. Consecutive shots or scans (`IMG_0104`, `IMG_0105`; `scan_007`, `scan_008`)
+    and, once the *Visual search* stage has run, neighbouring photos showing the same scene join
+    them. Copies of the same photo are grouped across folders.
+  - Groups whose camera dates are more than two days apart are never joined: two Christmases in
+    the same living room stay two events, and a photo with only a file time can't bridge them.
+  - A photo whose date doesn't fit its group is marked, with a suggestion: the date of its nearest
+    neighbour by file name that has a good date. Groups without any camera date are listed too.
+  - **Set date** gives every ticked photo the same day (each keeps its time of day, unless you
+    enter one). **Shift dates** moves them together: the earliest gets the date, the others keep
+    their distance, for a camera clock that was set wrong.
+  - Dates you set count as *set by hand*: re-indexing keeps them, ages trust them, and exports
+    write them into the XMP data. Nothing about the groups is stored; they are worked out when you
+    open the page.
 - **"Who's that?" quiz** 🎲. Name unnamed clusters as a game, or test yourself on the people you
   already named.
   - After each answer you see how sure the face recognition was.
