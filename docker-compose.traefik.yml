@@ -1,0 +1,59 @@
+# Mira behind Traefik: HTTPS on your own domain, with a free certificate from Let's Encrypt.
+# It adds to docker-compose.yml (which stays as it is), so both files are used together.
+#
+#   1. Point your domain (e.g. photos.example.com) at this server, and make ports 80 and 443
+#      reachable from the internet (open or forward them on the router / firewall).
+#   2. In .env (see .env.example) set VT_PASSWORD, MIRA_DOMAIN, ACME_EMAIL and
+#        COMPOSE_FILE=docker-compose.yml:docker-compose.traefik.yml
+#      so a plain `docker compose` uses both files. Without COMPOSE_FILE:
+#        docker compose -f docker-compose.yml -f docker-compose.traefik.yml up -d
+#   3. docker compose up -d
+#   4. open https://<MIRA_DOMAIN>; the certificate arrives within a minute or so
+#      (docker compose logs traefik shows what happened)
+#
+# More, including an existing Traefik and testing with Let's Encrypt's staging server:
+# docs/remote.md ("HTTPS with Traefik"). Needs Docker Compose 2.24 or newer.
+services:
+  traefik:
+    image: traefik:v3
+    command:
+      # only containers with traefik.enable=true are published (Mira, not Ollama)
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      # http:// is redirected to https://
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      # Traefik's default (60 s) cuts off an 8 MB upload piece on a slow connection
+      - --entrypoints.websecure.transport.respondingTimeouts.readTimeout=10m
+      # the certificate: Let's Encrypt checks the domain over port 443 (TLS-ALPN challenge)
+      - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:?set ACME_EMAIL in the .env file (see .env.example)}
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.letsencrypt.acme.tlschallenge=true
+      - --certificatesresolvers.letsencrypt.acme.caserver=${ACME_CA_SERVER:-https://acme-v02.api.letsencrypt.org/directory}
+    ports:
+      - "${TRAEFIK_HTTP_PORT:-80}:80"
+      - "${TRAEFIK_HTTPS_PORT:-443}:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro # finds the containers and their labels
+      - traefik-certs:/letsencrypt # keeps the certificate across restarts
+    restart: unless-stopped
+
+  mira:
+    # reachable only through Traefik: no port of its own on the server
+    ports: !reset []
+    environment:
+      # take the visitor's address from Traefik's X-Forwarded-For, so the login lock
+      # (10 wrong passwords) applies to that address, not to Traefik's, i.e. everyone.
+      # Safe because nothing but Traefik and Ollama can reach Mira's port.
+      FORWARDED_ALLOW_IPS: "*"
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.mira.rule=Host(`${MIRA_DOMAIN:?set MIRA_DOMAIN in the .env file (see .env.example)}`)
+      - traefik.http.routers.mira.entrypoints=websecure
+      - traefik.http.routers.mira.tls.certresolver=letsencrypt
+      - traefik.http.services.mira.loadbalancer.server.port=8765
+
+volumes:
+  traefik-certs:

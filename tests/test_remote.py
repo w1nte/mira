@@ -114,3 +114,48 @@ def test_docker_env_file_instructions_work_on_windows():
         assert 'echo "VT_PASSWORD' not in (root / doc).read_text(encoding="utf-8"), doc
     for ignore in (".gitignore", ".dockerignore"):  # the password never lands in git or images
         assert ".env" in (root / ignore).read_text(encoding="utf-8").splitlines(), ignore
+
+
+def test_traefik_compose_file_is_complete_and_documented():
+    """docker-compose.traefik.yml: HTTPS in front of Mira, configured only through .env."""
+    import re
+    from pathlib import Path
+
+    import yaml
+
+    root = Path(__file__).resolve().parent.parent
+    text = (root / "docker-compose.traefik.yml").read_text(encoding="utf-8")
+
+    class Loader(yaml.SafeLoader):
+        pass
+
+    Loader.add_constructor("!reset", lambda loader, node: [])  # Compose's "drop the base value"
+    services = yaml.load(text, Loader=Loader)["services"]  # a SafeLoader subclass
+
+    # every variable it reads is explained in .env.example, which .env is copied from
+    example = (root / ".env.example").read_text(encoding="utf-8")
+    used = set(re.findall(r"\$\{(\w+)", text))
+    assert used >= {"MIRA_DOMAIN", "ACME_EMAIL"}
+    for name in used | {"COMPOSE_FILE"}:
+        assert re.search(rf"^(# )?{name}=", example, re.M), name
+    assert "COMPOSE_FILE=docker-compose.yml:docker-compose.traefik.yml" in example
+
+    mira = services["mira"]
+    assert mira["ports"] == []  # only reachable through Traefik
+    # the visitor's address, not Traefik's, counts for the login lock
+    assert mira["environment"]["FORWARDED_ALLOW_IPS"] == "*"
+    labels = dict(label.split("=", 1) for label in mira["labels"])
+    assert labels["traefik.enable"] == "true"
+    assert "${MIRA_DOMAIN" in labels["traefik.http.routers.mira.rule"]
+    dockerfile = (root / "Dockerfile").read_text(encoding="utf-8")
+    port = labels["traefik.http.services.mira.loadbalancer.server.port"]
+    assert f"EXPOSE {port}" in dockerfile and f"VT_WEB__PORT={port}" in dockerfile
+
+    command = " ".join(services["traefik"]["command"])
+    assert "--providers.docker.exposedbydefault=false" in command  # not Ollama
+    assert "readTimeout=10m" in command  # 8 MB upload pieces on slow connections
+    resolver = labels["traefik.http.routers.mira.tls.certresolver"]
+    assert f"--certificatesresolvers.{resolver}.acme.storage=" in command
+
+    for doc in ("README.md", "docs/remote.md", "docker-compose.yml"):
+        assert "docker-compose.traefik.yml" in (root / doc).read_text(encoding="utf-8"), doc

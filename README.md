@@ -130,8 +130,12 @@ cp .env.example .env                 # then choose a password: VT_PASSWORD=… i
 docker compose up -d
 ```
 
-Open `http://<server>:8765`, log in and upload your photos on the **Import** page. For access
-from outside your home network, put it behind HTTPS.
+Open `http://<server>:8765`, log in and upload your photos on the **Import** page.
+
+**HTTPS on your own domain:** [`docker-compose.traefik.yml`](docker-compose.traefik.yml) puts
+[Traefik](https://doc.traefik.io/traefik/) in front of Mira, with a free certificate from Let's
+Encrypt. Uncomment `COMPOSE_FILE`, `MIRA_DOMAIN` and `ACME_EMAIL` in `.env`, fill them in and
+run `docker compose up -d` again. See [HTTPS with Traefik](docs/remote.md#https-with-traefik).
 
 **More:** [Installation](docs/installation.md) ·
 [Using Mira](docs/usage.md) · [Remote mode and Docker](docs/remote.md) ·
