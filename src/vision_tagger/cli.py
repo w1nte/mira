@@ -968,7 +968,7 @@ def serve(
     import uvicorn
 
     from .web.app import create_app
-    from .web.security import exposure_problem
+    from .web.security import MIN_PASSWORD_LENGTH, exposure_problem, password_problem, weak_password
 
     settings = _settings()
     if remote:
@@ -984,13 +984,20 @@ def serve(
     host = host or settings.web.host
     port = port or settings.web.port
     settings.web.host = host  # the app accepts the address it listens on as a Host name
-    problem = exposure_problem(settings.remote_mode, host, settings.web.password)
+    password = settings.web.password
+    problem = exposure_problem(settings.remote_mode, host, password) or password_problem(password)
     if problem:
         typer.echo(
             f"Error: {problem} Set a password with the environment variable VT_WEB__PASSWORD.",
             err=True,
         )
         raise typer.Exit(2)
+    if weak_password(password):
+        typer.echo(
+            f"Warning: the password is shorter than {MIN_PASSWORD_LENGTH} characters; "
+            "a longer one is much harder to guess.",
+            err=True,
+        )
     if migrate_db:
         from .db.migrate import upgrade_if_needed
 
@@ -1004,7 +1011,14 @@ def serve(
 
         threading.Timer(1.5, lambda: webbrowser.open(f"http://{host}:{port}/")).start()
     typer.echo(f"vision-tagger UI on http://{host}:{port}/")
-    uvicorn.run(create_app(settings), host=host, port=port, log_level="info")
+    uvicorn.run(
+        create_app(settings),
+        host=host,
+        port=port,
+        log_level="info",
+        proxy_headers=True,  # X-Forwarded-For only from web.trusted_proxies
+        forwarded_allow_ips=settings.web.trusted_proxies,
+    )
 
 
 @app.command()

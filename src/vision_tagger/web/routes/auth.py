@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import time
+import asyncio
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response
@@ -12,6 +12,9 @@ from ..auth import COOKIE, MAX_AGE
 from ..common import render
 
 router = APIRouter()
+
+#: seconds a wrong password waits; awaited, so no worker thread is held meanwhile
+FAIL_DELAY = 1.0
 
 
 def _safe_next(target: str) -> str:
@@ -31,7 +34,9 @@ def login_page(request: Request, next: str = "/") -> Response:
 
 
 @router.post("/login")
-def login(request: Request, password: str = Form(""), next: str = Form("/")) -> Response:
+async def login(request: Request, password: str = Form(""), next: str = Form("/")) -> Response:
+    # async on purpose: locked() and check() run without a pause in between, so parallel
+    # requests cannot all pass the lockout before the first wrong password is counted
     auth = request.app.state.auth
     client = request.client.host if request.client else "?"
     if auth.locked(client):
@@ -42,7 +47,7 @@ def login(request: Request, password: str = Form(""), next: str = Form("/")) -> 
             error=_("Too many attempts. Please wait a few minutes."),
         )
     if not auth.check(password, client):
-        time.sleep(1.0)  # slows down guessing
+        await asyncio.sleep(FAIL_DELAY)  # slows down guessing
         return render(request, "login.html", next=_safe_next(next), error=_("Wrong password."))
     resp = RedirectResponse(_safe_next(next), status_code=303)
     secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"

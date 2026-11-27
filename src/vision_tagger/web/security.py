@@ -97,6 +97,23 @@ def exposure_problem(remote_mode: bool, host: str, password: str) -> str | None:
     return None
 
 
+#: example passwords of our own files: whoever runs with one has not chosen a password
+EXAMPLE_PASSWORDS = {"choose-a-good-one"}
+MIN_PASSWORD_LENGTH = 12
+
+
+def password_problem(password: str) -> str | None:
+    """Why ``password`` must not be used; ``None`` if it may (see also :func:`weak_password`)."""
+    if password.strip().lower() in EXAMPLE_PASSWORDS:
+        return "the password is still the example from .env.example: choose your own."
+    return None
+
+
+def weak_password(password: str) -> bool:
+    """Set, but short enough to be guessed (a warning, not a refusal: it worked before)."""
+    return 0 < len(password) < MIN_PASSWORD_LENGTH
+
+
 def from_this_computer(request: Request) -> bool:
     """The request comes from a browser on the computer the server runs on: from a loopback
     address (127.0.0.1, ::1), under a local host name, and not through a reverse proxy."""

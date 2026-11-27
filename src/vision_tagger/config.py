@@ -287,6 +287,10 @@ class WebConfig(BaseModel):
     # Optional login password (strongly recommended in remote mode). Set it with the
     # environment variable VT_WEB__PASSWORD rather than in a file.
     password: str = ""
+    # Reverse proxies whose X-Forwarded-For header names the real visitor (addresses or
+    # networks, e.g. "172.18.0.0/16" for a proxy container). The login lockout counts per
+    # visitor; behind an untrusted proxy all visitors share the proxy's address.
+    trusted_proxies: list[str] = Field(default_factory=lambda: ["127.0.0.1"])
 
 
 class UpdatesConfig(BaseModel):

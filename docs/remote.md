@@ -55,8 +55,16 @@ edit it, or write it as plain text:
 Set a password with the environment variable `VT_WEB__PASSWORD`. Remote mode doesn't start without
 one, and neither does a server on an address other computers can reach (`--host 0.0.0.0`).
 Every page then asks for it; a login lasts 30 days. Changing the password ends every login, and
-*Database → Log out everywhere* ends them on all devices. After 10 wrong passwords an address is
-blocked for 5 minutes.
+*Database → Log out everywhere* ends them on all devices. After 10 wrong passwords an address
+(IPv6: its /64 network) is blocked for 5 minutes; after 100 wrong passwords from any addresses,
+new logins wait 5 minutes (logins made before keep working). Choose a long password: the
+example from `.env.example` is refused, and one shorter than 12 characters gets a warning.
+
+Mira counts wrong passwords per visitor. Behind a reverse proxy it only knows the visitor's
+address if it trusts the proxy's `X-Forwarded-For` header: a proxy on the same computer
+(`127.0.0.1`) is trusted. For a proxy in another container, set
+`VT_WEB__TRUSTED_PROXIES='["172.18.0.0/16"]'` (its address or network); otherwise every visitor
+shares the proxy's address and a few wrong passwords lock everyone out.
 
 Put the server behind a reverse proxy with HTTPS (Caddy, Traefik, nginx), for example with Caddy:
 

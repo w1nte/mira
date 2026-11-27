@@ -83,7 +83,7 @@ def test_is_below_is_lexical(tmp_path):
 @pytest.fixture
 def crafted(tmp_path, monkeypatch):
     """Remote mode with one real photo and rows a crafted database could contain."""
-    monkeypatch.setattr("vision_tagger.web.routes.auth.time.sleep", lambda s: None)
+    monkeypatch.setattr("vision_tagger.web.routes.auth.FAIL_DELAY", 0)
     s = remote_settings(tmp_path)
     make_image(s.upload_dir / "trip" / "ok.jpg", seed=1)
     secret = s.data_dir / "secret.key"  # written by create_app (session key)

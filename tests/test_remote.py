@@ -20,7 +20,7 @@ HTML = {"Accept": "text/html"}
 
 @pytest.fixture
 def remote(tmp_path, monkeypatch):
-    monkeypatch.setattr("vision_tagger.web.routes.auth.time.sleep", lambda s: None)
+    monkeypatch.setattr("vision_tagger.web.routes.auth.FAIL_DELAY", 0)
     s = Settings(
         mode="remote",
         remote={"upload_dir": tmp_path / "library", "auto_process": False},
@@ -132,6 +132,100 @@ def test_log_out_everywhere(remote):
     with TestClient(create_app(remote)) as c:  # after a restart, too
         c.cookies.set(A.COOKIE, old)
         assert c.get("/api/status").status_code == 401
+
+
+def test_lockout_counts_ipv6_networks_not_single_addresses(tmp_path):
+    auth = A.Auth("pw", A.load_secret(tmp_path))
+    for i in range(A.MAX_FAILURES):  # a new address of the same /64 for every guess
+        assert not auth.locked(f"2001:db8:1:2::{i + 1:x}")
+        auth.check("wrong", f"2001:db8:1:2::{i + 1:x}")
+    assert auth.locked("2001:db8:1:2:ffff::1")
+    assert not auth.locked("2001:db8:1:3::1") and not auth.locked("1.2.3.4")
+    assert A.client_key("::ffff:10.0.0.7") == "10.0.0.7" == A.client_key("10.0.0.7")
+    assert A.client_key("testclient") == "testclient"
+
+
+def test_many_addresses_guessing_lock_every_new_login(tmp_path, monkeypatch):
+    auth = A.Auth("pw", A.load_secret(tmp_path))
+    now = [1000.0]
+    monkeypatch.setattr(A.time, "time", lambda: now[0])
+    for i in range(A.GLOBAL_MAX_FAILURES):
+        assert not auth.locked(f"10.0.{i // 250}.{i % 250}")
+        auth.check("wrong", f"10.0.{i // 250}.{i % 250}")  # one guess per address
+    assert auth.locked("192.0.2.1")  # nobody may try for a while
+    assert not auth.check("wrong", "192.0.2.1") and auth.locked("192.0.2.1")
+    now[0] += A.LOCKOUT_SECONDS + 1
+    assert not auth.locked("192.0.2.1")
+    assert auth.check("pw", "192.0.2.1")
+
+
+def test_failed_logins_use_bounded_memory(tmp_path, monkeypatch):
+    monkeypatch.setattr(A, "MAX_TRACKED", 50)
+    auth = A.Auth("pw", A.load_secret(tmp_path))
+    for i in range(500):
+        auth.check("wrong", f"10.1.{i // 250}.{i % 250}")
+    assert len(auth._failures) <= 50
+
+
+def test_parallel_guesses_are_counted_before_the_delay(remote, monkeypatch):
+    """The login is async: a burst of parallel guesses cannot all pass the lockout first."""
+    import asyncio
+
+    import httpx
+
+    monkeypatch.setattr("vision_tagger.web.routes.auth.FAIL_DELAY", 0.2)
+    app = create_app(remote)
+
+    async def burst() -> list[str]:
+        transport = httpx.ASGITransport(app=app, client=("198.51.100.7", 1234))
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as c:
+            replies = await asyncio.gather(
+                *(c.post("/login", data={"password": f"guess{i}"}) for i in range(25))
+            )
+        return [r.text for r in replies]
+
+    with TestClient(app):  # runs the lifespan (app state)
+        texts = asyncio.run(burst())
+    assert sum("Wrong password" in t for t in texts) == A.MAX_FAILURES
+    assert sum("Too many attempts" in t for t in texts) == 25 - A.MAX_FAILURES
+
+
+def test_wrong_passwords_do_not_hold_worker_threads(remote, monkeypatch):
+    """The delay after a wrong password is awaited: guessing cannot use up the thread pool that
+    serves every other page."""
+    import asyncio
+    import time
+
+    import anyio
+    import httpx
+
+    monkeypatch.setattr("vision_tagger.web.routes.auth.FAIL_DELAY", 0.4)
+    app = create_app(remote)
+
+    async def burst() -> float:
+        anyio.to_thread.current_default_thread_limiter().total_tokens = 2  # this loop only
+        started = time.monotonic()
+        replies = []
+        for i in range(10):  # each from its own address: no lockout
+            transport = httpx.ASGITransport(app=app, client=(f"198.51.100.{i + 1}", 1234))
+            client = httpx.AsyncClient(transport=transport, base_url="http://testserver")
+            replies.append(client.post("/login", data={"password": "wrong"}))
+        texts = [r.text for r in await asyncio.gather(*replies)]
+        assert all("Wrong password" in t for t in texts)
+        return time.monotonic() - started
+
+    with TestClient(app):
+        elapsed = asyncio.run(burst())
+    assert elapsed < 1.6, elapsed  # blocking: 10 delays on 2 threads would take 2 s or more
+
+
+def test_password_rules():
+    from vision_tagger.web.security import password_problem, weak_password
+
+    assert "example" in password_problem("choose-a-good-one")
+    assert password_problem(" Choose-A-Good-One ") is not None
+    assert password_problem("") is None and password_problem("something else") is None
+    assert weak_password("short") and not weak_password("") and not weak_password("x" * 12)
 
 
 def test_remote_hosts_and_zip_export(remote):

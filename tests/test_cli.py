@@ -109,3 +109,20 @@ def test_cli_serve_refuses_network_addresses_without_a_password(cli_env, monkeyp
     monkeypatch.setenv("VT_WEB__PASSWORD", "a long passphrase")
     invoke("-c", str(cfg), "serve", "--host", "0.0.0.0")
     assert [kw["host"] for kw in started] == ["127.0.0.1", "0.0.0.0"]
+
+
+def test_cli_serve_refuses_the_example_password_and_trusts_only_set_proxies(cli_env, monkeypatch):
+    cfg, _tmp = cli_env
+    started = []
+    monkeypatch.setattr("uvicorn.run", lambda app, **kw: started.append(kw))
+    monkeypatch.setenv("VT_WEB__PASSWORD", "choose-a-good-one")
+    result = CliRunner().invoke(app, ["-c", str(cfg), "serve", "--host", "0.0.0.0"])
+    assert result.exit_code == 2 and "example" in result.output and not started
+    monkeypatch.setenv("VT_WEB__PASSWORD", "short")
+    out = invoke("-c", str(cfg), "serve", "--host", "0.0.0.0")
+    assert "shorter than 12 characters" in out
+    assert started[-1]["proxy_headers"] is True
+    assert started[-1]["forwarded_allow_ips"] == ["127.0.0.1"]
+    monkeypatch.setenv("VT_WEB__TRUSTED_PROXIES", '["172.18.0.0/16"]')
+    invoke("-c", str(cfg), "serve", "--host", "0.0.0.0")
+    assert started[-1]["forwarded_allow_ips"] == ["172.18.0.0/16"]

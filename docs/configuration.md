@@ -10,6 +10,8 @@ Important knobs:
 - `mode`: `local` (scan folders on this computer) or `remote` (uploads, with `remote.upload_dir`).
 - `web.password` (better: `VT_WEB__PASSWORD`): login password. Required in remote mode and when
   `web.host` is an address other computers can reach (e.g. `0.0.0.0`).
+- `web.trusted_proxies` (default `["127.0.0.1"]`): reverse proxies whose `X-Forwarded-For`
+  header Mira believes, for the login lockout (see [Remote mode](remote.md#password-and-https)).
 - `pipeline.resume_on_start`: continue a pipeline that was paused when the app was closed.
 - `faces.cluster_eps` / `cluster_min_samples`: how strict face clustering is.
 - `faces.reference_threshold` / `auto_accept_threshold`: when reference matches are suggested

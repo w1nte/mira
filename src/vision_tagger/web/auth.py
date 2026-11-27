@@ -2,7 +2,12 @@
 
 A successful login sets a signed, HTTP-only session cookie (valid for 30 days). Without it,
 pages redirect to ``/login`` and API calls get ``401``. Wrong passwords are slowed down, and an
-address that keeps guessing is locked out for a few minutes.
+address that keeps guessing is locked out for a few minutes (IPv6: its whole /64 network, which
+one computer usually has to itself). Many wrong passwords from many addresses lock every new
+login for a while; logins made before keep working.
+
+Behind a reverse proxy the client address comes from ``X-Forwarded-For``, which uvicorn only
+believes from ``web.trusted_proxies``; otherwise every visitor would share the proxy's lockout.
 
 The cookie is signed (HMAC-SHA256) with a key derived from a random secret kept in the data
 folder *and* the password, so logins can be ended:
@@ -16,10 +21,12 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import hmac
+import ipaddress
 import os
 import secrets
 import threading
 import time
+from collections import deque
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
@@ -29,8 +36,23 @@ from starlette.responses import JSONResponse, RedirectResponse, Response
 COOKIE = "vt_session"
 MAX_AGE = 30 * 24 * 3600
 PUBLIC = ("/login", "/static/", "/healthz", "/manifest.webmanifest", "/sw.js", "/favicon")
-MAX_FAILURES = 10
+MAX_FAILURES = 10  # wrong passwords per address before it is locked out
 LOCKOUT_SECONDS = 300
+GLOBAL_MAX_FAILURES = 100  # wrong passwords of all addresses within LOCKOUT_SECONDS
+MAX_TRACKED = 10_000  # addresses remembered at most (memory stays bounded)
+
+
+def client_key(address: str) -> str:
+    """The unit the lockout counts: an IPv4 address, or the /64 network of an IPv6 address."""
+    try:
+        ip = ipaddress.ip_address(address)
+    except ValueError:
+        return address
+    if isinstance(ip, ipaddress.IPv6Address):
+        if ip.ipv4_mapped is not None:
+            return str(ip.ipv4_mapped)
+        return str(ipaddress.IPv6Network(f"{ip}/64", strict=False))
+    return str(ip)
 
 
 def _write_secret(path: Path, key: bytes) -> None:
@@ -74,7 +96,8 @@ class Auth:
         self.enabled = bool(password)
         self._digest = hashlib.sha256(password.encode()).digest()
         self._key = self._signing_key(secret)
-        self._failures: dict[str, tuple[int, float]] = {}
+        self._failures: dict[str, tuple[int, float]] = {}  # key -> (count, last failure)
+        self._recent: deque[float] = deque(maxlen=GLOBAL_MAX_FAILURES)  # times, all addresses
         self._lock = threading.Lock()
 
     def _signing_key(self, secret: bytes) -> bytes:
@@ -102,23 +125,41 @@ class Auth:
         )
 
     def locked(self, client: str) -> bool:
+        key, now = client_key(client), time.time()
         with self._lock:
-            count, since = self._failures.get(client, (0, 0.0))
-            if count >= MAX_FAILURES and time.time() - since < LOCKOUT_SECONDS:
+            recent = self._recent
+            if len(recent) == recent.maxlen and now - recent[0] < LOCKOUT_SECONDS:
+                return True  # guessing from many addresses: no new logins for a while
+            count, since = self._failures.get(key, (0, 0.0))
+            if count >= MAX_FAILURES and now - since < LOCKOUT_SECONDS:
                 return True
             if count >= MAX_FAILURES:
-                self._failures.pop(client, None)
+                self._failures.pop(key, None)
             return False
 
     def check(self, password: str, client: str) -> bool:
         ok = hmac.compare_digest(hashlib.sha256(password.encode()).digest(), self._digest)
+        key, now = client_key(client), time.time()
         with self._lock:
             if ok:
-                self._failures.pop(client, None)
+                self._failures.pop(key, None)
             else:
-                count, _since = self._failures.get(client, (0, 0.0))
-                self._failures[client] = (count + 1, time.time())
+                count, _since = self._failures.get(key, (0, 0.0))
+                self._failures[key] = (count + 1, now)
+                self._recent.append(now)
+                if len(self._failures) > MAX_TRACKED:
+                    self._forget(now)
         return ok
+
+    def _forget(self, now: float) -> None:
+        """Drop expired entries, then the oldest ones, down to MAX_TRACKED (lock held)."""
+        failures = self._failures
+        for key in [k for k, (_c, since) in failures.items() if now - since >= LOCKOUT_SECONDS]:
+            del failures[key]
+        if len(failures) > MAX_TRACKED:
+            oldest = sorted(failures, key=lambda k: failures[k][1])
+            for key in oldest[: len(failures) - MAX_TRACKED]:
+                del failures[key]
 
     def middleware(self) -> Callable[[Request, Callable], Awaitable[Response]]:
         async def mw(request: Request, call_next: Callable) -> Response:
