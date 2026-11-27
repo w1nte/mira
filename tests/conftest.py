@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from datetime import datetime
 from pathlib import Path
@@ -8,8 +9,21 @@ import numpy as np
 import pytest
 from PIL import ExifTags, Image, ImageDraw
 
+from vision_tagger import logs
 from vision_tagger.config import Settings
 from vision_tagger.db.session import Database
+
+
+@pytest.fixture(autouse=True)
+def _reset_logging():
+    """Commands and the desktop app set up logging (``vision_tagger.logs``): undo it after each
+    test, so no test writes into another test's log file or closed console."""
+    touched = ("", "alembic", *logs.QUIET)  # the root logger and the ones set to WARNING
+    levels = {name: logging.getLogger(name).level for name in touched}
+    yield
+    logs.reset()
+    for name, level in levels.items():
+        logging.getLogger(name).setLevel(level)
 
 
 @pytest.fixture

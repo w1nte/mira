@@ -250,6 +250,12 @@ class Indexer:
                     _Candidate(root_abs, os.path.abspath(path), key, st.st_size, st.st_mtime)
                 )
         stats.candidates = len(candidates)
+        log.info(
+            "scanning %s: %d photos found, %d new or changed",
+            ", ".join(stats.roots),
+            stats.found,
+            stats.candidates,
+        )
         self.progress(stats)
 
         chunk = max(1, self.settings.index.commit_every)
@@ -284,6 +290,15 @@ class Indexer:
                     self._warm_thumbnails(pool, stats)
 
         stats.done = True
+        log.info(
+            "scan done: %d new, %d duplicates, %d moved, %d updated, %d missing, %d errors",
+            stats.new,
+            stats.duplicates,
+            stats.moved,
+            stats.updated,
+            stats.missing,
+            stats.errors,
+        )
         self.progress(stats)
         return stats
 

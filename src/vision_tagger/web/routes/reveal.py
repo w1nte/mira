@@ -1,5 +1,6 @@
-"""Show a photo, a library folder, the database file or the data folder in Explorer, Finder or
-the file manager (local mode, requests from this computer only; see ``common.can_reveal``).
+"""Show a photo, a library folder, the database file, the data folder or the log file in
+Explorer, Finder or the file manager, or open the log file in the text editor (local mode,
+requests from this computer only; see ``common.can_reveal``).
 
 The request names *what* to show (a kind and an id or index), never a path: the server looks
 the path up itself, so nothing else on the computer can be opened through this endpoint.
@@ -12,6 +13,7 @@ from pathlib import Path
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import Response
 
+from ... import logs
 from ...db.models import Image
 from ...i18n import _
 from ...indexer import stored_roots
@@ -20,7 +22,9 @@ from ..common import back, can_reveal, ctx, redirect
 
 router = APIRouter()
 
-KINDS = ("image", "root", "database", "data")
+#: ``log`` opens the log file with its program (Notepad, Console, the text editor); ``logs``
+#: shows it in its folder
+KINDS = ("image", "root", "database", "data", "log", "logs")
 
 
 @router.post("/reveal")
@@ -54,6 +58,10 @@ def reveal(request: Request, kind: str = Form(...), item: str = Form("", alias="
             )
     elif kind == "database":
         path, select = c.settings.db_path, True
+    elif kind in ("log", "logs"):
+        path, select = logs.log_path(c.settings), kind == "logs"
+        if not path.is_file():
+            return redirect(request, url, err=_("The file is not there: %(path)s", path=str(path)))
     else:
         path, select = c.settings.data_dir, False
     try:
@@ -64,4 +72,6 @@ def reveal(request: Request, kind: str = Form(...), item: str = Form("", alias="
         )
     if request.headers.get("HX-Request"):
         return Response(status_code=204)  # the file manager is the answer; the page stays
+    if kind == "log":
+        return redirect(request, url, msg=_("The log file is open in another window."))
     return redirect(request, url, msg=_("Opened in the file manager."))

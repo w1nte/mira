@@ -56,6 +56,7 @@ uv run vision-tagger db export | import FILE     # whole database (see "Moving a
 | **Import** | Local mode: your photo folders, with a folder browser, and **Scan now**; **Open folder** shows one in Explorer or Finder. Remote mode: upload photos, folders or ZIP files (see [Remote mode](remote.md)). Shows what is being indexed and analysed right now. |
 | **Pipeline** | The technical part: start/pause/resume/stop runs (stages, batch size, limit), per-stage progress, ETA, errors (retry/skip), outdated results, jobs, recent runs, environment check (CUDA, Ollama, and the AI models with their state and **Download** buttons). |
 | **Database** | Export the whole library database (backup, another computer) and import one (see [Moving a library](library.md#moving-a-library-to-another-computer-export--import)). **Missing files** lists photos that are not where Mira last saw them; scanning their new folder re-links them, **Remove** takes those that are gone for good out of the library. **Clear the library** starts over (two confirmations, a backup first). See [Cleaning up the library](library.md#cleaning-up-the-library). |
+| **Log** | What Mira did, newest first: starts, scans, pipeline runs, and every warning and error with its details. Show only warnings and errors, **Download log**, **Open log file** in your text editor (on your own computer), **Report a bug**. See [The log and bug reports](#the-log-and-bug-reports). |
 | **Faces** | All clusters with cover face and size. Name inline (autocomplete), accept reference suggestions, select several to **merge**. Views for unclustered and ignored faces. |
 | **Cluster** | All faces of a cluster. Select faces to **split** into a new cluster, **assign to a person**, **move** to another cluster, or **remove**. **Auto-split** mixed clusters. Similar clusters with one-click merge. |
 | **Animals** | Pet groups with picture and number of photos, by species. Name a group inline (typing another group's name merges the two), tick several to **merge**. Per group: all its photos to **move** to a pet (by name) or a new group, **take out** ("Not this one") or **remove**, similar groups with one-click merge, and the species (correct it when the detector took a dog for a bear). Views for ungrouped and removed animals. |
@@ -70,7 +71,8 @@ uv run vision-tagger db export | import FILE     # whole database (see "Moving a
 | **Overview** | Timeline (year → month → day), breakdowns by folder, camera, file type, date reliability, work/personal, orientation, and a sortable metadata table. |
 
 The sidebar groups the pages into *Library*, *People*, *Organize* and *System* and shows what
-the pipeline is doing right now. On small screens it folds away behind the menu button.
+the pipeline is doing right now; at its bottom are *What's new* and **Report a bug**. On small
+screens it folds away behind the menu button.
 
 **Languages.** The UI speaks English, German, French, Spanish, Italian, Portuguese, Dutch,
 Polish, Russian, Chinese and Japanese. It starts in your browser's language; the language menu at
@@ -87,3 +89,31 @@ so every page is rendered in the right theme from the start, without flashing.
 home screen*, on iOS *Share → Add to Home Screen*. It then opens in its own window, with its own
 icon. Browsers allow this on `localhost` and over HTTPS, so a server needs HTTPS (see below).
 Without a connection the app shows an offline page instead of a browser error.
+
+## The log and bug reports
+
+Mira writes down what it does in a log file: every start (with the version and the system), scans,
+pipeline runs, jobs such as exports and imports, and above all every warning and error, with the
+technical details (the traceback). When something goes wrong, the log shows what led up to it.
+
+- **Where.** `logs/vision-tagger.log` in the data folder (the desktop app: see
+  [where things are](installation.md#desktop-app-windows-macos-linux); Docker: `/data/logs` in
+  the data volume). The desktop app, `vision-tagger serve` and the command line all write to the
+  same file.
+- **Size.** When the file reaches 5 MB, its content moves to `vision-tagger.log.1` (the older one
+  to `.2`, and so on) and the oldest part is deleted, so the log never takes more than 20 MB. The
+  size, the number of older files and the detail are settings (`[logging]`, see
+  [Configuration](configuration.md)).
+- **In the app.** *System → Log* shows the newest entries; *Warnings and errors* and *Errors* filter
+  them, **Details** opens a traceback. **Download log** saves the whole log as one file. On your
+  own computer, **Open log file** opens it in your text editor (Notepad, Console, …) and **Show in
+  folder** shows it in Explorer or Finder. The *Pipeline* page links to the log next to its errors
+  and failed jobs.
+
+**Reporting a bug.** **Report a bug** (bottom of the sidebar, and on the Log page) opens a new
+issue on GitHub with the bug report form, with your Mira version and system already filled in
+(the operating system, Python, desktop app or Docker; no file names). Nothing is sent by itself:
+you see the form in your browser and decide what to submit (a GitHub account is needed). Describe
+what happened and add the downloaded log: drag the file into the *Log* box. The log contains the
+names of files and folders in your library, so look through it first and remove what you don't
+want to share.

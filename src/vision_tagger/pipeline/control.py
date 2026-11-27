@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable
 from datetime import timedelta
 from typing import Any
@@ -11,6 +12,8 @@ from sqlalchemy.orm import Session
 
 from ..db.models import Control, Run, StageStatus, Status, utcnow
 from ..db.session import Database
+
+log = logging.getLogger(__name__)
 
 RUNNING, PAUSED, STOPPED = "running", "paused", "stopped"
 
@@ -30,7 +33,9 @@ def request_state(db: Database, state: str) -> None:
     with db.write() as s:
         ctrl = s.get(Control, 1)
         assert ctrl is not None
-        ctrl.desired_state = state
+        before, ctrl.desired_state = ctrl.desired_state, state
+    if before != state:
+        log.info("pipeline: %s requested (was %s)", state, before)
 
 
 def desired_state(db: Database) -> str:
@@ -70,8 +75,9 @@ def retry_errors(db: Database, stage: str | None = None) -> int:
         stmt = update(StageStatus).where(StageStatus.status == Status.ERROR)
         if stage:
             stmt = stmt.where(StageStatus.stage == stage)
-        res = s.execute(stmt.values(status=Status.PENDING, attempts=0, run_id=None))
-        return res.rowcount or 0
+        n = s.execute(stmt.values(status=Status.PENDING, attempts=0, run_id=None)).rowcount or 0
+    log.info("%d failed items queued again (%s)", n, stage or "every stage")
+    return n
 
 
 def skip_errors(db: Database, stage: str | None = None) -> int:
@@ -79,7 +85,9 @@ def skip_errors(db: Database, stage: str | None = None) -> int:
         stmt = update(StageStatus).where(StageStatus.status == Status.ERROR)
         if stage:
             stmt = stmt.where(StageStatus.stage == stage)
-        return s.execute(stmt.values(status=Status.SKIPPED)).rowcount or 0
+        n = s.execute(stmt.values(status=Status.SKIPPED)).rowcount or 0
+    log.info("%d failed items skipped (%s)", n, stage or "every stage")
+    return n
 
 
 def requeue(db: Database, stage: str, image_ids: list[int] | None = None) -> int:
