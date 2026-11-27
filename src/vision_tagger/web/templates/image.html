@@ -113,7 +113,7 @@
         <form method="post" action="/images/{{ img.id }}/faces/{{ f.face_id }}/age" class="row">
           <label class="row">{{ f.person }}
             <input type="number" name="age" value="{{ f.face_age if f.manual else '' }}" min="0" max="120" style="width:5rem"
-                   placeholder="{{ (f.calendar_age if f.calendar_age is not none and f.calendar_age >= 0 and not date_check.suspicious else f.face_age) if (f.calendar_age is not none or f.face_age is not none) else '' }}"></label>
+                   placeholder="{{ (f.calendar_age if f.calendar_age is not none and f.calendar_age >= 0 and (date_check.date_trusted or not date_check.suspicious) else f.face_age) if (f.calendar_age is not none or f.face_age is not none) else '' }}"></label>
           <button class="small">{{ _('Set age') }}</button>
           {% if f.manual %}<button class="small ghost" name="reset" value="1" title="{{ _('Forget the age you set: the face estimate counts again') }}">{{ _('Automatic') }}</button>{% endif %}
         </form>

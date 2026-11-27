@@ -12,6 +12,7 @@ from sqlalchemy import func, select
 from vision_tagger.db.models import Cluster, Image, ImageProperty, Person, StageStatus, Status
 from vision_tagger.db.session import Database
 from vision_tagger.faces.ages import (
+    age_label,
     analyse_person,
     check_image_date,
     correct_image_date,
@@ -379,6 +380,47 @@ def test_sort_by_age_of_one_person(db, anna):
         assert all_image_ids(s, by_cluster) == [6, 1, 2, 3, 4, 5]
 
 
+def _child_photo(s, anna, n=40, when=datetime(2000, 6, 1, 15, 12, 9), face_age=30):
+    """Anna (born 1990) at ten, on a camera date, but the face model thinks she is 30."""
+    cluster_id = s.scalar(select(Cluster.id).where(Cluster.person_id == anna))
+    img = add_image(s, n, recorded_at=when)
+    add_face(s, img.id, person_centers(1)[0], cluster_id=cluster_id, age=face_age)
+    return cluster_id, img.id
+
+
+def test_set_birth_year_and_camera_date_give_the_age(db, anna):
+    from vision_tagger.query import ImageFilter, sort_ages
+
+    with db.write() as s:
+        s.get(Person, anna).birth_year = 1990
+        cluster_id, child = _child_photo(s, anna)
+    with db.session() as s:
+        ages = sort_ages(s, ImageFilter(persons=[anna], sort="age_asc"))
+        assert ages[child] == (10, False)  # birth year + date, not the face's 30
+        assert ages[1] == (20, False) and ages[2] == (25, False)
+        # untrustworthy dates still go by the face: a camera's default date, a file time
+        assert ages[5] == (33, True) and ages[6] == (8, True)
+        # filtering by Anna's cluster instead of Anna: her birth year all the same
+        by_cluster = sort_ages(s, ImageFilter(clusters=[cluster_id], sort="age_asc"))
+        assert by_cluster[child] == (10, False) and by_cluster[6] == (8, True)
+        # the face still disagrees with the date: the person page keeps the hint
+        flagged = {f.image_id for f in analyse_person(s, s.get(Person, anna)).suspicious}
+        assert child in flagged
+
+
+def test_a_default_date_is_doubted_on_the_photo_page(db, anna):
+    with db.write() as s:
+        s.get(Person, anna).birth_year = 1990
+        _cluster, photo = _child_photo(
+            s, anna, n=41, when=datetime(2000, 12, 31, 22, 0), face_age=24
+        )
+    with db.session() as s:
+        check = check_image_date(s, photo)
+    assert check.suspicious and not check.date_trusted
+    (info,) = check.faces.values()
+    assert age_label(info, check.suspicious, check.date_trusted) == "~24"
+
+
 @pytest.fixture
 def web(settings, db, anna):
     from fastapi.testclient import TestClient
@@ -401,6 +443,16 @@ def test_gallery_offers_the_age_sort_for_one_person(web, anna):
     assert '<span class="agebadge est"' in page and ">~8</span>" in page
     page = web.get(f"/images/1?p={anna}&sort=age_asc").text
     assert f'href="/images/6?p={anna}&amp;sort=age_asc"' in page  # previous: the younger one
+
+
+def test_image_page_shows_the_calendar_age_for_a_camera_date(web, anna):
+    with web.app.state.ctx.db.write() as s:
+        _cluster, child = _child_photo(s, anna)
+    page = web.get(f"/images/{child}").text
+    assert "Anna · 10</span>" in page  # the face box: her real age, not ~30
+    assert "would be 10, looks about 30" in page  # the hint that face and date disagree
+    page = web.get(f"/images?p={anna}&sort=age_asc").text
+    assert '<span class="agebadge "' in page and ">10</span>" in page
 
 
 def test_image_page_offers_both_fixes(web, anna):

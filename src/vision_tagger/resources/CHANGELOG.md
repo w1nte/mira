@@ -22,6 +22,7 @@ Mira shows them on its "What's new" page, and each GitHub release uses its secti
 - The desktop app, `vision-tagger serve` (also in Docker) and the command line all log to `data/logs/vision-tagger.log`, up to 20 MB.
 
 ### Fixed
+- With a birth year and a camera date, a photo shows the person's real age (Images → Sort by age, photo page), even when the face looks older or younger.
 - Photos only open image files, and in remote mode only files in the upload folder: an imported database can no longer reveal other files.
 - Changing the password now ends every login; Database → Log out everywhere ends them on all devices. Everyone logs in once more after the update.
 - Exports and ZIP downloads stay inside their folder, and an imported database can no longer make Mira contact network shares you don't use.

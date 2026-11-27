@@ -81,11 +81,17 @@
     or younger. **Edit ages** under *People* sets any age by hand (*Automatic* goes back to the
     estimate). A manual age replaces the face estimate everywhere (date checks, birth-year
     estimate, timelines) and is kept when the faces are detected again.
-  - **Sort by age.** With exactly one person (or one unnamed cluster) in the gallery filter,
-    *Sort* offers *Age: youngest first* and *Age: oldest first*: the photos in the order of that
-    person's age, which is the age you set, else the age from birth year and date, else the face
-    estimate when the date is doubtful (`~7` on the tile). Photos with a wrong date still land
-    where they belong.
+  - **Sort by age.** With exactly one person (or one cluster) in the gallery filter, *Sort*
+    offers *Age: youngest first* and *Age: oldest first*: the photos in the order of that person's
+    age (a cluster that belongs to a person uses the person's birth year). The age in a photo is:
+    - the age you set for that face;
+    - else birth year + photo date, when the date is trustworthy (a camera date, a date in the
+      file name, or one you set) or the face agrees with it. A trustworthy date beats the face:
+      face ages are often years off, children's most;
+    - else the face estimate (`~7` on the tile), for file times and a camera's default dates
+      (e.g. `2000-12-31 22:00`). So photos with a wrong date still land where they belong.
+
+    The photo page labels faces the same way.
 - **Correcting dates** (Organize → Dates). Dates go wrong in batches: scans and copies carry the
   time they were scanned or copied, messenger apps strip the camera date, a camera clock was never
   set. Mira groups the photos that belong together, so a whole batch is fixed at once:
