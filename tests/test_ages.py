@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import itertools
+import re
 import sqlite3
 from datetime import date, datetime
 
@@ -272,3 +273,161 @@ def test_manual_dates_are_never_doubted(db):
     with db.session() as s:
         ages = analyse_person(s, s.get(Person, pid))
     assert ages.suspicious == []
+
+
+# --------------------------------------------------------------------------- manual ages
+def _face_of(s, image_id):
+    from vision_tagger.db.models import Face
+
+    return s.scalar(select(Face).where(Face.image_id == image_id))
+
+
+def test_manual_age_keeps_the_date_and_replaces_the_estimate(db, anna):
+    from vision_tagger.faces.ages import age_label, set_face_age
+
+    with db.write() as s:
+        s.get(Person, anna).birth_year = 1990
+    with db.write() as s:
+        assert check_image_date(s, 6).suspicious  # 2023, but the face looks 8
+        set_face_age(s, _face_of(s, 6).id, 33)  # the date is right: Anna is 33 there
+    with db.session() as s:
+        check = check_image_date(s, 6)
+        assert not check.suspicious
+        info = next(iter(check.faces.values()))
+        assert info.manual and info.face_age == 33 and age_label(info) == "33"
+        assert s.get(Image, 6).date_source == "mtime"  # the date is untouched
+        ages = analyse_person(s, s.get(Person, anna))
+        face = next(f for f in ages.faces if f.image_id == 6)
+        assert face.manual and not face.suspicious and face.best_age == 33
+        assert {f.image_id for f in ages.suspicious} == {5}
+    # a manual age that contradicts the date flags the date (the user said how old Anna is)
+    with db.write() as s:
+        set_face_age(s, _face_of(s, 2).id, 12)
+    with db.session() as s:
+        check = check_image_date(s, 2)
+        assert check.suspicious and check.suggested_year == 2002
+    # back to the estimate
+    with db.write() as s:
+        set_face_age(s, _face_of(s, 6).id, None)
+        set_face_age(s, _face_of(s, 2).id, None)
+    with db.session() as s:
+        assert check_image_date(s, 6).suspicious and not check_image_date(s, 2).suspicious
+    with db.write() as s, pytest.raises(ValueError):
+        set_face_age(s, _face_of(s, 6).id, 300)
+    with db.write() as s, pytest.raises(LookupError):
+        set_face_age(s, 999_999, 3)
+
+
+def test_manual_ages_count_most_for_the_birth_year(db, anna):
+    from vision_tagger.faces.ages import set_face_age
+
+    with db.write() as s:
+        for n in (1, 2, 3):  # 2010, 2015, 2018: Anna really was born in 1992
+            when = s.get(Image, n).recorded_at
+            set_face_age(s, _face_of(s, n).id, when.year - 1992)
+    with db.session() as s:
+        est = estimate_birth_year(person_faces(s, anna))
+    assert est.year == 1992
+
+
+def test_manual_age_survives_redetection(db, anna):
+    from vision_tagger.db.models import Face
+    from vision_tagger.faces.clustering import replace_faces
+
+    with db.write() as s:
+        old = _face_of(s, 6)
+        old.manual_age = 33
+        fresh = Face(
+            x1=old.x1 + 2,
+            y1=old.y1,
+            x2=old.x2 + 2,
+            y2=old.y2,
+            det_score=0.9,
+            embedding=old.embedding,
+            age=9,
+            face_px=100,
+        )
+        replace_faces(s, 6, [fresh])
+    with db.session() as s:
+        face = _face_of(s, 6)
+        assert face.age == 9 and face.manual_age == 33
+
+
+def test_sort_by_age_of_one_person(db, anna):
+    from vision_tagger.query import ImageFilter, all_image_ids, neighbours, page_images, sort_ages
+
+    with db.write() as s:
+        s.get(Person, anna).birth_year = 1990
+        add_image(s, 50, recorded_at=datetime(2021, 1, 1))  # without Anna
+    f = ImageFilter(persons=[anna], sort="age_asc")
+    with db.session() as s:
+        # doubtful dates (5: camera clock 2000, 6: scanned childhood photo) go by the face
+        assert all_image_ids(s, f) == [6, 1, 2, 3, 4, 5]
+        assert all_image_ids(s, f.copy(sort="age_desc")) == [5, 4, 3, 2, 1, 6]
+        assert [img.id for img in page_images(s, f, 1, 2)] == [1, 2]
+        assert neighbours(s, f, 1) == (6, 2)
+        ages = sort_ages(s, f)
+        assert ages[6] == (8, True) and ages[4] == (30, False)
+        # without exactly one person there is no age to sort by
+        assert ImageFilter(sort="age_asc").sort == "date_desc"
+        assert ImageFilter.from_params({"sort": "age_asc"}).sort == "date_desc"
+        assert ImageFilter(persons=[anna], sort="age_asc").copy(persons=[]).sort == "date_desc"
+        assert sort_ages(s, ImageFilter(persons=[anna])) is None
+        # an unnamed cluster sorts by its face ages
+        cluster_id = s.scalar(select(Cluster.id).where(Cluster.person_id == anna))
+        by_cluster = ImageFilter(clusters=[cluster_id], sort="age_asc")
+        assert all_image_ids(s, by_cluster) == [6, 1, 2, 3, 4, 5]
+
+
+@pytest.fixture
+def web(settings, db, anna):
+    from fastapi.testclient import TestClient
+
+    from vision_tagger.web.app import create_app
+
+    with db.write() as s:
+        s.get(Person, anna).birth_year = 1990
+    with TestClient(create_app(settings)) as c:
+        yield c
+
+
+def test_gallery_offers_the_age_sort_for_one_person(web, anna):
+    page = web.get("/images").text
+    assert 'value="age_asc"' not in page
+    page = web.get(f"/images?p={anna}&sort=age_asc").text
+    assert 'value="age_asc" selected' in page and 'value="age_desc"' in page
+    ids = [int(i) for i in re.findall(r'data-id="(\d+)"', page)]
+    assert ids == [6, 1, 2, 3, 4, 5]
+    assert '<span class="agebadge est"' in page and ">~8</span>" in page
+    page = web.get(f"/images/1?p={anna}&sort=age_asc").text
+    assert f'href="/images/6?p={anna}&amp;sort=age_asc"' in page  # previous: the younger one
+
+
+def test_image_page_offers_both_fixes(web, anna):
+    with web.app.state.ctx.db.session() as s:
+        face_id = _face_of(s, 6).id
+    page = web.get("/images/6").text
+    assert "Set year to 1998" in page and "Anna is 33 here" in page
+    r = web.post(
+        f"/images/6/faces/{face_id}/age",
+        data={"age": "33"},
+        headers={"referer": "http://testserver/images/6"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    page = web.get(r.headers["location"]).text
+    assert "This date looks wrong" not in page and "Age set to 33." in page
+    assert "Automatic" in page
+    with web.app.state.ctx.db.session() as s:
+        assert _face_of(s, 6).manual_age == 33 and s.get(Image, 6).date_source == "mtime"
+    # the person page lists the doubtful photo 5 with both fixes, 6 no longer
+    page = web.get(f"/persons/{anna}").text
+    assert "Keep date, age 10" in page and "Set to 2023" in page
+    # reset, wrong face, nonsense
+    web.post(f"/images/6/faces/{face_id}/age", data={"reset": "1"})
+    with web.app.state.ctx.db.session() as s:
+        assert _face_of(s, 6).manual_age is None
+    r = web.post(f"/images/5/faces/{face_id}/age", data={"age": "3"}, follow_redirects=False)
+    assert "err=" in r.headers["location"]
+    r = web.post(f"/images/6/faces/{face_id}/age", data={"age": "abc"}, follow_redirects=False)
+    assert "err=" in r.headers["location"]

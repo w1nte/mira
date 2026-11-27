@@ -1255,3 +1255,7 @@ button.danger.solid:hover { background: color-mix(in srgb, var(--err) 85%, #000)
   .log-line { grid-template-columns: auto minmax(0, 1fr); }
   .log-msg, .log-src { grid-column: 1 / -1; }
 }
+.info .notice .fix-label { margin: 10px 0 4px; font-size: .9rem; }
+.info .notice form + form { margin-top: 6px; }
+.face-ages form label { gap: 6px; }
+.thumb .agebadge { left: auto; right: 4px; top: 4px; bottom: auto; z-index: 1; }

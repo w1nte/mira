@@ -151,7 +151,9 @@ def growup_frames(s: Session, person_id: int, max_frames: int = MAX_FRAMES) -> l
             info = by_face[face_id]
             if not clusterable:
                 continue  # tiny or blurry detections make ugly frames
-            if info.calendar_age is not None and not info.suspicious:
+            if info.manual and info.face_age is not None:
+                age, estimated = info.face_age, False
+            elif info.calendar_age is not None and not info.suspicious:
                 age, estimated = info.calendar_age, False
             elif info.face_age is not None:
                 age, estimated = info.face_age, True
