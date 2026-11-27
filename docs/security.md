@@ -5,6 +5,9 @@ requests whose `Host` is this machine (blocks DNS rebinding) and rejects form su
 from other websites (CSRF). If you expose it on your network (`web.host = "0.0.0.0"`), add the
 machine's name to `web.allowed_hosts` and set a password.
 
+Mira only ever opens image files as photos, judged by the file's own name, and in remote mode
+only files below the upload folder. An imported database can't make it show other files.
+
 The buttons that open Explorer or Finder only appear for, and only answer, a browser on the
 server's own computer (local mode, a loopback address, a local host name, no proxy headers). The
 request names a photo or folder by id; the server looks the path up itself.

@@ -19,6 +19,7 @@ from typing import Any
 import imagehash
 from sqlalchemy import delete, exists, insert, literal, select, update
 
+from .access import checker
 from .animals.grouping import delete_image_animals
 from .config import Settings
 from .db.models import (
@@ -324,7 +325,12 @@ class Indexer:
             rows = s.execute(
                 select(Image.id, Image.path).where(Image.missing.is_(False)).order_by(Image.id)
             ).all()
-        todo = [(i, p) for i, p in rows if not thumbnail_path(thumbs_dir, i, size).exists()]
+        allowed = checker(self.settings)
+        todo = [
+            (i, p)
+            for i, p in rows
+            if allowed(p) and not thumbnail_path(thumbs_dir, i, size).exists()
+        ]
         stats.thumbnails_todo = len(todo)
         if not todo:
             return
@@ -593,8 +599,14 @@ class Indexer:
                     DuplicateFile.mtime,
                 )
             ).all()
-        # --- disk checks, no transaction open
-        exists = _ExistsCache()
+        # --- disk checks, no transaction open. A path Mira may not open (an imported database,
+        # see access.photo_file) counts as missing and is never looked at.
+        disk = _ExistsCache()
+        allowed = checker(self.settings)
+
+        def exists(path: str, root: str | None = None) -> bool:
+            return allowed(path) and disk(path, root)
+
         total = len(images) + len(dups)
         image_exists: dict[int, bool] = {}
         dup_exists: dict[int, bool] = {}

@@ -353,6 +353,29 @@ def test_import_refuses_files_that_are_not_mira_libraries(library, tmp_path):
     assert not list(transfer.transfer_dir(c.ctx.settings).iterdir())
 
 
+def test_imported_paths_cannot_read_other_files(library, settings, tmp_path):
+    """A crafted library file names the server's own files as photos: never served."""
+    c, db = library, library.ctx.db
+    crafted = tmp_path / "crafted.sqlite3"
+    transfer.export_database(db, crafted)
+    key = settings.data_dir / "secret.key"
+    assert key.exists()
+    con = sqlite3.connect(crafted)
+    con.execute("UPDATE images SET path = ?, ext = '.jpg' WHERE id = 1", (str(key),))
+    con.execute("UPDATE images SET path = ?, ext = '.jpg' WHERE id = 2", (str(settings.db_path),))
+    con.commit()
+    con.close()
+    import_file(c, crafted.read_bytes())
+    wait_jobs(library.ctx)
+    assert library.ctx.jobs.history[0].status == "done"
+    assert missing_ids(db) == {1, 2}  # the location check does not accept them either
+    for image_id in (1, 2):
+        r = c.get(f"/media/image/{image_id}")
+        assert r.status_code == 404 and key.read_bytes() not in r.content
+        assert c.get(f"/media/thumb/{image_id}").status_code == 404
+    ok(c.get("/media/image/3"))  # the other photos are fine
+
+
 @pytest.mark.parametrize("versioned", [True, False])
 def test_import_migrates_an_older_database(library, tmp_path, versioned):
     old = tmp_path / "old.sqlite3"

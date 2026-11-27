@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from sqlalchemy import select
 
+from ...access import checker
 from ...db.models import Person
 from ...faces.generations import (
     FramesOf,
@@ -135,7 +136,7 @@ def animation(request: Request, person_id: int, download: int = 0) -> Response:
         person = s.get(Person, person_id)
         if person is None:
             raise HTTPException(404)
-        result = growup_animation(s, _cache(request), person_id)
+        result = growup_animation(s, _cache(request), person_id, allowed=checker(c.settings))
     if result is None:
         raise HTTPException(404, "not enough photos at different ages")
     data, _frames = result
@@ -151,7 +152,7 @@ def aligned(request: Request, face_id: int, size: int = 512) -> Response:
     size = 512 if size not in (256, 384, 512) else size
     c = ctx(request)
     with c.db.session() as s:
-        path = aligned_portrait(s, _cache(request), face_id, size)
+        path = aligned_portrait(s, _cache(request), face_id, size, allowed=checker(c.settings))
     if path is None:
         raise HTTPException(404)
     return FileResponse(

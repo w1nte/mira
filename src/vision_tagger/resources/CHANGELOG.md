@@ -5,6 +5,9 @@ Mira shows them on its "What's new" page, and each GitHub release uses its secti
 
 ## Unreleased
 
+### Fixed
+- Photos only open image files, and in remote mode only files in the upload folder: an imported database can no longer reveal other files.
+
 ## 1.7 - 2026-11-26
 
 ### New

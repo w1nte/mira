@@ -133,11 +133,12 @@ def export_results(
 def download_results(request: Request, ids: str = "") -> Response:
     from fastapi.responses import StreamingResponse
 
+    from ...access import checker
     from ...export import stream_zip
 
     c = ctx(request)
     return StreamingResponse(
-        stream_zip(c.db, ints(ids.split(","))),
+        stream_zip(c.db, ints(ids.split(",")), allowed=checker(c.settings)),
         media_type="application/zip",
         headers={"Content-Disposition": 'attachment; filename="mira-search.zip"'},
     )

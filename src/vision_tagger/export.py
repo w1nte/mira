@@ -11,7 +11,7 @@ import csv
 import logging
 import os
 import shutil
-from collections.abc import Collection, Iterator
+from collections.abc import Callable, Collection, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -213,9 +213,18 @@ class _Sink:
         return out
 
 
-def stream_zip(db: Database, ids: list[int], *, metadata: bool = True) -> Iterator[bytes]:
+def stream_zip(
+    db: Database,
+    ids: list[int],
+    *,
+    allowed: Callable[[str], bool],
+    metadata: bool = True,
+) -> Iterator[bytes]:
     """A ZIP of the photos (stored, not recompressed) with XMP sidecars and index files,
-    produced piece by piece so it can be downloaded while it is written (remote mode)."""
+    produced piece by piece so it can be downloaded while it is written (remote mode).
+
+    Only files ``allowed`` accepts are read (:func:`vision_tagger.access.checker`): the paths
+    come from the database, which may have been imported."""
     import json
     import zipfile
 
@@ -227,7 +236,7 @@ def stream_zip(db: Database, ids: list[int], *, metadata: bool = True) -> Iterat
             metas = _metadata(db, chunk) if metadata else {}
             for img in chunk:
                 src = Path(img.path)
-                if not src.exists():
+                if not allowed(img.path) or not src.exists():
                     continue
                 name = img.filename
                 if name in used:

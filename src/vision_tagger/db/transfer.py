@@ -198,6 +198,8 @@ def inspect_file(path: Path) -> FileInfo:
         raise TransferError(Lazy("The file cannot be read: %(error)s", error=str(exc))) from exc
     try:
         try:
+            # the file comes from elsewhere: SQL in its schema may not call risky functions
+            con.execute("PRAGMA trusted_schema=OFF")
             con.execute("PRAGMA journal_mode=DELETE")
             check = [row[0] for row in con.execute("PRAGMA quick_check")]
         except sqlite3.DatabaseError as exc:
@@ -274,6 +276,7 @@ def prepare_file(path: Path, page_size: int) -> FileInfo:
         ) from exc
     con = sqlite3.connect(path, timeout=60, isolation_level=None)
     try:
+        con.execute("PRAGMA trusted_schema=OFF")
         con.execute("PRAGMA journal_mode=DELETE")
         if int(con.execute("PRAGMA page_size").fetchone()[0]) != page_size:
             con.execute(f"PRAGMA page_size={int(page_size)}")

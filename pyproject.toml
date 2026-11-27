@@ -88,6 +88,8 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 # os.scandir/os.path on purpose: faster for large trees, and abspath() does not resolve symlinks
 "src/vision_tagger/indexer.py" = ["PTH"]
+# lexical path checks on purpose (abspath, as the indexer stores paths): no disk or network access
+"src/vision_tagger/access.py" = ["PTH"]
 # typographic dashes in UI strings are intentional
 "src/vision_tagger/web/**" = ["RUF001"]
 "src/vision_tagger/i18n.py" = ["RUF001"]

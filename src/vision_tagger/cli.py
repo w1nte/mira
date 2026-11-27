@@ -917,6 +917,7 @@ def growup(
     output: Annotated[Path, typer.Argument(help="Target file (.webp).")] = Path("growing-up.webp"),
 ) -> None:
     """Render an animation of a person growing up (eye-aligned faces, ordered by age)."""
+    from .access import checker
     from .faces.clustering import find_person
     from .faces.generations import growup_animation
 
@@ -927,7 +928,9 @@ def growup(
         if p is None:
             typer.echo(f"unknown person: {person}", err=True)
             raise typer.Exit(1)
-        result = growup_animation(s, settings.cache_dir / "aligned", p.id)
+        result = growup_animation(
+            s, settings.cache_dir / "aligned", p.id, allowed=checker(settings)
+        )
     if result is None:
         typer.echo(f"need photos of {p.name} at two or more different ages", err=True)
         raise typer.Exit(1)

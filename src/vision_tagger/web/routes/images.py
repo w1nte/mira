@@ -304,6 +304,7 @@ def download_zip(request: Request) -> Response:
     """The photos of the current filter as a ZIP, with XMP sidecars (remote mode export)."""
     from fastapi.responses import StreamingResponse
 
+    from ...access import checker
     from ...export import stream_zip
 
     c = ctx(request)
@@ -311,7 +312,7 @@ def download_zip(request: Request) -> Response:
     with c.db.session() as s:
         ids = all_image_ids(s, f)
     return StreamingResponse(
-        stream_zip(c.db, ids),
+        stream_zip(c.db, ids, allowed=checker(c.settings)),
         media_type="application/zip",
         headers={"Content-Disposition": 'attachment; filename="mira-photos.zip"'},
     )
