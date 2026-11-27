@@ -266,6 +266,12 @@ def test_other_sites_may_link_but_not_load(settings, photos):
         assert c.get("/media/thumb/1").status_code == 200  # no Sec-Fetch headers (old browsers)
 
 
+def test_no_api_docs(settings):
+    with TestClient(create_app(settings)) as c:
+        for url in ("/api/docs", "/docs", "/redoc", "/openapi.json", "/docs/oauth2-redirect"):
+            assert c.get(url).status_code == 404, url
+
+
 def test_no_user_data_in_inline_js(client):
     db = client.ctx.db
     from vision_tagger.faces import clustering as C

@@ -80,7 +80,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         context.shutdown_pipeline()  # paused, not stopped: the next start continues it
         context.close()
 
-    app = FastAPI(title=APP_NAME, lifespan=lifespan, docs_url="/api/docs")
+    # no /docs, /redoc or /openapi.json: they describe every endpoint to whoever asks, and
+    # their pages load scripts from a CDN into the UI's origin
+    app = FastAPI(
+        title=APP_NAME, lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None
+    )
     settings.ensure_dirs()
     auth = Auth(settings.web.password, load_secret(settings.data_dir))
     app.state.auth = auth
