@@ -16,6 +16,7 @@ Mira shows them on its "What's new" page, and each GitHub release uses its secti
 - Changing the password now ends every login; Database → Log out everywhere ends them on all devices. Everyone logs in once more after the update.
 - Exports and ZIP downloads stay inside their folder, and an imported database can no longer make Mira contact network shares you don't use.
 - Login: guessing from many addresses is limited, wrong passwords no longer slow down other pages, and the example password from `.env.example` is refused.
+- Text visible in a photo (a sign, a screenshot) can no longer steer how Deep search ranks other photos.
 - Other websites can no longer show Mira in a hidden frame to trick you into clicking its buttons.
 
 ## 1.7 - 2026-11-26

@@ -26,3 +26,8 @@ cross-site form submissions are still rejected. Set a password and use HTTPS (se
 [Password and HTTPS](remote.md#password-and-https)). Login cookies are `HttpOnly`, `SameSite=Lax` and
 signed with a key made from a secret in the data folder and the password: a new password, or
 *Database → Log out everywhere*, ends every login.
+
+The AI models only describe photos and read search requests; they can't run commands or change
+the library. Text a model copies from a photo (a sign, a screenshot) is
+stored as one short line and given to the search model as quoted data, so it can't steer how
+other photos are ranked.
